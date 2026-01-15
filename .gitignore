@@ -1,0 +1,17 @@
+# Rust artifacts
+/target/
+/**/*.rs.bk
+Cargo.lock
+
+# WASM build artifacts
+/**/*.wasm
+
+# IDE files
+**/*.swp
+.idea/
+.vscode/
+*.iml
+
+# OS files
+.DS_Store
+Thumbs.db
