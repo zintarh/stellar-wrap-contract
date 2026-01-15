@@ -34,12 +34,19 @@ impl StellarWrapContract {
         Ok(())
     }
 
-    /// Mint a wrap record for `to`. Only callable by admin.
+    /// Mint a wrap record for `to` for a specific period. Only callable by admin.
+    /// 
+    /// # Arguments
+    /// * `to` - The address to mint the wrap for
+    /// * `data_hash` - SHA256 hash of the full off-chain JSON data
+    /// * `archetype` - The persona archetype assigned to the user
+    /// * `period` - Period identifier (e.g., "2024-01" for monthly, "2024" for yearly)
     pub fn mint_wrap(
         e: Env,
         to: Address,
         data_hash: BytesN<32>,
         archetype: Symbol,
+        period: Symbol,
     ) -> Result<(), Error> {
         // Get and verify admin
         let admin_key = DataKey::Admin;
@@ -52,8 +59,8 @@ impl StellarWrapContract {
         // Verify caller is admin
         admin.require_auth();
         
-        // Check if wrap already exists for this user
-        let wrap_key = DataKey::Wrap(to.clone());
+        // Check if wrap already exists for this user and period
+        let wrap_key = DataKey::Wrap(to.clone(), period.clone());
         if e.storage().instance().has(&wrap_key) {
             return Err(Error::WrapAlreadyExists);
         }
@@ -66,18 +73,20 @@ impl StellarWrapContract {
             timestamp,
             data_hash,
             archetype: archetype.clone(),
+            period: period.clone(),
         };
         
         // Store the record
         e.storage().instance().set(&wrap_key, &record);
         
-        // Emit event with topics ["mint", to_address] and data being the archetype
+        // Emit event with topics ["mint", to_address, period] and data being the archetype
         use soroban_sdk::{symbol_short, IntoVal};
         let topics = Vec::from_array(
             &e,
             [
                 symbol_short!("mint").into_val(&e),
                 to.clone().into_val(&e),
+                period.into_val(&e),
             ],
         );
         e.events().publish((topics,), archetype.into_val(&e));
@@ -85,9 +94,13 @@ impl StellarWrapContract {
         Ok(())
     }
 
-    /// Retrieve the wrap record for a user, if any
-    pub fn get_wrap(e: Env, user: Address) -> Option<WrapRecord> {
-        let wrap_key = DataKey::Wrap(user);
+    /// Retrieve the wrap record for a user for a specific period, if any
+    /// 
+    /// # Arguments
+    /// * `user` - The user's address
+    /// * `period` - Period identifier (e.g., "2024-01" for monthly, "2024" for yearly)
+    pub fn get_wrap(e: Env, user: Address, period: Symbol) -> Option<WrapRecord> {
+        let wrap_key = DataKey::Wrap(user, period);
         e.storage().instance().get(&wrap_key)
     }
 }
