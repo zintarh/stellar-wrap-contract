@@ -1,6 +1,8 @@
-# Stellar Wrap 
+# Stellar Wrap - Smart Contract
 
-> **Turn your ledger data into social proof. A shareable, weekly/monthly/yearly summary of your impact on the Stellar network.**
+> **The on-chain Soulbound Token (SBT) registry for Stellar Wrap. This contract stores non-transferable wrap records linked to user addresses, containing data hashes and persona archetypes.**
+
+This repository contains the **Soroban smart contract** that serves as the on-chain anchor for Stellar Wrap. For the full application (frontend, backend, etc.), see the main Stellar Wrap repository.
 
 ---
 
@@ -28,13 +30,17 @@ In Web3, your on-chain history is your resume, your identity, and your reputatio
 
 ---
 
-## 🚀 How It Works
+## 🚀 How the Contract Works
 
-1.  **Connect:** Connect your Stellar wallet (e.g., Freighter, xBull) to our web app.
-2.  **Analyze:** Our backend crunches your on-chain history for the month, pulling data on payments, DEX trades, Soroban interactions, and NFTs.
-3.  **Visualize:** The frontend presents this data as a slick, animated story, highlighting your key stats.
-4.  **Persona:** Based on your specific behavior, you get assigned a fun archetype (e.g., *"The Soroban Architect," "The DeFi Patron," "The Diamond Hand"*).
-5.  **Share:** Generate a beautiful, branded image card ready for one-click sharing to X (Twitter), Farcaster, etc.
+This smart contract provides the on-chain registry for Stellar Wrap records:
+
+1.  **Initialize:** The contract is initialized once with an admin address that has permission to mint wrap records.
+2.  **Mint Wrap:** The admin (backend service) calls `mint_wrap()` to create a soulbound record for a user, storing:
+   - Timestamp of when the wrap was generated
+   - SHA256 hash of the full off-chain JSON data (ensuring integrity)
+   - Archetype/persona assigned to the user (e.g., *"soroban_architect"*, *"defi_patron"*, *"diamond_hand"*)
+3.  **Query:** Anyone can call `get_wrap()` to retrieve a user's wrap record, enabling verification and display of on-chain personas.
+4.  **Soulbound:** Records are non-transferable (SBT), permanently linked to the user's Stellar address.
 
 ---
 
@@ -62,19 +68,33 @@ This project is designed to support the growth of the Stellar network by:
 
 ## 🛠️ Tech Stack
 
-* **Frontend:** Next.js, React, TailwindCSS
-* **Animations:** Framer Motion
-* **Wallet Connection:** Stellar SDK, Freighter integration
-* **Image Generation:** `satori` / `html2canvas` for creating shareable social cards.
+* **Language:** Rust
+* **Smart Contract Framework:** Soroban SDK v20.0.0
+* **Build Tool:** Cargo
+* **Target:** WebAssembly (WASM) for Soroban runtime
+* **Testing:** Soroban SDK testutils
 
 ---
 
-## 🗺️ Roadmap
+## 🗺️ Contract Features
 
-Our immediate focus is on delivering a polished MVP for the community:
+* ✅ Admin-controlled initialization
+* ✅ Soulbound token (SBT) minting with authorization checks
+* ✅ Wrap record storage (timestamp, data hash, archetype)
+* ✅ Public query interface for retrieving wrap records
+* ✅ Event emission for minting actions
+* ✅ Prevention of duplicate wraps per user
 
-* ✅ Seamless wallet integration (Freighter/Albedo).
-* ✅ Core data fetching and aggregation logic for a 30-day period.
-* ✅ Developing the persona assignment algorithm.
-* ✅ Building the dynamic social media card generator.
-* ✅ Live public release for community testing.
+## 📝 Contract Interface
+
+### Functions
+
+- `initialize(e: Env, admin: Address)` - Initialize contract with admin (callable once)
+- `mint_wrap(e: Env, to: Address, data_hash: BytesN<32>, archetype: Symbol)` - Mint a wrap record (admin only)
+- `get_wrap(e: Env, user: Address) -> Option<WrapRecord>` - Retrieve a user's wrap record
+
+### Storage
+
+- `WrapRecord`: Contains `timestamp`, `data_hash`, and `archetype`
+- `DataKey::Admin`: Stores the admin address
+- `DataKey::Wrap(Address)`: Maps user addresses to their wrap records
