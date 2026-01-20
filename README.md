@@ -16,7 +16,7 @@ By simply connecting your wallet, you get a dynamic snapshot of your month on St
 
 **It's more than just stats; it's a tool for builders to prove their contributions and for users to flex their participation in the Stellar ecosystem.**
 
----
+--- 
 
 ## 💡 Why We Need This
 
@@ -24,9 +24,9 @@ In Web3, your on-chain history is your resume, your identity, and your reputatio
 
 **Stellar Wrap solves the visibility gap:**
 
-* **For Builders & Developers:** It's hard to showcase the immense value of deploying open-source Soroban contracts. Stellar Wrap makes their code contributions visible and shareable to non-technical users.
-* **For the Community:** We lack easy, viral loops to share excitement about what's happening on Stellar. This tool gives everyone a reason to post about their on-chain life on social media.
-* **For Users:** It turns isolated transactions into a sense of progress and belonging within the ecosystem.
+- **For Builders & Developers:** It's hard to showcase the immense value of deploying open-source Soroban contracts. Stellar Wrap makes their code contributions visible and shareable to non-technical users.
+- **For the Community:** We lack easy, viral loops to share excitement about what's happening on Stellar. This tool gives everyone a reason to post about their on-chain life on social media.
+- **For Users:** It turns isolated transactions into a sense of progress and belonging within the ecosystem.
 
 ---
 
@@ -36,9 +36,11 @@ This smart contract provides the on-chain registry for Stellar Wrap records:
 
 1.  **Initialize:** The contract is initialized once with an admin address that has permission to mint wrap records.
 2.  **Mint Wrap:** The admin (backend service) calls `mint_wrap()` to create a soulbound record for a user, storing:
-   - Timestamp of when the wrap was generated
-   - SHA256 hash of the full off-chain JSON data (ensuring integrity)
-   - Archetype/persona assigned to the user (e.g., *"soroban_architect"*, *"defi_patron"*, *"diamond_hand"*)
+
+- Timestamp of when the wrap was generated
+- SHA256 hash of the full off-chain JSON data (ensuring integrity)
+- Archetype/persona assigned to the user (e.g., _"soroban_architect"_, _"defi_patron"_, _"diamond_hand"_)
+
 3.  **Query:** Anyone can call `get_wrap()` to retrieve a user's wrap record, enabling verification and display of on-chain personas.
 4.  **Soulbound:** Records are non-transferable (SBT), permanently linked to the user's Stellar address.
 
@@ -48,11 +50,11 @@ This smart contract provides the on-chain registry for Stellar Wrap records:
 
 We look beyond simple payments to capture the full spectrum of Stellar's vibrant ecosystem:
 
-* **🧙‍♂️ Soroban Builder Stats:** Contracts deployed and unique user interactions. (Critical for developer reputation!).
-* **🤝 dApp Interactions:** Which ecosystem projects did you support the most?
-* **🎨 NFT Activity:** New mints collected and top creators supported.
-* **💸 Network Volume:** A summary of your general transaction activity.
-* **🏆 Your Monthly Persona:** A gamified badge that reflects your unique contribution style.
+- **🧙‍♂️ Soroban Builder Stats:** Contracts deployed and unique user interactions. (Critical for developer reputation!).
+- **🤝 dApp Interactions:** Which ecosystem projects did you support the most?
+- **🎨 NFT Activity:** New mints collected and top creators supported.
+- **💸 Network Volume:** A summary of your general transaction activity.
+- **🏆 Your Monthly Persona:** A gamified badge that reflects your unique contribution style.
 
 ---
 
@@ -68,22 +70,22 @@ This project is designed to support the growth of the Stellar network by:
 
 ## 🛠️ Tech Stack
 
-* **Language:** Rust
-* **Smart Contract Framework:** Soroban SDK v20.0.0
-* **Build Tool:** Cargo
-* **Target:** WebAssembly (WASM) for Soroban runtime
-* **Testing:** Soroban SDK testutils
+- **Language:** Rust
+- **Smart Contract Framework:** Soroban SDK v20.0.0
+- **Build Tool:** Cargo
+- **Target:** WebAssembly (WASM) for Soroban runtime
+- **Testing:** Soroban SDK testutils
 
 ---
 
 ## 🗺️ Contract Features
 
-* ✅ Admin-controlled initialization
-* ✅ Soulbound token (SBT) minting with authorization checks
-* ✅ Wrap record storage (timestamp, data hash, archetype)
-* ✅ Public query interface for retrieving wrap records
-* ✅ Event emission for minting actions
-* ✅ Prevention of duplicate wraps per user
+- ✅ Admin-controlled initialization
+- ✅ Soulbound token (SBT) minting with authorization checks
+- ✅ Wrap record storage (timestamp, data hash, archetype)
+- ✅ Public query interface for retrieving wrap records
+- ✅ Event emission for minting actions
+- ✅ Prevention of duplicate wraps per user
 
 ## 📝 Contract Interface
 
