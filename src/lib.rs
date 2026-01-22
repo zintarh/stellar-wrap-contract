@@ -1,7 +1,6 @@
 #![no_std]
-use soroban_sdk::{
-    contract, contractimpl, contracterror, Address, BytesN, Env, Symbol, Vec,
-};
+#![allow(unexpected_cfgs)]
+use soroban_sdk::{contract, contracterror, contractimpl, Address, BytesN, Env, Symbol};
 
 mod storage_types;
 use storage_types::{DataKey, WrapRecord};
@@ -24,18 +23,18 @@ impl StellarWrapContract {
     /// Initialize the contract with an admin. Only can be called once.
     pub fn initialize(e: Env, admin: Address) -> Result<(), Error> {
         let key = DataKey::Admin;
-        
+
         // Ensure it's not already initialized
         if e.storage().instance().has(&key) {
             return Err(Error::AlreadyInitialized);
         }
-        
+
         e.storage().instance().set(&key, &admin);
         Ok(())
     }
 
     /// Mint a wrap record for `to` for a specific period. Only callable by admin.
-    /// 
+    ///
     /// # Arguments
     /// * `to` - The address to mint the wrap for
     /// * `data_hash` - SHA256 hash of the full off-chain JSON data
@@ -55,19 +54,19 @@ impl StellarWrapContract {
             .instance()
             .get(&admin_key)
             .ok_or(Error::NotInitialized)?;
-        
+
         // Verify caller is admin
         admin.require_auth();
-        
+
         // Check if wrap already exists for this user and period
         let wrap_key = DataKey::Wrap(to.clone(), period.clone());
         if e.storage().instance().has(&wrap_key) {
             return Err(Error::WrapAlreadyExists);
         }
-        
+
         // Get current ledger timestamp
         let timestamp = e.ledger().timestamp();
-        
+
         // Create the wrap record
         let record = WrapRecord {
             timestamp,
@@ -75,13 +74,13 @@ impl StellarWrapContract {
             archetype: archetype.clone(),
             period: period.clone(),
         };
-        
+
         // Store the record
         e.storage().instance().set(&wrap_key, &record);
-        
+
         // Emit event with topics ["mint", to_address, period] and data being the archetype
-        use soroban_sdk::{symbol_short, IntoVal};
-        let topics = Vec::from_array(
+        use soroban_sdk::{symbol_short, IntoVal, Val, Vec};
+        let topics: Vec<Val> = Vec::from_array(
             &e,
             [
                 symbol_short!("mint").into_val(&e),
@@ -89,13 +88,13 @@ impl StellarWrapContract {
                 period.into_val(&e),
             ],
         );
-        e.events().publish((topics,), archetype.into_val(&e));
-        
+        e.events().publish((topics,), archetype);
+
         Ok(())
     }
 
     /// Retrieve the wrap record for a user for a specific period, if any
-    /// 
+    ///
     /// # Arguments
     /// * `user` - The user's address
     /// * `period` - Period identifier (e.g., "2024-01" for monthly, "2024" for yearly)
