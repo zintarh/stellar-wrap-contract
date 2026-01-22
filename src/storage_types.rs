@@ -4,16 +4,16 @@ use soroban_sdk::{contracttype, Address, BytesN, Symbol};
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WrapRecord {
-    pub timestamp: u64,
-    pub data_hash: BytesN<32>,
-    pub archetype: Symbol,
-    pub period: Symbol, // Period identifier (e.g., "2024-01" for monthly, "2024" for yearly)
+    pub minted_at: u64,        // Ledger timestamp
+    pub archetype: Symbol,     // e.g., soroban_dev
+    pub data_hash: BytesN<32>, // Hash of the JSON data
 }
 
 /// Keys for persistent storage
 #[contracttype]
 #[derive(Clone)]
 pub enum DataKey {
-    Admin,
-    Wrap(Address, Symbol), // Address + Period identifier
+    Admin,                      // Stores the admin Address
+    Wrap(Address, u64),         // Maps (User, PeriodID) -> WrapRecord
+    UserCount(Address),         // Maps User -> u32 (Total wraps owned)
 }

@@ -39,14 +39,14 @@ impl StellarWrapContract {
     /// # Arguments
     /// * `to` - The address to mint the wrap for
     /// * `data_hash` - SHA256 hash of the full off-chain JSON data
-    /// * `archetype` - The persona archetype assigned to the user
-    /// * `period` - Period identifier (e.g., "2024-01" for monthly, "2024" for yearly)
+    /// * `archetype` - The persona archetype assigned to the user (e.g., soroban_dev)
+    /// * `period_id` - Period identifier (u64)
     pub fn mint_wrap(
         e: Env,
         to: Address,
         data_hash: BytesN<32>,
         archetype: Symbol,
-        period: Symbol,
+        period_id: u64,
     ) -> Result<(), Error> {
         // Get and verify admin
         let admin_key = DataKey::Admin;
@@ -60,36 +60,36 @@ impl StellarWrapContract {
         admin.require_auth();
         
         // Check if wrap already exists for this user and period
-        let wrap_key = DataKey::Wrap(to.clone(), period.clone());
+        let wrap_key = DataKey::Wrap(to.clone(), period_id);
         if e.storage().instance().has(&wrap_key) {
             return Err(Error::WrapAlreadyExists);
         }
         
         // Get current ledger timestamp
-        let timestamp = e.ledger().timestamp();
+        let minted_at = e.ledger().timestamp();
         
         // Create the wrap record
         let record = WrapRecord {
-            timestamp,
+            minted_at,
             data_hash,
             archetype: archetype.clone(),
-            period: period.clone(),
         };
         
         // Store the record
         e.storage().instance().set(&wrap_key, &record);
         
-        // Emit event with topics ["mint", to_address, period] and data being the archetype
-        use soroban_sdk::{symbol_short, IntoVal};
-        let topics = Vec::from_array(
-            &e,
-            [
-                symbol_short!("mint").into_val(&e),
-                to.clone().into_val(&e),
-                period.into_val(&e),
-            ],
-        );
-        e.events().publish((topics,), archetype.into_val(&e));
+        // Increment user count
+        let user_count_key = DataKey::UserCount(to.clone());
+        let current_count: u32 = e.storage().instance().get(&user_count_key).unwrap_or(0);
+        e.storage().instance().set(&user_count_key, &(current_count + 1));
+        
+        // Emit event with topics ["mint", to_address, period_id] and data being the archetype
+        use soroban_sdk::{symbol_short, IntoVal, Val};
+        let mut topics: Vec<Val> = Vec::new(&e);
+        topics.push_back(symbol_short!("mint").into_val(&e));
+        topics.push_back(to.clone().into_val(&e));
+        topics.push_back(period_id.into_val(&e));
+        e.events().publish((topics,), archetype);
         
         Ok(())
     }
@@ -98,10 +98,19 @@ impl StellarWrapContract {
     /// 
     /// # Arguments
     /// * `user` - The user's address
-    /// * `period` - Period identifier (e.g., "2024-01" for monthly, "2024" for yearly)
-    pub fn get_wrap(e: Env, user: Address, period: Symbol) -> Option<WrapRecord> {
-        let wrap_key = DataKey::Wrap(user, period);
+    /// * `period_id` - Period identifier (u64)
+    pub fn get_wrap(e: Env, user: Address, period_id: u64) -> Option<WrapRecord> {
+        let wrap_key = DataKey::Wrap(user, period_id);
         e.storage().instance().get(&wrap_key)
+    }
+
+    /// Get the total count of wraps owned by a user
+    /// 
+    /// # Arguments
+    /// * `user` - The user's address
+    pub fn get_user_count(e: Env, user: Address) -> u32 {
+        let user_count_key = DataKey::UserCount(user);
+        e.storage().instance().get(&user_count_key).unwrap_or(0)
     }
 }
 
