@@ -25,7 +25,6 @@ impl StellarWrapContract {
     pub fn initialize(e: Env, admin: Address) -> Result<(), Error> {
         let key = DataKey::Admin;
         
-        // Ensure it's not already initialized
         if e.storage().instance().has(&key) {
             return Err(Error::AlreadyInitialized);
         }
@@ -48,7 +47,6 @@ impl StellarWrapContract {
         archetype: Symbol,
         period_id: u64,
     ) -> Result<(), Error> {
-        // Get and verify admin
         let admin_key = DataKey::Admin;
         let admin: Address = e
             .storage()
@@ -56,34 +54,27 @@ impl StellarWrapContract {
             .get(&admin_key)
             .ok_or(Error::NotInitialized)?;
         
-        // Verify caller is admin
         admin.require_auth();
         
-        // Check if wrap already exists for this user and period
         let wrap_key = DataKey::Wrap(to.clone(), period_id);
         if e.storage().instance().has(&wrap_key) {
             return Err(Error::WrapAlreadyExists);
         }
         
-        // Get current ledger timestamp
         let minted_at = e.ledger().timestamp();
         
-        // Create the wrap record
         let record = WrapRecord {
             minted_at,
             data_hash,
             archetype: archetype.clone(),
         };
         
-        // Store the record
         e.storage().instance().set(&wrap_key, &record);
         
-        // Increment user count
         let user_count_key = DataKey::UserCount(to.clone());
         let current_count: u32 = e.storage().instance().get(&user_count_key).unwrap_or(0);
         e.storage().instance().set(&user_count_key, &(current_count + 1));
         
-        // Emit event with topics ["mint", to_address, period_id] and data being the archetype
         use soroban_sdk::{symbol_short, IntoVal, Val};
         let mut topics: Vec<Val> = Vec::new(&e);
         topics.push_back(symbol_short!("mint").into_val(&e));
