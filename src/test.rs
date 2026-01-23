@@ -29,7 +29,7 @@ fn test_minting_flow() {
     
     assert!(wrap_opt.is_some());
     let wrap = wrap_opt.unwrap();
-    
+
     assert_eq!(wrap.data_hash, dummy_hash);
     assert_eq!(wrap.archetype, archetype);
     assert_eq!(wrap.minted_at, env.ledger().timestamp());
@@ -43,7 +43,7 @@ fn test_initialize_twice_fails() {
     let env = Env::default();
     let contract_id = env.register_contract(None, StellarWrapContract);
     let client = StellarWrapContractClient::new(&env, &contract_id);
-    
+
     let admin = TestAddress::generate(&env);
     
     client.initialize(&admin);
@@ -56,7 +56,7 @@ fn test_mint_wrap_unauthorized() {
     let env = Env::default();
     let contract_id = env.register_contract(None, StellarWrapContract);
     let client = StellarWrapContractClient::new(&env, &contract_id);
-    
+
     let admin = TestAddress::generate(&env);
     let user = TestAddress::generate(&env);
     let unauthorized = TestAddress::generate(&env);
@@ -76,13 +76,13 @@ fn test_multiple_periods() {
     let env = Env::default();
     let contract_id = env.register_contract(None, StellarWrapContract);
     let client = StellarWrapContractClient::new(&env, &contract_id);
-    
+
     let admin = TestAddress::generate(&env);
     let user = TestAddress::generate(&env);
     
     client.initialize(&admin);
     env.mock_all_auths();
-    
+
     use soroban_sdk::symbol_short;
     let dummy_hash_1 = BytesN::from_array(&env, &[42u8; 32]);
     let dummy_hash_2 = BytesN::from_array(&env, &[99u8; 32]);
@@ -112,13 +112,13 @@ fn test_duplicate_period_fails() {
     let env = Env::default();
     let contract_id = env.register_contract(None, StellarWrapContract);
     let client = StellarWrapContractClient::new(&env, &contract_id);
-    
+
     let admin = TestAddress::generate(&env);
     let user = TestAddress::generate(&env);
     
     client.initialize(&admin);
     env.mock_all_auths();
-    
+
     use soroban_sdk::symbol_short;
     let dummy_hash_1 = BytesN::from_array(&env, &[42u8; 32]);
     let dummy_hash_2 = BytesN::from_array(&env, &[99u8; 32]);

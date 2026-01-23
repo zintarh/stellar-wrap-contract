@@ -1,7 +1,6 @@
 #![no_std]
-use soroban_sdk::{
-    contract, contractimpl, contracterror, Address, BytesN, Env, Symbol, Vec,
-};
+#![allow(unexpected_cfgs)]
+use soroban_sdk::{contract, contracterror, contractimpl, Address, BytesN, Env, Symbol};
 
 mod storage_types;
 use storage_types::{DataKey, WrapRecord};
@@ -24,17 +23,18 @@ impl StellarWrapContract {
     /// Initialize the contract with an admin. Only can be called once.
     pub fn initialize(e: Env, admin: Address) -> Result<(), Error> {
         let key = DataKey::Admin;
-        
+
+        // Ensure it's not already initialized
         if e.storage().instance().has(&key) {
             return Err(Error::AlreadyInitialized);
         }
-        
+
         e.storage().instance().set(&key, &admin);
         Ok(())
     }
 
     /// Mint a wrap record for `to` for a specific period. Only callable by admin.
-    /// 
+    ///
     /// # Arguments
     /// * `to` - The address to mint the wrap for
     /// * `data_hash` - SHA256 hash of the full off-chain JSON data
@@ -86,7 +86,7 @@ impl StellarWrapContract {
     }
 
     /// Retrieve the wrap record for a user for a specific period, if any
-    /// 
+    ///
     /// # Arguments
     /// * `user` - The user's address
     /// * `period_id` - Period identifier (u64)
