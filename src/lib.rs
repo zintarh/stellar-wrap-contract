@@ -23,13 +23,33 @@ impl StellarWrapContract {
     /// Initialize the contract with an admin. Only can be called once.
     pub fn initialize(e: Env, admin: Address) -> Result<(), Error> {
         let key = DataKey::Admin;
-
-        // Ensure it's not already initialized
+        
+        // Security: Must fail if called more than once (check if Admin key exists)
         if e.storage().instance().has(&key) {
             return Err(Error::AlreadyInitialized);
         }
-
+        
+        // Store the admin key
         e.storage().instance().set(&key, &admin);
+        Ok(())
+    }
+
+    /// Update the admin address. Only callable by the current admin.
+    pub fn update_admin(e: Env, new_admin: Address) -> Result<(), Error> {
+        let admin_key = DataKey::Admin;
+        let current_admin: Address = e
+            .storage()
+            .instance()
+            .get(&admin_key)
+            .ok_or(Error::NotInitialized)?;
+        
+        // Security: Verify e.call_stack().auth() ensures only the current admin can call this
+        // require_auth() uses the call stack to verify authorization
+        current_admin.require_auth();
+        
+        // Update to new admin
+        e.storage().instance().set(&admin_key, &new_admin);
+        
         Ok(())
     }
 
