@@ -16,4 +16,5 @@ pub struct WrapRecord {
 pub enum DataKey {
     Admin,
     Wrap(Address, Symbol), // Address + Period identifier
+    WrapCount(Address),    // Total wrap count for an address
 }

@@ -1,6 +1,8 @@
 #![no_std]
 #![allow(unexpected_cfgs)]
-use soroban_sdk::{contract, contracterror, contractimpl, Address, BytesN, Env, Symbol};
+use soroban_sdk::{
+    contract, contracterror, contractimpl, Address, BytesN, Env, String, Symbol, Vec,
+};
 
 mod storage_types;
 use storage_types::{DataKey, WrapRecord};
@@ -13,6 +15,7 @@ pub enum Error {
     NotInitialized = 2,
     Unauthorized = 3,
     WrapAlreadyExists = 4,
+    SbtTransferNotAllowed = 5,
 }
 
 #[contract]
@@ -78,8 +81,13 @@ impl StellarWrapContract {
         // Store the record
         e.storage().instance().set(&wrap_key, &record);
 
+        // Increment wrap count for the user
+        let count_key = DataKey::WrapCount(to.clone());
+        let current_count: u32 = e.storage().instance().get(&count_key).unwrap_or(0);
+        e.storage().instance().set(&count_key, &(current_count + 1));
+
         // Emit event with topics ["mint", to_address, period] and data being the archetype
-        use soroban_sdk::{symbol_short, IntoVal, Val, Vec};
+        use soroban_sdk::{symbol_short, IntoVal, Val};
         let topics: Vec<Val> = Vec::from_array(
             &e,
             [
@@ -101,6 +109,86 @@ impl StellarWrapContract {
     pub fn get_wrap(e: Env, user: Address, period: Symbol) -> Option<WrapRecord> {
         let wrap_key = DataKey::Wrap(user, period);
         e.storage().instance().get(&wrap_key)
+    }
+
+    /// Get the total wrap count for a user
+    ///
+    /// # Arguments
+    /// * `user` - The user's address
+    fn get_wrap_count(e: &Env, user: Address) -> u32 {
+        let count_key = DataKey::WrapCount(user);
+        e.storage().instance().get(&count_key).unwrap_or(0)
+    }
+
+    // ============================================================================
+    // SEP-41 Token Interface Implementation (Read Functions)
+    // These functions make the contract visible to standard Stellar wallets
+    // ============================================================================
+
+    /// Returns the balance (total wrap count) for a given address
+    /// Implements SEP-41 token interface for wallet compatibility
+    pub fn balance_of(e: Env, id: Address) -> i128 {
+        Self::get_wrap_count(&e, id) as i128
+    }
+
+    /// Returns the number of decimals for this token
+    /// Always returns 0 since wraps are indivisible items
+    pub fn decimals(_e: Env) -> u32 {
+        0
+    }
+
+    /// Returns the name of this token
+    /// Implements SEP-41 token interface
+    pub fn name(e: Env) -> String {
+        String::from_str(&e, "Stellar Wrap Registry")
+    }
+
+    /// Returns the symbol of this token
+    /// Implements SEP-41 token interface
+    pub fn symbol(e: Env) -> String {
+        String::from_str(&e, "WRAP")
+    }
+
+    /// Returns the allowance (always 0 for Soulbound Tokens)
+    /// Implements SEP-41 token interface
+    pub fn allowance(_e: Env, _from: Address, _spender: Address) -> i128 {
+        0
+    }
+
+    // ============================================================================
+    // SEP-41 Token Interface Implementation (Write Functions - Restricted)
+    // These functions are required by the interface but must panic to enforce
+    // the Soulbound Token (SBT) immutability property
+    // ============================================================================
+
+    /// Transfer wraps between addresses
+    /// PANICS: Soulbound tokens cannot be transferred
+    pub fn transfer(_e: Env, _from: Address, _to: Address, _amount: i128) {
+        panic!("SBT: Transfer not allowed");
+    }
+
+    /// Transfer wraps on behalf of another address
+    /// PANICS: Soulbound tokens cannot be transferred
+    pub fn transfer_from(_e: Env, _spender: Address, _from: Address, _to: Address, _amount: i128) {
+        panic!("SBT: Transfer not allowed");
+    }
+
+    /// Approve another address to spend wraps
+    /// PANICS: Soulbound tokens cannot be transferred, so approval is meaningless
+    pub fn approve(
+        _e: Env,
+        _from: Address,
+        _spender: Address,
+        _amount: i128,
+        _expiration_ledger: u32,
+    ) {
+        panic!("SBT: Transfer not allowed");
+    }
+
+    /// Burn (destroy) wraps
+    /// PANICS: Wrap history must remain immutable per issue requirements
+    pub fn burn(_e: Env, _from: Address, _amount: i128) {
+        panic!("SBT: Transfer not allowed");
     }
 }
 
