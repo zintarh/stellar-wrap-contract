@@ -1,7 +1,7 @@
 #![no_std]
 #![allow(unexpected_cfgs)]
 use soroban_sdk::{
-    contract, contracterror, contractimpl, Address, BytesN, Env, String, Symbol, Vec,
+    contract, contracterror, contractimpl, Address, Bytes, BytesN, Env, String, Symbol, Vec,
 };
 
 mod storage_types;
@@ -15,7 +15,8 @@ pub enum Error {
     NotInitialized = 2,
     Unauthorized = 3,
     WrapAlreadyExists = 4,
-    SbtTransferNotAllowed = 5,
+    InvalidSignature = 5,
+    SbtTransferNotAllowed = 6,
 }
 
 #[contract]
@@ -23,17 +24,45 @@ pub struct StellarWrapContract;
 
 #[contractimpl]
 impl StellarWrapContract {
-    /// Initialize the contract with an admin. Only can be called once.
-    pub fn initialize(e: Env, admin: Address) -> Result<(), Error> {
-        let key = DataKey::Admin;
-        
-        // Security: Must fail if called more than once (check if Admin key exists)
-        if e.storage().instance().has(&key) {
+    /// Initialize the contract with an admin address and public key. Only can be called once.
+    ///
+    /// # Arguments
+    /// * `admin` - The admin address
+    /// * `admin_pubkey` - The admin's Ed25519 public key (32 bytes)
+    pub fn initialize(e: Env, admin: Address, admin_pubkey: BytesN<32>) -> Result<(), Error> {
+        let admin_key = DataKey::Admin;
+        let pubkey_key = DataKey::AdminPubKey;
+
+        // Ensure it's not already initialized
+        if e.storage().instance().has(&admin_key) {
             return Err(Error::AlreadyInitialized);
         }
-        
-        // Store the admin key
-        e.storage().instance().set(&key, &admin);
+
+        e.storage().instance().set(&admin_key, &admin);
+        e.storage().instance().set(&pubkey_key, &admin_pubkey);
+        Ok(())
+    }
+
+    /// Verify that a signature was created by the admin
+    ///
+    /// # Arguments
+    /// * `payload` - The data that was signed
+    /// * `signature` - The Ed25519 signature (64 bytes)
+    ///
+    /// # Panics
+    /// Panics if the signature is invalid or admin public key is not set
+    pub fn verify_signature(e: Env, payload: Bytes, signature: BytesN<64>) -> Result<(), Error> {
+        let pubkey_key = DataKey::AdminPubKey;
+
+        let admin_pubkey: BytesN<32> = e
+            .storage()
+            .instance()
+            .get(&pubkey_key)
+            .ok_or(Error::NotInitialized)?;
+
+        e.crypto()
+            .ed25519_verify(&admin_pubkey, &payload, &signature);
+
         Ok(())
     }
 
@@ -125,7 +154,7 @@ impl StellarWrapContract {
     ///
     /// # Arguments
     /// * `user` - The user's address
-    /// * `period` - Period identifier (e.g., "2024-01" for monthly, "2024" for yearly)
+    /// * `period` - Period identifier (e.g., "2024" for monthly, "2024" for yearly)
     pub fn get_wrap(e: Env, user: Address, period: Symbol) -> Option<WrapRecord> {
         let wrap_key = DataKey::Wrap(user, period);
         e.storage().instance().get(&wrap_key)
