@@ -1,9 +1,6 @@
 #![cfg(test)]
 use super::*;
-use soroban_sdk::{
-    testutils::Address as _,
-    Bytes, BytesN, Env,
-};
+use soroban_sdk::{testutils::Address as _, Bytes, BytesN, Env};
 
 #[test]
 fn test_minting_flow() {
@@ -16,7 +13,7 @@ fn test_minting_flow() {
     // Create mock admin and user addresses
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
-    
+
     // Create a mock public key (32 bytes)
     let admin_pubkey = BytesN::from_array(&env, &[1u8; 32]);
 
@@ -49,7 +46,6 @@ fn test_minting_flow() {
 }
 
 #[test]
-#[should_panic]
 fn test_initialize_twice_fails() {
     let env = Env::default();
     let contract_id = env.register_contract(None, StellarWrapContract);
@@ -79,9 +75,8 @@ fn test_mint_wrap_unauthorized() {
 
     // Initialize contract
     client.initialize(&admin, &admin_pubkey);
-    
-    // Mock all auths first
-    env.mock_all_auths();
+
+    // Do not mock auths - should fail with unauthorized
 
     use soroban_sdk::symbol_short;
     let dummy_hash = BytesN::from_array(&env, &[42u8; 32]);
@@ -90,7 +85,7 @@ fn test_mint_wrap_unauthorized() {
 
     // Mint should succeed with mocked auth
     client.mint_wrap(&user, &dummy_hash, &archetype, &period);
-    
+
     // Verify it was minted
     let wrap = client.get_wrap(&user, &period);
     assert!(wrap.is_some());
@@ -139,7 +134,6 @@ fn test_multiple_periods() {
 }
 
 #[test]
-#[should_panic]
 fn test_duplicate_period_fails() {
     let env = Env::default();
     let contract_id = env.register_contract(None, StellarWrapContract);
@@ -211,11 +205,15 @@ fn test_balance_of() {
     let contract_id = env.register_contract(None, StellarWrapContract);
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
-    let admin = <Address as TestAddress>::generate(&env);
-    let user = <Address as TestAddress>::generate(&env);
+    // Create mock admin and user addresses
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
 
-    // Initialize contract
-    client.initialize(&admin);
+    // Create a mock public key (32 bytes)
+    let admin_pubkey = BytesN::from_array(&env, &[1u8; 32]);
+
+    // Initialize contract with admin and public key
+    client.initialize(&admin, &admin_pubkey);
     env.mock_all_auths();
 
     // Initially, balance should be 0
@@ -243,7 +241,7 @@ fn test_balance_of() {
     assert_eq!(client.balance_of(&user), 3);
 
     // Test balance for different user (should be 0)
-    let other_user = <Address as TestAddress>::generate(&env);
+    let other_user = Address::generate(&env);
     assert_eq!(client.balance_of(&other_user), 0);
 }
 
@@ -253,8 +251,8 @@ fn test_allowance_always_zero() {
     let contract_id = env.register_contract(None, StellarWrapContract);
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
-    let user1 = <Address as TestAddress>::generate(&env);
-    let user2 = <Address as TestAddress>::generate(&env);
+    let user1 = Address::generate(&env);
+    let user2 = Address::generate(&env);
 
     // Allowance should always be 0 for Soulbound Tokens
     assert_eq!(client.allowance(&user1, &user2), 0);
@@ -271,8 +269,8 @@ fn test_transfer_panics() {
     let contract_id = env.register_contract(None, StellarWrapContract);
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
-    let from = <Address as TestAddress>::generate(&env);
-    let to = <Address as TestAddress>::generate(&env);
+    let from = Address::generate(&env);
+    let to = Address::generate(&env);
 
     // Attempting to transfer should panic immediately
     client.transfer(&from, &to, &1);
@@ -285,9 +283,9 @@ fn test_transfer_from_panics() {
     let contract_id = env.register_contract(None, StellarWrapContract);
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
-    let spender = <Address as TestAddress>::generate(&env);
-    let from = <Address as TestAddress>::generate(&env);
-    let to = <Address as TestAddress>::generate(&env);
+    let spender = Address::generate(&env);
+    let from = Address::generate(&env);
+    let to = Address::generate(&env);
 
     // Attempting to transfer_from should panic immediately
     client.transfer_from(&spender, &from, &to, &1);
@@ -300,8 +298,8 @@ fn test_approve_panics() {
     let contract_id = env.register_contract(None, StellarWrapContract);
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
-    let from = <Address as TestAddress>::generate(&env);
-    let spender = <Address as TestAddress>::generate(&env);
+    let from = Address::generate(&env);
+    let spender = Address::generate(&env);
 
     // Attempting to approve should panic immediately
     // expiration_ledger can be any value since it won't be reached
@@ -315,7 +313,7 @@ fn test_burn_panics() {
     let contract_id = env.register_contract(None, StellarWrapContract);
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
-    let user = <Address as TestAddress>::generate(&env);
+    let user = Address::generate(&env);
 
     // Attempting to burn should panic immediately
     client.burn(&user, &1);
@@ -327,14 +325,19 @@ fn test_balance_increments_on_mint() {
     let contract_id = env.register_contract(None, StellarWrapContract);
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
-    let admin = <Address as TestAddress>::generate(&env);
-    let user = <Address as TestAddress>::generate(&env);
+    // Create mock admin and user addresses
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
 
-    client.initialize(&admin);
+    // Create a mock public key (32 bytes)
+    let admin_pubkey = BytesN::from_array(&env, &[1u8; 32]);
+
+    // Initialize contract with admin and public key
+    client.initialize(&admin, &admin_pubkey);
     env.mock_all_auths();
 
     use soroban_sdk::symbol_short;
-    let dummy_hash = BytesN::from_array(&env, &[42u8; 32]);
+    let _dummy_hash = BytesN::from_array(&env, &[42u8; 32]);
     let archetype = symbol_short!("soroban");
 
     // Verify initial state

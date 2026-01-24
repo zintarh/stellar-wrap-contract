@@ -1,6 +1,8 @@
 #![no_std]
 #![allow(unexpected_cfgs)]
-use soroban_sdk::{contract, contracterror, contractimpl, Address, Bytes, BytesN, Env, Symbol,String,Vec};
+use soroban_sdk::{
+    contract, contracterror, contractimpl, Address, Bytes, BytesN, Env, String, Symbol, Vec,
+};
 
 mod storage_types;
 use storage_types::{DataKey, WrapRecord};
@@ -23,7 +25,7 @@ pub struct StellarWrapContract;
 #[contractimpl]
 impl StellarWrapContract {
     /// Initialize the contract with an admin address and public key. Only can be called once.
-    /// 
+    ///
     /// # Arguments
     /// * `admin` - The admin address
     /// * `admin_pubkey` - The admin's Ed25519 public key (32 bytes)
@@ -42,11 +44,11 @@ impl StellarWrapContract {
     }
 
     /// Verify that a signature was created by the admin
-    /// 
+    ///
     /// # Arguments
     /// * `payload` - The data that was signed
     /// * `signature` - The Ed25519 signature (64 bytes)
-    /// 
+    ///
     /// # Panics
     /// Panics if the signature is invalid or admin public key is not set
     pub fn verify_signature(e: Env, payload: Bytes, signature: BytesN<64>) -> Result<(), Error> {
@@ -58,7 +60,8 @@ impl StellarWrapContract {
             .get(&pubkey_key)
             .ok_or(Error::NotInitialized)?;
 
-        e.crypto().ed25519_verify(&admin_pubkey, &payload, &signature);
+        e.crypto()
+            .ed25519_verify(&admin_pubkey, &payload, &signature);
 
         Ok(())
     }
