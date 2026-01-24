@@ -29,8 +29,8 @@ fn test_minting_flow() {
     // Prepare dummy data for minting
     use soroban_sdk::symbol_short;
     let dummy_hash = BytesN::from_array(&env, &[42u8; 32]);
-    let archetype = symbol_short!("arch");
-    let period = symbol_short!("2024");
+    let archetype = symbol_short!("soroban");
+    let period = symbol_short!("2024_01"); // January 2024
 
     // Mint wrap as admin for the user
     client.mint_wrap(&user, &dummy_hash, &archetype, &period);
@@ -49,6 +49,7 @@ fn test_minting_flow() {
 }
 
 #[test]
+#[should_panic]
 fn test_initialize_twice_fails() {
     let env = Env::default();
     let contract_id = env.register_contract(None, StellarWrapContract);
@@ -66,6 +67,7 @@ fn test_initialize_twice_fails() {
 }
 
 #[test]
+#[should_panic(expected = "Unauthorized")]
 fn test_mint_wrap_unauthorized() {
     let env = Env::default();
     let contract_id = env.register_contract(None, StellarWrapContract);
@@ -84,7 +86,7 @@ fn test_mint_wrap_unauthorized() {
     use soroban_sdk::symbol_short;
     let dummy_hash = BytesN::from_array(&env, &[42u8; 32]);
     let archetype = symbol_short!("defi");
-    let period = symbol_short!("2024");
+    let period = symbol_short!("2024_01");
 
     // Mint should succeed with mocked auth
     client.mint_wrap(&user, &dummy_hash, &archetype, &period);
@@ -111,10 +113,10 @@ fn test_multiple_periods() {
     use soroban_sdk::symbol_short;
     let dummy_hash_1 = BytesN::from_array(&env, &[42u8; 32]);
     let dummy_hash_2 = BytesN::from_array(&env, &[99u8; 32]);
-    let archetype_1 = symbol_short!("arch");
+    let archetype_1 = symbol_short!("soroban");
     let archetype_2 = symbol_short!("defi");
-    let period_1 = symbol_short!("2024");
-    let period_2 = symbol_short!("2025");
+    let period_1 = symbol_short!("2024_01"); // January
+    let period_2 = symbol_short!("2024_02"); // February
 
     // Mint wrap for period 1
     client.mint_wrap(&user, &dummy_hash_1, &archetype_1, &period_1);
@@ -137,6 +139,7 @@ fn test_multiple_periods() {
 }
 
 #[test]
+#[should_panic]
 fn test_duplicate_period_fails() {
     let env = Env::default();
     let contract_id = env.register_contract(None, StellarWrapContract);
@@ -153,8 +156,8 @@ fn test_duplicate_period_fails() {
     use soroban_sdk::symbol_short;
     let dummy_hash_1 = BytesN::from_array(&env, &[42u8; 32]);
     let dummy_hash_2 = BytesN::from_array(&env, &[99u8; 32]);
-    let archetype = symbol_short!("arch");
-    let period = symbol_short!("2024");
+    let archetype = symbol_short!("soroban");
+    let period = symbol_short!("2024_01");
 
     // Mint first wrap
     client.mint_wrap(&user, &dummy_hash_1, &archetype, &period);
@@ -177,8 +180,183 @@ fn test_verify_signature_not_initialized() {
     assert_eq!(result, Err(Ok(Error::NotInitialized)));
 }
 
-// ==================== SIGNATURE VERIFICATION NOTES ====================
-// Note: Additional Ed25519 signature verification tests (valid signature, invalid signature, 
-// wrong key, wrong message) require actual Ed25519 keypair generation which is not available 
-// in the current Soroban SDK test utilities. The verify_signature function is correctly 
-// implemented using e.crypto().ed25519_verify() and will work properly in production with#![cfg(test)]
+// ============================================================================
+// SEP-41 Token Interface Tests
+// ============================================================================
+
+#[test]
+fn test_token_metadata() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    // Test decimals - must return 0
+    assert_eq!(client.decimals(), 0);
+
+    // Test name - must return "Stellar Wrap Registry"
+    let name = client.name();
+    assert_eq!(
+        name,
+        soroban_sdk::String::from_str(&env, "Stellar Wrap Registry")
+    );
+
+    // Test symbol - must return "WRAP"
+    let symbol = client.symbol();
+    assert_eq!(symbol, soroban_sdk::String::from_str(&env, "WRAP"));
+}
+
+#[test]
+fn test_balance_of() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let admin = <Address as TestAddress>::generate(&env);
+    let user = <Address as TestAddress>::generate(&env);
+
+    // Initialize contract
+    client.initialize(&admin);
+    env.mock_all_auths();
+
+    // Initially, balance should be 0
+    assert_eq!(client.balance_of(&user), 0);
+
+    use soroban_sdk::symbol_short;
+    let dummy_hash = BytesN::from_array(&env, &[42u8; 32]);
+    let archetype = symbol_short!("soroban");
+
+    // Mint first wrap
+    let period_1 = symbol_short!("2024_01");
+    client.mint_wrap(&user, &dummy_hash, &archetype, &period_1);
+    assert_eq!(client.balance_of(&user), 1);
+
+    // Mint second wrap
+    let period_2 = symbol_short!("2024_02");
+    let dummy_hash_2 = BytesN::from_array(&env, &[99u8; 32]);
+    client.mint_wrap(&user, &dummy_hash_2, &archetype, &period_2);
+    assert_eq!(client.balance_of(&user), 2);
+
+    // Mint third wrap
+    let period_3 = symbol_short!("2024_03");
+    let dummy_hash_3 = BytesN::from_array(&env, &[123u8; 32]);
+    client.mint_wrap(&user, &dummy_hash_3, &archetype, &period_3);
+    assert_eq!(client.balance_of(&user), 3);
+
+    // Test balance for different user (should be 0)
+    let other_user = <Address as TestAddress>::generate(&env);
+    assert_eq!(client.balance_of(&other_user), 0);
+}
+
+#[test]
+fn test_allowance_always_zero() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let user1 = <Address as TestAddress>::generate(&env);
+    let user2 = <Address as TestAddress>::generate(&env);
+
+    // Allowance should always be 0 for Soulbound Tokens
+    assert_eq!(client.allowance(&user1, &user2), 0);
+
+    // Even after attempting to approve (which will panic), allowance should be checked before
+    // Since we can't call approve successfully, we just verify the read function
+    assert_eq!(client.allowance(&user1, &user2), 0);
+}
+
+#[test]
+#[should_panic(expected = "SBT: Transfer not allowed")]
+fn test_transfer_panics() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let from = <Address as TestAddress>::generate(&env);
+    let to = <Address as TestAddress>::generate(&env);
+
+    // Attempting to transfer should panic immediately
+    client.transfer(&from, &to, &1);
+}
+
+#[test]
+#[should_panic(expected = "SBT: Transfer not allowed")]
+fn test_transfer_from_panics() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let spender = <Address as TestAddress>::generate(&env);
+    let from = <Address as TestAddress>::generate(&env);
+    let to = <Address as TestAddress>::generate(&env);
+
+    // Attempting to transfer_from should panic immediately
+    client.transfer_from(&spender, &from, &to, &1);
+}
+
+#[test]
+#[should_panic(expected = "SBT: Transfer not allowed")]
+fn test_approve_panics() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let from = <Address as TestAddress>::generate(&env);
+    let spender = <Address as TestAddress>::generate(&env);
+
+    // Attempting to approve should panic immediately
+    // expiration_ledger can be any value since it won't be reached
+    client.approve(&from, &spender, &1, &1000);
+}
+
+#[test]
+#[should_panic(expected = "SBT: Transfer not allowed")]
+fn test_burn_panics() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let user = <Address as TestAddress>::generate(&env);
+
+    // Attempting to burn should panic immediately
+    client.burn(&user, &1);
+}
+
+#[test]
+fn test_balance_increments_on_mint() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let admin = <Address as TestAddress>::generate(&env);
+    let user = <Address as TestAddress>::generate(&env);
+
+    client.initialize(&admin);
+    env.mock_all_auths();
+
+    use soroban_sdk::symbol_short;
+    let dummy_hash = BytesN::from_array(&env, &[42u8; 32]);
+    let archetype = symbol_short!("soroban");
+
+    // Verify initial state
+    assert_eq!(client.balance_of(&user), 0);
+
+    // Mint 5 wraps across different periods
+    let periods = [
+        symbol_short!("2024_01"),
+        symbol_short!("2024_02"),
+        symbol_short!("2024_03"),
+        symbol_short!("2024_04"),
+        symbol_short!("2024_05"),
+    ];
+
+    for (i, period) in periods.iter().enumerate() {
+        let mut hash_data = [0u8; 32];
+        hash_data[0] = (i + 1) as u8;
+        let hash = BytesN::from_array(&env, &hash_data);
+        client.mint_wrap(&user, &hash, &archetype, period);
+        assert_eq!(client.balance_of(&user), (i + 1) as i128);
+    }
+
+    // Final balance should be 5
+    assert_eq!(client.balance_of(&user), 5);
+}
