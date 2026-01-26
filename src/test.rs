@@ -224,6 +224,7 @@ fn test_update_admin_unauthorized() {
     // Don't set up mock_all_auths - this means require_auth will fail
     // Try to update admin as unauthorized user (should fail with Unauthorized error)
     client.update_admin(&new_admin);
+}
 // ============================================================================
 // Query Function Tests
 // ============================================================================

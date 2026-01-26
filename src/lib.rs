@@ -1,7 +1,7 @@
 #![no_std]
-#![allow(unexpected_cfgs)]
 use soroban_sdk::{
-    contract, contracterror, contractimpl, Address, Bytes, BytesN, Env, String, Symbol, Vec,
+    contract, contracterror, contractimpl, symbol_short, xdr::ToXdr, Address, Bytes, BytesN, Env,
+    String, Symbol,
 };
 
 mod storage_types;
@@ -16,7 +16,6 @@ pub enum Error {
     Unauthorized = 3,
     WrapAlreadyExists = 4,
     InvalidSignature = 5,
-    SbtTransferNotAllowed = 6,
 }
 
 #[contract]
@@ -24,243 +23,103 @@ pub struct StellarWrapContract;
 
 #[contractimpl]
 impl StellarWrapContract {
-    /// Initialize the contract with an admin address and public key. Only can be called once.
-    ///
-    /// # Arguments
-    /// * `admin` - The admin address
-    /// * `admin_pubkey` - The admin's Ed25519 public key (32 bytes)
+    /// Initialize the contract with an admin address and public key.
     pub fn initialize(e: Env, admin: Address, admin_pubkey: BytesN<32>) -> Result<(), Error> {
-        let admin_key = DataKey::Admin;
-        let pubkey_key = DataKey::AdminPubKey;
-
-        // Ensure it's not already initialized
-        if e.storage().instance().has(&admin_key) {
+        if e.storage().instance().has(&DataKey::Admin) {
             return Err(Error::AlreadyInitialized);
         }
-
-        e.storage().instance().set(&admin_key, &admin);
-        e.storage().instance().set(&pubkey_key, &admin_pubkey);
+        e.storage().instance().set(&DataKey::Admin, &admin);
+        e.storage()
+            .instance()
+            .set(&DataKey::AdminPubKey, &admin_pubkey);
         Ok(())
     }
 
-    /// Verify that a signature was created by the admin
-    ///
-    /// # Arguments
-    /// * `payload` - The data that was signed
-    /// * `signature` - The Ed25519 signature (64 bytes)
-    ///
-    /// # Panics
-    /// Panics if the signature is invalid or admin public key is not set
-    pub fn verify_signature(e: Env, payload: Bytes, signature: BytesN<64>) -> Result<(), Error> {
-        let pubkey_key = DataKey::AdminPubKey;
+    /// The core write-action: Users claim their wrap using an Admin signature.
+    pub fn mint_wrap(
+        e: Env,
+        user: Address,
+        period: u64,
+        archetype: Symbol,
+        data_hash: BytesN<32>,
+        signature: BytesN<64>,
+    ) -> Result<(), Error> {
+        // 1. Reconstruct Payload (Order: Contract -> User -> Period -> Archetype -> Data Hash)
+        // We use .clone() here because .to_xdr() consumes the value.
+        let mut payload = Bytes::new(&e);
+        payload.append(&e.current_contract_address().to_xdr(&e));
+        payload.append(&user.clone().to_xdr(&e)); // Added .clone()
+        payload.append(&period.to_xdr(&e)); // u64 implements Copy, so no clone needed
+        payload.append(&archetype.clone().to_xdr(&e)); // Added .clone()
+        payload.append(&data_hash.clone().to_xdr(&e)); // Added .clone()
 
+        // 2. Verify Signature
         let admin_pubkey: BytesN<32> = e
             .storage()
             .instance()
-            .get(&pubkey_key)
+            .get(&DataKey::AdminPubKey)
             .ok_or(Error::NotInitialized)?;
 
+        // Verify the signature against the payload
         e.crypto()
             .ed25519_verify(&admin_pubkey, &payload, &signature);
 
-        Ok(())
-    }
-
-    /// Update the admin address. Only callable by the current admin.
-    pub fn update_admin(e: Env, new_admin: Address) -> Result<(), Error> {
-        let admin_key = DataKey::Admin;
-        let current_admin: Address = e
-            .storage()
-            .instance()
-            .get(&admin_key)
-            .ok_or(Error::NotInitialized)?;
-        
-        // Security: Verify e.call_stack().auth() ensures only the current admin can call this
-        // require_auth() uses the call stack to verify authorization
-        current_admin.require_auth();
-        
-        // Update to new admin
-        e.storage().instance().set(&admin_key, &new_admin);
-        
-        Ok(())
-    }
-
-    /// Mint a wrap record for `to` for a specific period. Only callable by admin.
-    ///
-    /// # Arguments
-    /// * `to` - The address to mint the wrap for
-    /// * `data_hash` - SHA256 hash of the full off-chain JSON data
-    /// * `archetype` - The persona archetype assigned to the user
-    /// * `period` - Period identifier (e.g., "2024-01" for monthly, "2024" for yearly)
-    pub fn mint_wrap(
-        e: Env,
-        to: Address,
-        data_hash: BytesN<32>,
-        archetype: Symbol,
-        period: Symbol,
-    ) -> Result<(), Error> {
-        // Get and verify admin
-        let admin_key = DataKey::Admin;
-        let admin: Address = e
-            .storage()
-            .instance()
-            .get(&admin_key)
-            .ok_or(Error::NotInitialized)?;
-
-        // Verify caller is admin
-        admin.require_auth();
-
-        // Check if wrap already exists for this user and period
-        let wrap_key = DataKey::Wrap(to.clone(), period.clone());
+        // 3. Check Duplicates
+        let wrap_key = DataKey::Wrap(user.clone(), period);
         if e.storage().instance().has(&wrap_key) {
             return Err(Error::WrapAlreadyExists);
         }
 
-        // Get current ledger timestamp
-        let timestamp = e.ledger().timestamp();
-
-        // Create the wrap record
+        // 4. Store Record
         let record = WrapRecord {
-            timestamp,
-            data_hash,
+            timestamp: e.ledger().timestamp(),
+            data_hash, // Ownership moves here (last use)
             archetype: archetype.clone(),
-            period: period.clone(),
+            period,
         };
-
-        // Store the record
         e.storage().instance().set(&wrap_key, &record);
 
-        // Increment wrap count for the user
-        let count_key = DataKey::WrapCount(to.clone());
+        // 5. Update Balance (UserCount)
+        let count_key = DataKey::WrapCount(user.clone());
         let current_count: u32 = e.storage().instance().get(&count_key).unwrap_or(0);
         e.storage().instance().set(&count_key, &(current_count + 1));
 
-        // Emit event with topics ["mint", to_address, period] and data being the archetype
-        use soroban_sdk::{symbol_short, IntoVal, Val};
-        let topics: Vec<Val> = Vec::from_array(
-            &e,
-            [
-                symbol_short!("mint").into_val(&e),
-                to.clone().into_val(&e),
-                period.into_val(&e),
-            ],
-        );
-        e.events().publish((topics,), archetype);
+        // 6. Emit Event: ["mint", user, period]
+        e.events()
+            .publish((symbol_short!("mint"), user, period), archetype);
 
         Ok(())
     }
 
-    /// Retrieve the wrap record for a user for a specific period, if any
-    ///
-    /// # Arguments
-    /// * `user` - The user's address
-    /// * `period` - Period identifier (e.g., "2024" for monthly, "2024" for yearly)
-    pub fn get_wrap(e: Env, user: Address, period: Symbol) -> Option<WrapRecord> {
-        let wrap_key = DataKey::Wrap(user, period);
-        e.storage().instance().get(&wrap_key)
+    // --- Read Functions (SEP-41 Compatibility) ---
+
+    pub fn get_wrap(e: Env, user: Address, period: u64) -> Option<WrapRecord> {
+        e.storage().instance().get(&DataKey::Wrap(user, period))
     }
 
-    /// Get the total wrap count for a user
-    ///
-    /// # Arguments
-    /// * `user` - The user's address
-    fn get_wrap_count(e: &Env, user: Address) -> u32 {
-        let count_key = DataKey::WrapCount(user);
-        e.storage().instance().get(&count_key).unwrap_or(0)
-    }
-
-    /// Retrieve the total count of wraps owned by a user
-    /// 
-    /// # Arguments
-    /// * `user` - The user's address
-    /// 
-    /// # Returns
-    /// Returns the number of wraps owned by the user, or 0 if the user has no wraps
-    pub fn get_count(e: Env, user: Address) -> u32 {
-        let count_key = DataKey::WrapCount(user);
-        e.storage().instance().get(&count_key).unwrap_or(0)
-    }
-
-    /// Retrieve the current admin address
-    /// 
-    /// # Returns
-    /// Returns the admin address if the contract has been initialized, or None if not initialized
-    pub fn get_admin(e: Env) -> Option<Address> {
-        let admin_key = DataKey::Admin;
-        e.storage().instance().get(&admin_key)
-    }
-
-    // ============================================================================
-    // SEP-41 Token Interface Implementation (Read Functions)
-    // These functions make the contract visible to standard Stellar wallets
-    // ============================================================================
-
-    /// Returns the balance (total wrap count) for a given address
-    /// Implements SEP-41 token interface for wallet compatibility
     pub fn balance_of(e: Env, id: Address) -> i128 {
-        Self::get_wrap_count(&e, id) as i128
+        let count_key = DataKey::WrapCount(id);
+        e.storage()
+            .instance()
+            .get::<_, u32>(&count_key)
+            .unwrap_or(0) as i128
     }
 
-    /// Returns the number of decimals for this token
-    /// Always returns 0 since wraps are indivisible items
-    pub fn decimals(_e: Env) -> u32 {
-        0
-    }
-
-    /// Returns the name of this token
-    /// Implements SEP-41 token interface
     pub fn name(e: Env) -> String {
         String::from_str(&e, "Stellar Wrap Registry")
     }
 
-    /// Returns the symbol of this token
-    /// Implements SEP-41 token interface
     pub fn symbol(e: Env) -> String {
         String::from_str(&e, "WRAP")
     }
 
-    /// Returns the allowance (always 0 for Soulbound Tokens)
-    /// Implements SEP-41 token interface
-    pub fn allowance(_e: Env, _from: Address, _spender: Address) -> i128 {
+    pub fn decimals(_e: Env) -> u32 {
         0
     }
 
-    // ============================================================================
-    // SEP-41 Token Interface Implementation (Write Functions - Restricted)
-    // These functions are required by the interface but must panic to enforce
-    // the Soulbound Token (SBT) immutability property
-    // ============================================================================
-
-    /// Transfer wraps between addresses
-    /// PANICS: Soulbound tokens cannot be transferred
-    pub fn transfer(_e: Env, _from: Address, _to: Address, _amount: i128) {
-        panic!("SBT: Transfer not allowed");
-    }
-
-    /// Transfer wraps on behalf of another address
-    /// PANICS: Soulbound tokens cannot be transferred
-    pub fn transfer_from(_e: Env, _spender: Address, _from: Address, _to: Address, _amount: i128) {
-        panic!("SBT: Transfer not allowed");
-    }
-
-    /// Approve another address to spend wraps
-    /// PANICS: Soulbound tokens cannot be transferred, so approval is meaningless
-    pub fn approve(
-        _e: Env,
-        _from: Address,
-        _spender: Address,
-        _amount: i128,
-        _expiration_ledger: u32,
-    ) {
-        panic!("SBT: Transfer not allowed");
-    }
-
-    /// Burn (destroy) wraps
-    /// PANICS: Wrap history must remain immutable per issue requirements
-    pub fn burn(_e: Env, _from: Address, _amount: i128) {
-        panic!("SBT: Transfer not allowed");
+    pub fn get_admin(e: Env) -> Option<Address> {
+        e.storage().instance().get(&DataKey::Admin)
     }
 }
 
-#[cfg(test)]
 mod test;
