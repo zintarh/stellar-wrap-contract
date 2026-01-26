@@ -15,5 +15,5 @@ pub struct WrapRecord {
 #[derive(Clone)]
 pub enum DataKey {
     Admin,
-    Wrap(Address, Symbol),
+    Wrap(Address, Symbol), // Address + Period identifier
 }

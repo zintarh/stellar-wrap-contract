@@ -1,17 +1,6 @@
 #![no_std]
-
 use soroban_sdk::{
-    contract,
-    contractimpl,
-    contracterror,
-    panic_with_error,
-    Address,
-    BytesN,
-    Env,
-    Symbol,
-    Vec,
-    Val,
-    IntoVal,
+    contract, contractimpl, contracterror, Address, BytesN, Env, Symbol, Vec,
 };
 
 mod storage_types;
@@ -25,7 +14,6 @@ pub enum ContractError {
     NotInitialized = 2,
     Unauthorized = 3,
     WrapAlreadyExists = 4,
-    InvalidSignature = 5,
 }
 
 #[contract]
@@ -33,16 +21,26 @@ pub struct StellarWrapContract;
 
 #[contractimpl]
 impl StellarWrapContract {
-    pub fn initialize(e: Env, admin: Address) {
+    /// Initialize the contract with an admin. Only can be called once.
+    pub fn initialize(e: Env, admin: Address) -> Result<(), Error> {
         let key = DataKey::Admin;
-
+        
+        // Ensure it's not already initialized
         if e.storage().instance().has(&key) {
-            panic_with_error!(e, ContractError::AlreadyInitialized);
+            return Err(Error::AlreadyInitialized);
         }
-
+        
         e.storage().instance().set(&key, &admin);
+        Ok(())
     }
 
+    /// Mint a wrap record for `to` for a specific period. Only callable by admin.
+    /// 
+    /// # Arguments
+    /// * `to` - The address to mint the wrap for
+    /// * `data_hash` - SHA256 hash of the full off-chain JSON data
+    /// * `archetype` - The persona archetype assigned to the user
+    /// * `period` - Period identifier (e.g., "2024-01" for monthly, "2024" for yearly)
     pub fn mint_wrap(
         e: Env,
         to: Address,
@@ -53,51 +51,155 @@ impl StellarWrapContract {
         let admin: Address = e
             .storage()
             .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
-
+            .get(&admin_key)
+            .ok_or(Error::NotInitialized)?;
+        
+        // Verify caller is admin
         admin.require_auth();
-
-        if !verify_signature(&data_hash) {
-            panic_with_error!(e, ContractError::InvalidSignature);
-        }
-
+        
+        // Check if wrap already exists for this user and period
         let wrap_key = DataKey::Wrap(to.clone(), period.clone());
         if e.storage().instance().has(&wrap_key) {
             panic_with_error!(e, ContractError::WrapAlreadyExists);
         }
-
+        
+        // Get current ledger timestamp
         let timestamp = e.ledger().timestamp();
-
+        
+        // Create the wrap record
         let record = WrapRecord {
             timestamp,
             data_hash,
             archetype: archetype.clone(),
             period: period.clone(),
         };
-
+        
+        // Store the record
         e.storage().instance().set(&wrap_key, &record);
-
-        // Emit event with period as u64
-        use soroban_sdk::symbol_short;
-
-        let topics: Vec<Val> = Vec::from_array(
+        
+        // Emit event with topics ["mint", to_address, period] and data being the archetype
+        use soroban_sdk::{symbol_short, IntoVal};
+        let topics = Vec::from_array(
             &e,
             [
                 symbol_short!("mint").into_val(&e),
                 to.clone().into_val(&e),
             ],
         );
-
-        // Convert Symbol to a simple u64 hash for the event data
-        let period_u64 = symbol_to_u64(&period);
+        e.events().publish((topics,), archetype.into_val(&e));
         
-        e.events().publish(topics, period_u64);
+        Ok(())
     }
 
+    /// Retrieve the wrap record for a user for a specific period, if any
+    /// 
+    /// # Arguments
+    /// * `user` - The user's address
+    /// * `period` - Period identifier (e.g., "2024-01" for monthly, "2024" for yearly)
     pub fn get_wrap(e: Env, user: Address, period: Symbol) -> Option<WrapRecord> {
         let wrap_key = DataKey::Wrap(user, period);
         e.storage().instance().get(&wrap_key)
+    }
+
+    /// Get the total wrap count for a user
+    ///
+    /// # Arguments
+    /// * `user` - The user's address
+    fn get_wrap_count(e: &Env, user: Address) -> u32 {
+        let count_key = DataKey::WrapCount(user);
+        e.storage().instance().get(&count_key).unwrap_or(0)
+    }
+
+    /// Retrieve the total count of wraps owned by a user
+    /// 
+    /// # Arguments
+    /// * `user` - The user's address
+    /// 
+    /// # Returns
+    /// Returns the number of wraps owned by the user, or 0 if the user has no wraps
+    pub fn get_count(e: Env, user: Address) -> u32 {
+        let count_key = DataKey::WrapCount(user);
+        e.storage().instance().get(&count_key).unwrap_or(0)
+    }
+
+    /// Retrieve the current admin address
+    /// 
+    /// # Returns
+    /// Returns the admin address if the contract has been initialized, or None if not initialized
+    pub fn get_admin(e: Env) -> Option<Address> {
+        let admin_key = DataKey::Admin;
+        e.storage().instance().get(&admin_key)
+    }
+
+    // ============================================================================
+    // SEP-41 Token Interface Implementation (Read Functions)
+    // These functions make the contract visible to standard Stellar wallets
+    // ============================================================================
+
+    /// Returns the balance (total wrap count) for a given address
+    /// Implements SEP-41 token interface for wallet compatibility
+    pub fn balance_of(e: Env, id: Address) -> i128 {
+        Self::get_wrap_count(&e, id) as i128
+    }
+
+    /// Returns the number of decimals for this token
+    /// Always returns 0 since wraps are indivisible items
+    pub fn decimals(_e: Env) -> u32 {
+        0
+    }
+
+    /// Returns the name of this token
+    /// Implements SEP-41 token interface
+    pub fn name(e: Env) -> String {
+        String::from_str(&e, "Stellar Wrap Registry")
+    }
+
+    /// Returns the symbol of this token
+    /// Implements SEP-41 token interface
+    pub fn symbol(e: Env) -> String {
+        String::from_str(&e, "WRAP")
+    }
+
+    /// Returns the allowance (always 0 for Soulbound Tokens)
+    /// Implements SEP-41 token interface
+    pub fn allowance(_e: Env, _from: Address, _spender: Address) -> i128 {
+        0
+    }
+
+    // ============================================================================
+    // SEP-41 Token Interface Implementation (Write Functions - Restricted)
+    // These functions are required by the interface but must panic to enforce
+    // the Soulbound Token (SBT) immutability property
+    // ============================================================================
+
+    /// Transfer wraps between addresses
+    /// PANICS: Soulbound tokens cannot be transferred
+    pub fn transfer(_e: Env, _from: Address, _to: Address, _amount: i128) {
+        panic!("SBT: Transfer not allowed");
+    }
+
+    /// Transfer wraps on behalf of another address
+    /// PANICS: Soulbound tokens cannot be transferred
+    pub fn transfer_from(_e: Env, _spender: Address, _from: Address, _to: Address, _amount: i128) {
+        panic!("SBT: Transfer not allowed");
+    }
+
+    /// Approve another address to spend wraps
+    /// PANICS: Soulbound tokens cannot be transferred, so approval is meaningless
+    pub fn approve(
+        _e: Env,
+        _from: Address,
+        _spender: Address,
+        _amount: i128,
+        _expiration_ledger: u32,
+    ) {
+        panic!("SBT: Transfer not allowed");
+    }
+
+    /// Burn (destroy) wraps
+    /// PANICS: Wrap history must remain immutable per issue requirements
+    pub fn burn(_e: Env, _from: Address, _amount: i128) {
+        panic!("SBT: Transfer not allowed");
     }
 }
 
