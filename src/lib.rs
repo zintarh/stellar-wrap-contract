@@ -169,6 +169,27 @@ impl StellarWrapContract {
         e.storage().instance().get(&count_key).unwrap_or(0)
     }
 
+    /// Retrieve the total count of wraps owned by a user
+    /// 
+    /// # Arguments
+    /// * `user` - The user's address
+    /// 
+    /// # Returns
+    /// Returns the number of wraps owned by the user, or 0 if the user has no wraps
+    pub fn get_count(e: Env, user: Address) -> u32 {
+        let count_key = DataKey::WrapCount(user);
+        e.storage().instance().get(&count_key).unwrap_or(0)
+    }
+
+    /// Retrieve the current admin address
+    /// 
+    /// # Returns
+    /// Returns the admin address if the contract has been initialized, or None if not initialized
+    pub fn get_admin(e: Env) -> Option<Address> {
+        let admin_key = DataKey::Admin;
+        e.storage().instance().get(&admin_key)
+    }
+
     // ============================================================================
     // SEP-41 Token Interface Implementation (Read Functions)
     // These functions make the contract visible to standard Stellar wallets
