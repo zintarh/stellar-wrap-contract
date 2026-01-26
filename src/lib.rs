@@ -74,14 +74,14 @@ impl StellarWrapContract {
             .instance()
             .get(&admin_key)
             .ok_or(Error::NotInitialized)?;
-        
+
         // Security: Verify e.call_stack().auth() ensures only the current admin can call this
         // require_auth() uses the call stack to verify authorization
         current_admin.require_auth();
-        
+
         // Update to new admin
         e.storage().instance().set(&admin_key, &new_admin);
-        
+
         Ok(())
     }
 

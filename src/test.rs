@@ -179,29 +179,29 @@ fn test_update_admin_success() {
     let env = Env::default();
     let contract_id = env.register_contract(None, StellarWrapContract);
     let client = StellarWrapContractClient::new(&env, &contract_id);
-    
+
     let admin = TestAddress::generate(&env);
     let new_admin = TestAddress::generate(&env);
-    
+
     // Initialize contract with admin
     client.initialize(&admin);
-    
+
     // Set up authorization for admin
     env.mock_all_auths();
-    
+
     // Update admin (should succeed)
     client.update_admin(&new_admin);
-    
+
     // Verify new admin can mint (proving the update worked)
     let user = TestAddress::generate(&env);
     use soroban_sdk::symbol_short;
     let dummy_hash = BytesN::from_array(&env, &[42u8; 32]);
     let archetype = symbol_short!("soroban_architect");
     let period = symbol_short!("2024-01");
-    
+
     // This should succeed because new_admin is now the admin
     client.mint_wrap(&user, &dummy_hash, &archetype, &period);
-    
+
     // Verify the wrap was created
     let wrap_opt = client.get_wrap(&user, &period);
     assert!(wrap_opt.is_some());
@@ -213,17 +213,19 @@ fn test_update_admin_unauthorized() {
     let env = Env::default();
     let contract_id = env.register_contract(None, StellarWrapContract);
     let client = StellarWrapContractClient::new(&env, &contract_id);
-    
+
     let admin = TestAddress::generate(&env);
     let unauthorized = TestAddress::generate(&env);
     let new_admin = TestAddress::generate(&env);
-    
+
     // Initialize contract
     client.initialize(&admin);
-    
+
     // Don't set up mock_all_auths - this means require_auth will fail
     // Try to update admin as unauthorized user (should fail with Unauthorized error)
     client.update_admin(&new_admin);
+}
+
 // ============================================================================
 // SEP-41 Token Interface Tests
 // ============================================================================
