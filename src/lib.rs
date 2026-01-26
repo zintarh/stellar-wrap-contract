@@ -170,10 +170,10 @@ impl StellarWrapContract {
     }
 
     /// Retrieve the total count of wraps owned by a user
-    /// 
+    ///
     /// # Arguments
     /// * `user` - The user's address
-    /// 
+    ///
     /// # Returns
     /// Returns the number of wraps owned by the user, or 0 if the user has no wraps
     pub fn get_count(e: Env, user: Address) -> u32 {
@@ -182,7 +182,7 @@ impl StellarWrapContract {
     }
 
     /// Retrieve the current admin address
-    /// 
+    ///
     /// # Returns
     /// Returns the admin address if the contract has been initialized, or None if not initialized
     pub fn get_admin(e: Env) -> Option<Address> {
