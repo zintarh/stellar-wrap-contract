@@ -8,10 +8,10 @@ crate-type = ["cdylib"]
 path = "src/lib.rs"
 
 [dependencies]
-soroban-sdk = "20.0.0"
+soroban-sdk = "21.7.1"
 
 [dev-dependencies]
-soroban-sdk = { version = "20.0.0", features = ["testutils"] }
+soroban-sdk = { version = "21.7.1", features = ["testutils"] }
 
 [profile.release]
 opt-level = "z"

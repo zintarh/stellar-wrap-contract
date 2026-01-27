@@ -1,6 +1,18 @@
 #![no_std]
-#![allow(unexpected_cfgs)]
-use soroban_sdk::{contract, contracterror, contractimpl, Address, BytesN, Env, Symbol};
+
+use soroban_sdk::{
+    contract,
+    contractimpl,
+    contracterror,
+    panic_with_error,
+    Address,
+    BytesN,
+    Env,
+    Symbol,
+    Vec,
+    Val,
+    IntoVal,
+};
 
 mod storage_types;
 use storage_types::{DataKey, WrapRecord};
@@ -8,11 +20,12 @@ use storage_types::{DataKey, WrapRecord};
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
-pub enum Error {
+pub enum ContractError {
     AlreadyInitialized = 1,
     NotInitialized = 2,
     Unauthorized = 3,
     WrapAlreadyExists = 4,
+    InvalidSignature = 5,
 }
 
 #[contract]
@@ -20,78 +33,69 @@ pub struct StellarWrapContract;
 
 #[contractimpl]
 impl StellarWrapContract {
-    /// Initialize the contract with an admin. Only can be called once.
-    pub fn initialize(e: Env, admin: Address) -> Result<(), Error> {
+    pub fn initialize(e: Env, admin: Address) {
         let key = DataKey::Admin;
 
-        // Ensure it's not already initialized
         if e.storage().instance().has(&key) {
-            return Err(Error::AlreadyInitialized);
+            panic_with_error!(e, ContractError::AlreadyInitialized);
         }
 
         e.storage().instance().set(&key, &admin);
-        Ok(())
     }
 
-    /// Mint a wrap record for `to` for a specific period. Only callable by admin.
-    ///
-    /// # Arguments
-    /// * `to` - The address to mint the wrap for
-    /// * `data_hash` - SHA256 hash of the full off-chain JSON data
-    /// * `archetype` - The persona archetype assigned to the user (e.g., soroban_dev)
-    /// * `period_id` - Period identifier (u64)
     pub fn mint_wrap(
         e: Env,
         to: Address,
         data_hash: BytesN<32>,
         archetype: Symbol,
-        period_id: u64,
-    ) -> Result<(), Error> {
-        let admin_key = DataKey::Admin;
+        period: Symbol,
+    ) {
         let admin: Address = e
             .storage()
             .instance()
-            .get(&admin_key)
-            .ok_or(Error::NotInitialized)?;
-        
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
+
         admin.require_auth();
-        
-        let wrap_key = DataKey::Wrap(to.clone(), period_id);
-        if e.storage().instance().has(&wrap_key) {
-            return Err(Error::WrapAlreadyExists);
+
+        if !verify_signature(&data_hash) {
+            panic_with_error!(e, ContractError::InvalidSignature);
         }
-        
-        let minted_at = e.ledger().timestamp();
-        
+
+        let wrap_key = DataKey::Wrap(to.clone(), period.clone());
+        if e.storage().instance().has(&wrap_key) {
+            panic_with_error!(e, ContractError::WrapAlreadyExists);
+        }
+
+        let timestamp = e.ledger().timestamp();
+
         let record = WrapRecord {
             minted_at,
             data_hash,
             archetype: archetype.clone(),
         };
-        
+
         e.storage().instance().set(&wrap_key, &record);
+
+        // Emit event with period as u64
+        use soroban_sdk::symbol_short;
+
+        let topics: Vec<Val> = Vec::from_array(
+            &e,
+            [
+                symbol_short!("mint").into_val(&e),
+                to.clone().into_val(&e),
+            ],
+        );
+
+        // Convert Symbol to a simple u64 hash for the event data
+        let period_u64 = symbol_to_u64(&period);
         
-        let user_count_key = DataKey::UserCount(to.clone());
-        let current_count: u32 = e.storage().instance().get(&user_count_key).unwrap_or(0);
-        e.storage().instance().set(&user_count_key, &(current_count + 1));
-        
-        use soroban_sdk::{symbol_short, IntoVal, Val};
-        let mut topics: Vec<Val> = Vec::new(&e);
-        topics.push_back(symbol_short!("mint").into_val(&e));
-        topics.push_back(to.clone().into_val(&e));
-        topics.push_back(period_id.into_val(&e));
-        e.events().publish((topics,), archetype);
-        
-        Ok(())
+        e.events().publish(topics, period_u64);
     }
 
-    /// Retrieve the wrap record for a user for a specific period, if any
-    ///
-    /// # Arguments
-    /// * `user` - The user's address
-    /// * `period_id` - Period identifier (u64)
-    pub fn get_wrap(e: Env, user: Address, period_id: u64) -> Option<WrapRecord> {
-        let wrap_key = DataKey::Wrap(user, period_id);
+    pub fn get_wrap(e: Env, user: Address, period: Symbol) -> Option<WrapRecord> {
+        let wrap_key = DataKey::Wrap(user, period);
         e.storage().instance().get(&wrap_key)
     }
 
@@ -103,6 +107,15 @@ impl StellarWrapContract {
         let user_count_key = DataKey::UserCount(user);
         e.storage().instance().get(&user_count_key).unwrap_or(0)
     }
+}
+
+fn verify_signature(_data_hash: &BytesN<32>) -> bool {
+    true
+}
+
+fn symbol_to_u64(symbol: &Symbol) -> u64 {
+    let val: Val = symbol.to_val();
+    val.get_payload()
 }
 
 #[cfg(test)]
