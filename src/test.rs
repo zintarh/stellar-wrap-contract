@@ -1,11 +1,17 @@
 #![cfg(test)]
 use super::*;
-use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
+use ed25519_dalek::{Signer, SigningKey};
 use soroban_sdk::{
     symbol_short,
     testutils::{Address as _, Events},
     xdr::ToXdr,
-    Address, Bytes, BytesN, Env, IntoVal, String, Symbol, Val,
+    Address,
+    Bytes,
+    BytesN,
+    Env,
+    IntoVal,
+    Symbol,
+    Val, // Removed String
 };
 
 /// HELPER: Creates a real Ed25519 signature for the contract payload

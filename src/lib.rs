@@ -119,5 +119,4 @@ impl StellarWrapContract {
     }
 }
 
-#[cfg(test)]
 mod test;
