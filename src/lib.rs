@@ -112,3 +112,5 @@ fn symbol_to_u64(symbol: &Symbol) -> u64 {
 
 #[cfg(test)]
 mod test;
+#[cfg(test)]
+mod security_test;
