@@ -7,7 +7,7 @@ pub struct WrapRecord {
     pub timestamp: u64,
     pub data_hash: BytesN<32>,
     pub archetype: Symbol,
-    pub period: Symbol, // Period identifier (e.g., "2024-01" for monthly, "2024" for yearly)
+    pub period: Symbol,
 }
 
 /// Keys for persistent storage
@@ -15,7 +15,5 @@ pub struct WrapRecord {
 #[derive(Clone)]
 pub enum DataKey {
     Admin,
-    AdminPubKey,
-    Wrap(Address, Symbol), // Address + Period identifier
-    WrapCount(Address),    // Total wrap count for an address
+    Wrap(Address, Symbol),
 }
