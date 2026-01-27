@@ -2,17 +2,16 @@
 name = "stellar_wrap_contract"
 version = "0.1.0"
 edition = "2021"
-resolver = "2"
 
 [lib]
 crate-type = ["cdylib"]
 path = "src/lib.rs"
 
 [dependencies]
-soroban-sdk = "21.0.0"
+soroban-sdk = "21.7.1"
 
 [dev-dependencies]
-soroban-sdk = { version = "21.0.0", features = ["testutils"] }
+soroban-sdk = { version = "21.7.1", features = ["testutils"] }
 
 [profile.release]
 opt-level = "z"
