@@ -1,0 +1,201 @@
+   Compiling stellar_wrap_contract v0.1.0 (/home/jojo/Documents/Blockchain project/Stellar-wrap-contract/stellar-wrap-contract)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 9.58s
+     Running unittests src/lib.rs (target/debug/deps/stellar_wrap_contract-3fe50d7cda8ca9fe)
+
+running 10 tests
+test security_test::test_cross_contract_replay_protection ... Writing test snapshot file for test "security_test::test_cross_contract_replay_protection" to "test_snapshots/security_test/test_cross_contract_replay_protection.1.json".
+ok
+test security_test::test_edge_case_long_symbols ... Writing test snapshot file for test "security_test::test_edge_case_long_symbols" to "test_snapshots/security_test/test_edge_case_long_symbols.1.json".
+ok
+test security_test::test_gas_analysis_mint_operation ... =================================================================
+Cpu limit: 100000000; used: 41983
+Mem limit: 41943040; used: 5930
+=================================================================
+CostType                           cpu_insns      mem_bytes      
+WasmInsnExec                       0              0              
+MemAlloc                           24065          5930           
+MemCpy                             7352           0              
+MemCmp                             3656           0              
+DispatchHostFunction               0              0              
+VisitObject                        3172           0              
+ValSer                             0              0              
+ValDeser                           0              0              
+ComputeSha256Hash                  3738           0              
+ComputeEd25519PubKey               0              0              
+VerifyEd25519Sig                   0              0              
+VmInstantiation                    0              0              
+VmCachedInstantiation              0              0              
+InvokeVmFunction                   0              0              
+ComputeKeccak256Hash               0              0              
+DecodeEcdsaCurve256Sig             0              0              
+RecoverEcdsaSecp256k1Key           0              0              
+Int256AddSub                       0              0              
+Int256Mul                          0              0              
+Int256Div                          0              0              
+Int256Pow                          0              0              
+Int256Shift                        0              0              
+ChaCha20DrawBytes                  0              0              
+ParseWasmInstructions              0              0              
+ParseWasmFunctions                 0              0              
+ParseWasmGlobals                   0              0              
+ParseWasmTableEntries              0              0              
+ParseWasmTypes                     0              0              
+ParseWasmDataSegments              0              0              
+ParseWasmElemSegments              0              0              
+ParseWasmImports                   0              0              
+ParseWasmExports                   0              0              
+ParseWasmDataSegmentBytes          0              0              
+InstantiateWasmInstructions        0              0              
+InstantiateWasmFunctions           0              0              
+InstantiateWasmGlobals             0              0              
+InstantiateWasmTableEntries        0              0              
+InstantiateWasmTypes               0              0              
+InstantiateWasmDataSegments        0              0              
+InstantiateWasmElemSegments        0              0              
+InstantiateWasmImports             0              0              
+InstantiateWasmExports             0              0              
+InstantiateWasmDataSegmentBytes    0              0              
+Sec1DecodePointUncompressed        0              0              
+VerifyEcdsaSecp256r1Sig            0              0              
+=================================================================
+
+
+Writing test snapshot file for test "security_test::test_gas_analysis_mint_operation" to "test_snapshots/security_test/test_gas_analysis_mint_operation.1.json".
+ok
+test security_test::test_gas_analysis_multiple_mints ... Writing test snapshot file for test "security_test::test_gas_analysis_multiple_mints" to "test_snapshots/security_test/test_gas_analysis_multiple_mints.1.json".
+ok
+test security_test::test_multiple_periods_for_same_user_success ... Writing test snapshot file for test "security_test::test_multiple_periods_for_same_user_success" to "test_snapshots/security_test/test_multiple_periods_for_same_user_success.1.json".
+ok
+test security_test::test_non_admin_cannot_mint - should panic ... 
+thread 'security_test::test_non_admin_cannot_mint' (17272) panicked at /home/jojo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-21.2.1/src/host.rs:768:9:
+HostError: Error(Auth, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(Auth, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(Auth, InvalidAction)], data:["contract call failed", mint_wrap, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, Bytes(2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a), architect, dec2025]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:"escalating error to panic"
+   4: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:["Unauthorized function call for address", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]
+   5: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), mint_wrap], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, Bytes(2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a), architect, dec2025]
+   6: [Diagnostic Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_return, initialize], data:Void
+   7: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), initialize], data:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4
+
+Backtrace (newest first):
+   0: <soroban_env_host::host::Host as soroban_env_common::env::EnvBase>::escalate_error_to_panic
+             at /home/jojo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-21.2.1/src/host.rs:767:31
+   1: soroban_sdk::env::internal::reject_err::{{closure}}
+             at /home/jojo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:52:27
+   2: core::result::Result<T,E>::map_err
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/core/src/result.rs:968:27
+   3: soroban_sdk::env::internal::reject_err
+             at /home/jojo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:52:11
+   4: <soroban_sdk::env::Env as soroban_env_common::env::Env>::call
+             at /home/jojo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:1667:13
+   5: soroban_sdk::env::Env::invoke_contract
+             at /home/jojo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:379:18
+   6: stellar_wrap_contract::StellarWrapContractClient::mint_wrap
+             at src/lib.rs:34:1
+   7: stellar_wrap_contract::security_test::test_non_admin_cannot_mint
+             at src/security_test.rs:396:12
+   8: stellar_wrap_contract::security_test::test_non_admin_cannot_mint::{{closure}}
+             at src/security_test.rs:378:32
+   9: core::ops::function::FnOnce::call_once
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/core/src/ops/function.rs:250:5
+
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+Writing test snapshot file for test "security_test::test_non_admin_cannot_mint" to "test_snapshots/security_test/test_non_admin_cannot_mint.1.json".
+ok
+test security_test::test_replay_attack_different_hash_same_period_fails - should panic ... 
+thread 'security_test::test_replay_attack_different_hash_same_period_fails' (17322) panicked at /home/jojo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-21.2.1/src/host.rs:768:9:
+HostError: Error(Contract, #4)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(Contract, #4)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(Contract, #4)], data:["contract call failed", mint_wrap, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, Bytes(6363636363636363636363636363636363636363636363636363636363636363), architect, dec2025]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Contract, #4)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Contract, #4)], data:"escalating error to panic"
+   4: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Contract, #4)], data:["failing with contract error", 4]
+   5: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), mint_wrap], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, Bytes(6363636363636363636363636363636363636363636363636363636363636363), architect, dec2025]
+   6: [Diagnostic Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_return, mint_wrap], data:Void
+   7: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[mint, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M], data:732996569204494
+   8: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), mint_wrap], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, Bytes(2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a), architect, dec2025]
+   9: [Diagnostic Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_return, initialize], data:Void
+   10: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), initialize], data:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4
+
+Backtrace (newest first):
+   0: <soroban_env_host::host::Host as soroban_env_common::env::EnvBase>::escalate_error_to_panic
+             at /home/jojo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-21.2.1/src/host.rs:767:31
+   1: soroban_sdk::env::internal::reject_err::{{closure}}
+             at /home/jojo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:52:27
+   2: core::result::Result<T,E>::map_err
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/core/src/result.rs:968:27
+   3: soroban_sdk::env::internal::reject_err
+             at /home/jojo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:52:11
+   4: <soroban_sdk::env::Env as soroban_env_common::env::Env>::call
+             at /home/jojo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:1667:13
+   5: soroban_sdk::env::Env::invoke_contract
+             at /home/jojo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:379:18
+   6: stellar_wrap_contract::StellarWrapContractClient::mint_wrap
+             at src/lib.rs:34:1
+   7: stellar_wrap_contract::security_test::test_replay_attack_different_hash_same_period_fails
+             at src/security_test.rs:72:12
+   8: stellar_wrap_contract::security_test::test_replay_attack_different_hash_same_period_fails::{{closure}}
+             at src/security_test.rs:50:57
+   9: core::ops::function::FnOnce::call_once
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/core/src/ops/function.rs:250:5
+
+
+Writing test snapshot file for test "security_test::test_replay_attack_different_hash_same_period_fails" to "test_snapshots/security_test/test_replay_attack_different_hash_same_period_fails.1.json".
+ok
+test security_test::test_replay_attack_same_period_fails - should panic ... 
+thread 'security_test::test_replay_attack_same_period_fails' (17323) panicked at /home/jojo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-21.2.1/src/host.rs:768:9:
+HostError: Error(Contract, #4)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(Contract, #4)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(Contract, #4)], data:["contract call failed", mint_wrap, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, Bytes(2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a), architect, dec2025]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Contract, #4)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Contract, #4)], data:"escalating error to panic"
+   4: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Contract, #4)], data:["failing with contract error", 4]
+   5: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), mint_wrap], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, Bytes(2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a), architect, dec2025]
+   6: [Diagnostic Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_return, get_wrap], data:{archetype: architect, data_hash: Bytes(2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a), period: dec2025, timestamp: 0}
+   7: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), get_wrap], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, dec2025]
+   8: [Diagnostic Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_return, mint_wrap], data:Void
+   9: [Contract Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[mint, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M], data:732996569204494
+   10: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), mint_wrap], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, Bytes(2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a), architect, dec2025]
+   11: [Diagnostic Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_return, initialize], data:Void
+   12: [Diagnostic Event] topics:[fn_call, Bytes(0000000000000000000000000000000000000000000000000000000000000001), initialize], data:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4
+
+Backtrace (newest first):
+   0: <soroban_env_host::host::Host as soroban_env_common::env::EnvBase>::escalate_error_to_panic
+             at /home/jojo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-21.2.1/src/host.rs:767:31
+   1: soroban_sdk::env::internal::reject_err::{{closure}}
+             at /home/jojo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:52:27
+   2: core::result::Result<T,E>::map_err
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/core/src/result.rs:968:27
+   3: soroban_sdk::env::internal::reject_err
+             at /home/jojo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:52:11
+   4: <soroban_sdk::env::Env as soroban_env_common::env::Env>::call
+             at /home/jojo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:1667:13
+   5: soroban_sdk::env::Env::invoke_contract
+             at /home/jojo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-21.7.7/src/env.rs:379:18
+   6: stellar_wrap_contract::StellarWrapContractClient::mint_wrap
+             at src/lib.rs:34:1
+   7: stellar_wrap_contract::security_test::test_replay_attack_same_period_fails
+             at src/security_test.rs:43:12
+   8: stellar_wrap_contract::security_test::test_replay_attack_same_period_fails::{{closure}}
+             at src/security_test.rs:18:42
+   9: core::ops::function::FnOnce::call_once
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/core/src/ops/function.rs:250:5
+
+
+Writing test snapshot file for test "security_test::test_replay_attack_same_period_fails" to "test_snapshots/security_test/test_replay_attack_same_period_fails.1.json".
+ok
+test security_test::test_signature_cannot_be_stolen_by_another_user ... Writing test snapshot file for test "security_test::test_signature_cannot_be_stolen_by_another_user" to "test_snapshots/security_test/test_signature_cannot_be_stolen_by_another_user.1.json".
+ok
+test security_test::test_timestamp_is_from_ledger_not_user ... Writing test snapshot file for test "security_test::test_timestamp_is_from_ledger_not_user" to "test_snapshots/security_test/test_timestamp_is_from_ledger_not_user.1.json".
+ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 11.31s
+
