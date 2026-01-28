@@ -1,8 +1,8 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, panic_with_error, Address, BytesN, Env, IntoVal, Symbol,
-    Val, Vec,
+    contract, contracterror, contractimpl, panic_with_error, symbol_short, xdr::ToXdr, Address,
+    Bytes, BytesN, Env, String, Symbol,
 };
 
 mod storage_types;
@@ -24,19 +24,18 @@ pub struct StellarWrapContract;
 
 #[contractimpl]
 impl StellarWrapContract {
-    pub fn initialize(e: Env, admin: Address) {
-        let key = DataKey::Admin;
-
-        if e.storage().instance().has(&key) {
+    /// Initialize with admin and the public key used to verify off-chain signatures.
+    pub fn initialize(e: Env, admin: Address, admin_pubkey: BytesN<32>) {
+        if e.storage().instance().has(&DataKey::Admin) {
             panic_with_error!(e, ContractError::AlreadyInitialized);
         }
-
-        e.storage().instance().set(&key, &admin);
+        e.storage().instance().set(&DataKey::Admin, &admin);
+        e.storage()
+            .instance()
+            .set(&DataKey::AdminPubKey, &admin_pubkey);
     }
 
     /// Update the admin address. Only callable by the current admin.
-    ///
-    /// Security: `require_auth()` verifies authorization via the call stack.
     pub fn update_admin(e: Env, new_admin: Address) {
         let current_admin: Address = e
             .storage()
@@ -48,69 +47,104 @@ impl StellarWrapContract {
         e.storage().instance().set(&DataKey::Admin, &new_admin);
     }
 
+    /// Users claim their wrap using an Admin signature.
     pub fn mint_wrap(
         e: Env,
-        to: Address,
-        data_hash: BytesN<32>,
+        user: Address,
+        period: u64,
         archetype: Symbol,
-        period: Symbol,
+        data_hash: BytesN<32>,
+        signature: BytesN<64>,
     ) {
-        let admin: Address = e
+        // 1. Security: Ensure the user actually signed this transaction
+        user.require_auth();
+
+        // 2. Verify initialization
+        let admin_pubkey: BytesN<32> = e
             .storage()
             .instance()
-            .get(&DataKey::Admin)
+            .get(&DataKey::AdminPubKey)
             .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
 
-        admin.require_auth();
+        // 3. Reconstruct Payload
+        let mut payload = Bytes::new(&e);
+        payload.append(&e.current_contract_address().to_xdr(&e));
+        payload.append(&user.clone().to_xdr(&e));
+        payload.append(&period.to_xdr(&e));
+        payload.append(&archetype.clone().to_xdr(&e));
+        payload.append(&data_hash.clone().to_xdr(&e));
 
-        if !verify_signature(&data_hash) {
-            panic_with_error!(e, ContractError::InvalidSignature);
-        }
+        // 4. Verify Admin Signature
+        e.crypto()
+            .ed25519_verify(&admin_pubkey, &payload, &signature);
 
-        let wrap_key = DataKey::Wrap(to.clone(), period.clone());
-        if e.storage().instance().has(&wrap_key) {
+        // 5. Check Duplicates & Store Record (Switch to Persistent)
+        let wrap_key = DataKey::Wrap(user.clone(), period);
+        if e.storage().persistent().has(&wrap_key) {
             panic_with_error!(e, ContractError::WrapAlreadyExists);
         }
 
-        let timestamp = e.ledger().timestamp();
-
         let record = WrapRecord {
-            timestamp,
+            timestamp: e.ledger().timestamp(),
             data_hash,
             archetype: archetype.clone(),
-            period: period.clone(),
+            period,
         };
 
-        e.storage().instance().set(&wrap_key, &record);
+        // Store in persistent and extend TTL to ~1 year
+        let ttl_one_year = 17280 * 365;
+        e.storage().persistent().set(&wrap_key, &record);
+        e.storage()
+            .persistent()
+            .extend_ttl(&wrap_key, ttl_one_year, ttl_one_year);
 
-        // Emit event with period as u64
-        use soroban_sdk::symbol_short;
+        // 6. Update Balance (Switch to Persistent)
+        let count_key = DataKey::WrapCount(user.clone());
+        let current_count: u32 = e.storage().persistent().get(&count_key).unwrap_or(0);
+        e.storage()
+            .persistent()
+            .set(&count_key, &(current_count + 1));
+        e.storage()
+            .persistent()
+            .extend_ttl(&count_key, ttl_one_year, ttl_one_year);
 
-        let topics: Vec<Val> = Vec::from_array(
-            &e,
-            [symbol_short!("mint").into_val(&e), to.clone().into_val(&e)],
-        );
-
-        // Convert Symbol to a simple u64 hash for the event data
-        let period_u64 = symbol_to_u64(&period);
-
-        e.events().publish(topics, period_u64);
+        // 7. Emit Event
+        e.events()
+            .publish((symbol_short!("mint"), user, period), archetype);
     }
 
-    pub fn get_wrap(e: Env, user: Address, period: Symbol) -> Option<WrapRecord> {
-        let wrap_key = DataKey::Wrap(user, period);
-        e.storage().instance().get(&wrap_key)
+    // --- Read Functions ---
+
+    pub fn get_wrap(e: Env, user: Address, period: u64) -> Option<WrapRecord> {
+        // Changed .instance() to .persistent() to match mint_wrap
+        e.storage().persistent().get(&DataKey::Wrap(user, period))
+    }
+
+    pub fn balance_of(e: Env, id: Address) -> i128 {
+        let count_key = DataKey::WrapCount(id);
+        // Changed .instance() to .persistent() to match mint_wrap
+        e.storage()
+            .persistent()
+            .get::<_, u32>(&count_key)
+            .unwrap_or(0) as i128
+    }
+
+    pub fn get_admin(e: Env) -> Option<Address> {
+        // This stays .instance() because initialize() uses instance()
+        e.storage().instance().get(&DataKey::Admin)
+    }
+
+    pub fn name(e: Env) -> String {
+        String::from_str(&e, "Stellar Wrap Registry")
+    }
+
+    pub fn symbol(e: Env) -> String {
+        String::from_str(&e, "WRAP")
+    }
+
+    pub fn decimals(_e: Env) -> u32 {
+        0
     }
 }
 
-fn verify_signature(_data_hash: &BytesN<32>) -> bool {
-    true
-}
-
-fn symbol_to_u64(symbol: &Symbol) -> u64 {
-    let val: Val = symbol.to_val();
-    val.get_payload()
-}
-
-#[cfg(test)]
 mod test;

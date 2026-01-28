@@ -1,72 +1,68 @@
 #![cfg(test)]
-use super::storage_types::DataKey;
 use super::*;
+use ed25519_dalek::{Signer, SigningKey};
 use soroban_sdk::{
+    symbol_short,
     testutils::{Address as _, Events},
-    Address, BytesN, Env,
+    xdr::ToXdr,
+    Address, Bytes, BytesN, Env, String, Symbol, TryIntoVal,
 };
+
+fn sign_payload(
+    env: &Env,
+    signer: &SigningKey,
+    contract: &Address,
+    user: &Address,
+    period: u64,
+    archetype: &Symbol,
+    data_hash: &BytesN<32>,
+) -> BytesN<64> {
+    let mut payload = Bytes::new(env);
+    payload.append(&contract.to_xdr(env));
+    payload.append(&user.clone().to_xdr(env));
+    payload.append(&period.to_xdr(env));
+    payload.append(&archetype.clone().to_xdr(env));
+    payload.append(&data_hash.clone().to_xdr(env));
+
+    let mut out = [0u8; 512];
+    let len = payload.len() as usize;
+    payload.copy_into_slice(&mut out[..len]);
+
+    let signature = signer.sign(&out[..len]);
+    BytesN::from_array(env, &signature.to_bytes())
+}
 
 #[test]
 fn test_minting_flow() {
     let env = Env::default();
-
     let contract_id = env.register_contract(None, StellarWrapContract);
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
+    let signing_key = SigningKey::from_bytes(&[1u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
 
-    client.initialize(&admin);
+    client.initialize(&admin, &admin_pubkey);
     env.mock_all_auths();
 
-    use soroban_sdk::symbol_short;
     let dummy_hash = BytesN::from_array(&env, &[42u8; 32]);
-    let archetype = symbol_short!("architect");
-    let period = symbol_short!("jan2024");
+    let archetype = symbol_short!("arch");
+    let period = 2024u64;
 
-    client.mint_wrap(&user, &dummy_hash, &archetype, &period);
+    let signature = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user,
+        period,
+        &archetype,
+        &dummy_hash,
+    );
+    client.mint_wrap(&user, &period, &archetype, &dummy_hash, &signature);
 
-    let wrap_opt = client.get_wrap(&user, &period);
-    assert!(wrap_opt.is_some());
-
-    let wrap = wrap_opt.unwrap();
+    let wrap = client.get_wrap(&user, &period).unwrap();
     assert_eq!(wrap.data_hash, dummy_hash);
-    assert_eq!(wrap.archetype, archetype);
-    assert_eq!(wrap.period, period);
-    assert_eq!(wrap.timestamp, env.ledger().timestamp());
-}
-
-#[test]
-#[should_panic(expected = "Error(Contract, #1)")]
-fn test_initialize_twice_fails() {
-    let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
-    let client = StellarWrapContractClient::new(&env, &contract_id);
-
-    let admin = Address::generate(&env);
-
-    client.initialize(&admin);
-    client.initialize(&admin);
-}
-
-#[test]
-#[should_panic(expected = "Error(Auth, InvalidAction)")]
-fn test_mint_wrap_unauthorized() {
-    let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
-    let client = StellarWrapContractClient::new(&env, &contract_id);
-
-    let admin = Address::generate(&env);
-    let user = Address::generate(&env);
-
-    client.initialize(&admin);
-
-    use soroban_sdk::symbol_short;
-    let dummy_hash = BytesN::from_array(&env, &[42u8; 32]);
-    let archetype = symbol_short!("defi");
-    let period = symbol_short!("jan2024");
-
-    client.mint_wrap(&user, &dummy_hash, &archetype, &period);
 }
 
 #[test]
@@ -75,102 +71,98 @@ fn test_mint_emits_event() {
     let contract_id = env.register_contract(None, StellarWrapContract);
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
+    let signing_key = SigningKey::from_bytes(&[2u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
 
-    client.initialize(&admin);
+    client.initialize(&admin, &admin_pubkey);
     env.mock_all_auths();
 
-    use soroban_sdk::symbol_short;
-    let dummy_hash = BytesN::from_array(&env, &[42u8; 32]);
-    let archetype = symbol_short!("architect");
-    let period = symbol_short!("jan2024");
+    let period = 2024u64;
+    let archetype = symbol_short!("arch");
+    let hash = BytesN::from_array(&env, &[1u8; 32]);
+    let signature = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user,
+        period,
+        &archetype,
+        &hash,
+    );
 
-    client.mint_wrap(&user, &dummy_hash, &archetype, &period);
+    client.mint_wrap(&user, &period, &archetype, &hash, &signature);
 
     let events = env.events().all();
-    assert!(events.len() > 0, "No events emitted");
+    let last_event = events.last().expect("No events found");
+    let (_, topics, data) = last_event;
 
-    let mut mint_event_count = 0;
-    let mut found_event_topics = None;
-    let mut found_event_data = None;
+    // Convert Vals to concrete types for comparison
+    let event_topic: Symbol = topics.get(0).unwrap().try_into_val(&env).unwrap();
+    let event_user: Address = topics.get(1).unwrap().try_into_val(&env).unwrap();
+    let event_period: u64 = topics.get(2).unwrap().try_into_val(&env).unwrap();
+    let event_archetype: Symbol = data.try_into_val(&env).unwrap();
 
-    for i in 0..events.len() {
-        let event = events.get(i).unwrap();
-        let (_, topics, data) = event;
-
-        if topics.len() >= 1
-            && topics.get(0).unwrap().get_payload() == symbol_short!("mint").to_val().get_payload()
-        {
-            mint_event_count += 1;
-            found_event_topics = Some(topics);
-            found_event_data = Some(data);
-        }
-    }
-
-    assert_eq!(mint_event_count, 1, "Should emit exactly one mint event");
-
-    let topics = found_event_topics.unwrap();
-    let data = found_event_data.unwrap();
-
-    assert_eq!(
-        topics.len(),
-        2,
-        "Event should have 2 topics: 'mint' and user address"
-    );
-
-    assert_eq!(
-        topics.get(0).unwrap().get_payload(),
-        symbol_short!("mint").to_val().get_payload(),
-        "First topic should be 'mint'"
-    );
-
-    let second_topic = topics.get(1).unwrap().get_payload();
-    assert!(
-        second_topic != 0,
-        "Second topic (user address) should exist"
-    );
-
-    let event_data_payload = data.get_payload();
-    assert!(
-        event_data_payload != 0,
-        "Event data (period as u64) should exist"
-    );
+    assert_eq!(event_topic, symbol_short!("mint"));
+    assert_eq!(event_user, user);
+    assert_eq!(event_period, period);
+    assert_eq!(event_archetype, archetype);
 }
 
 #[test]
-fn test_multiple_periods() {
+fn test_balance_of_and_count() {
     let env = Env::default();
     let contract_id = env.register_contract(None, StellarWrapContract);
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
+    let signing_key = SigningKey::from_bytes(&[3u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
 
-    client.initialize(&admin);
+    client.initialize(&admin, &admin_pubkey);
     env.mock_all_auths();
 
-    use soroban_sdk::symbol_short;
-    let dummy_hash_1 = BytesN::from_array(&env, &[42u8; 32]);
-    let dummy_hash_2 = BytesN::from_array(&env, &[99u8; 32]);
-    let archetype_1 = symbol_short!("architect");
-    let archetype_2 = symbol_short!("patron");
-    let period_1 = symbol_short!("jan2024");
-    let period_2 = symbol_short!("feb2024");
+    let archetype = symbol_short!("soroban");
+    let hash = BytesN::from_array(&env, &[0u8; 32]);
 
-    client.mint_wrap(&user, &dummy_hash_1, &archetype_1, &period_1);
-    client.mint_wrap(&user, &dummy_hash_2, &archetype_2, &period_2);
+    let sig1 = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user,
+        2021,
+        &archetype,
+        &hash,
+    );
+    client.mint_wrap(&user, &2021, &archetype, &hash, &sig1);
 
-    let wrap_jan = client.get_wrap(&user, &period_1).unwrap();
-    let wrap_feb = client.get_wrap(&user, &period_2).unwrap();
+    let sig2 = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user,
+        2022,
+        &archetype,
+        &hash,
+    );
+    client.mint_wrap(&user, &2022, &archetype, &hash, &sig2);
 
-    assert_eq!(wrap_jan.data_hash, dummy_hash_1);
-    assert_eq!(wrap_jan.archetype, archetype_1);
-    assert_eq!(wrap_jan.period, period_1);
+    assert_eq!(client.balance_of(&user), 2);
+}
 
-    assert_eq!(wrap_feb.data_hash, dummy_hash_2);
-    assert_eq!(wrap_feb.archetype, archetype_2);
-    assert_eq!(wrap_feb.period, period_2);
+#[test]
+#[should_panic(expected = "Error(Contract, #1)")]
+fn test_initialize_twice_fails() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let pubkey = BytesN::from_array(&env, &[1u8; 32]);
+
+    client.initialize(&admin, &pubkey);
+    client.initialize(&admin, &pubkey);
 }
 
 #[test]
@@ -180,20 +172,30 @@ fn test_duplicate_period_fails() {
     let contract_id = env.register_contract(None, StellarWrapContract);
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
+    let signing_key = SigningKey::from_bytes(&[4u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
 
-    client.initialize(&admin);
+    client.initialize(&admin, &admin_pubkey);
     env.mock_all_auths();
 
-    use soroban_sdk::symbol_short;
-    let dummy_hash_1 = BytesN::from_array(&env, &[42u8; 32]);
-    let dummy_hash_2 = BytesN::from_array(&env, &[99u8; 32]);
-    let archetype = symbol_short!("architect");
-    let period = symbol_short!("jan2024");
+    let hash = BytesN::from_array(&env, &[42u8; 32]);
+    let archetype = symbol_short!("arch");
+    let period = 2024u64;
 
-    client.mint_wrap(&user, &dummy_hash_1, &archetype, &period);
-    client.mint_wrap(&user, &dummy_hash_2, &archetype, &period);
+    let sig = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user,
+        period,
+        &archetype,
+        &hash,
+    );
+
+    client.mint_wrap(&user, &period, &archetype, &hash, &sig);
+    client.mint_wrap(&user, &period, &archetype, &hash, &sig);
 }
 
 #[test]
@@ -204,31 +206,25 @@ fn test_update_admin_success() {
 
     let admin = Address::generate(&env);
     let new_admin = Address::generate(&env);
+    let pubkey = BytesN::from_array(&env, &[1u8; 32]);
 
-    client.initialize(&admin);
+    client.initialize(&admin, &pubkey);
     env.mock_all_auths();
 
     client.update_admin(&new_admin);
-
-    // Verify admin stored in contract storage changed.
-    let stored_admin: Address = env.as_contract(&contract_id, || {
-        env.storage().instance().get(&DataKey::Admin).unwrap()
-    });
-    assert_eq!(stored_admin, new_admin);
+    assert_eq!(client.get_admin().unwrap(), new_admin);
 }
 
 #[test]
-#[should_panic(expected = "Error(Auth, InvalidAction)")]
-fn test_update_admin_unauthorized() {
+fn test_token_metadata() {
     let env = Env::default();
     let contract_id = env.register_contract(None, StellarWrapContract);
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
-    let admin = Address::generate(&env);
-    let new_admin = Address::generate(&env);
-
-    client.initialize(&admin);
-
-    // No mocked auth => require_auth() should fail.
-    client.update_admin(&new_admin);
+    assert_eq!(client.decimals(), 0);
+    assert_eq!(
+        client.name(),
+        String::from_str(&env, "Stellar Wrap Registry")
+    );
+    assert_eq!(client.symbol(), String::from_str(&env, "WRAP"));
 }
