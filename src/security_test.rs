@@ -6,10 +6,38 @@
 //! cross-contract replay protection, and resource consumption.
 
 use super::*;
+use ed25519_dalek::{Signer, SigningKey};
 use soroban_sdk::{
+    symbol_short,
     testutils::{Address as _, Ledger},
-    Address, BytesN, Env,
+    xdr::ToXdr,
+    Address, Bytes, BytesN, Env,
 };
+
+/// Helper function to sign payloads for testing
+fn sign_payload(
+    env: &Env,
+    signer: &SigningKey,
+    contract: &Address,
+    user: &Address,
+    period: u64,
+    archetype: &Symbol,
+    data_hash: &BytesN<32>,
+) -> BytesN<64> {
+    let mut payload = Bytes::new(env);
+    payload.append(&contract.to_xdr(env));
+    payload.append(&user.clone().to_xdr(env));
+    payload.append(&period.to_xdr(env));
+    payload.append(&archetype.clone().to_xdr(env));
+    payload.append(&data_hash.clone().to_xdr(env));
+
+    let mut out = [0u8; 512];
+    let len = payload.len() as usize;
+    payload.copy_into_slice(&mut out[..len]);
+
+    let signature = signer.sign(&out[..len]);
+    BytesN::from_array(env, &signature.to_bytes())
+}
 
 /// Test 1: Replay Attack Simulation
 /// Ensures that a valid signature cannot be reused for the same period
@@ -20,19 +48,30 @@ fn test_replay_attack_same_period_fails() {
     let contract_id = env.register_contract(None, StellarWrapContract);
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
+    let signing_key = SigningKey::from_bytes(&[1u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
 
-    client.initialize(&admin);
+    client.initialize(&admin, &admin_pubkey);
     env.mock_all_auths();
 
-    use soroban_sdk::symbol_short;
     let data_hash = BytesN::from_array(&env, &[42u8; 32]);
     let archetype = symbol_short!("architect");
-    let period = symbol_short!("dec2025");
+    let period = 202512u64; // December 2025
+
+    let signature = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user,
+        period,
+        &archetype,
+        &data_hash,
+    );
 
     // First mint - should succeed
-    client.mint_wrap(&user, &data_hash, &archetype, &period);
+    client.mint_wrap(&user, &period, &archetype, &data_hash, &signature);
 
     // Verify the wrap was created
     let wrap = client.get_wrap(&user, &period);
@@ -40,7 +79,7 @@ fn test_replay_attack_same_period_fails() {
 
     // Replay attack: Try to mint again with the exact same parameters
     // This should PANIC with WrapAlreadyExists error (#4)
-    client.mint_wrap(&user, &data_hash, &archetype, &period);
+    client.mint_wrap(&user, &period, &archetype, &data_hash, &signature);
 }
 
 /// Test 2: Replay Attack with Different Hash (but same period)
@@ -52,24 +91,45 @@ fn test_replay_attack_different_hash_same_period_fails() {
     let contract_id = env.register_contract(None, StellarWrapContract);
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
+    let signing_key = SigningKey::from_bytes(&[1u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
 
-    client.initialize(&admin);
+    client.initialize(&admin, &admin_pubkey);
     env.mock_all_auths();
 
-    use soroban_sdk::symbol_short;
     let data_hash_1 = BytesN::from_array(&env, &[42u8; 32]);
     let data_hash_2 = BytesN::from_array(&env, &[99u8; 32]);
     let archetype = symbol_short!("architect");
-    let period = symbol_short!("dec2025");
+    let period = 202512u64; // December 2025
+
+    let signature_1 = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user,
+        period,
+        &archetype,
+        &data_hash_1,
+    );
 
     // First mint - should succeed
-    client.mint_wrap(&user, &data_hash_1, &archetype, &period);
+    client.mint_wrap(&user, &period, &archetype, &data_hash_1, &signature_1);
+
+    let signature_2 = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user,
+        period,
+        &archetype,
+        &data_hash_2,
+    );
 
     // Try to mint again for the same period with a different hash
     // This should still fail - period is already used
-    client.mint_wrap(&user, &data_hash_2, &archetype, &period);
+    client.mint_wrap(&user, &period, &archetype, &data_hash_2, &signature_2);
 }
 
 /// Test 3: Multiple Valid Periods Work Correctly
@@ -80,26 +140,55 @@ fn test_multiple_periods_for_same_user_success() {
     let contract_id = env.register_contract(None, StellarWrapContract);
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
+    let signing_key = SigningKey::from_bytes(&[1u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
 
-    client.initialize(&admin);
+    client.initialize(&admin, &admin_pubkey);
     env.mock_all_auths();
 
-    use soroban_sdk::symbol_short;
     let data_hash_1 = BytesN::from_array(&env, &[42u8; 32]);
     let data_hash_2 = BytesN::from_array(&env, &[99u8; 32]);
     let data_hash_3 = BytesN::from_array(&env, &[77u8; 32]);
     let archetype = symbol_short!("architect");
 
-    let period_1 = symbol_short!("dec2025");
-    let period_2 = symbol_short!("jan2026");
-    let period_3 = symbol_short!("feb2026");
+    let period_1 = 202512u64; // December 2025
+    let period_2 = 202601u64; // January 2026
+    let period_3 = 202602u64; // February 2026
+
+    let signature_1 = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user,
+        period_1,
+        &archetype,
+        &data_hash_1,
+    );
+    let signature_2 = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user,
+        period_2,
+        &archetype,
+        &data_hash_2,
+    );
+    let signature_3 = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user,
+        period_3,
+        &archetype,
+        &data_hash_3,
+    );
 
     // All three should succeed
-    client.mint_wrap(&user, &data_hash_1, &archetype, &period_1);
-    client.mint_wrap(&user, &data_hash_2, &archetype, &period_2);
-    client.mint_wrap(&user, &data_hash_3, &archetype, &period_3);
+    client.mint_wrap(&user, &period_1, &archetype, &data_hash_1, &signature_1);
+    client.mint_wrap(&user, &period_2, &archetype, &data_hash_2, &signature_2);
+    client.mint_wrap(&user, &period_3, &archetype, &data_hash_3, &signature_3);
 
     // Verify all three wraps exist
     assert!(client.get_wrap(&user, &period_1).is_some());
@@ -119,22 +208,32 @@ fn test_signature_cannot_be_stolen_by_another_user() {
     let contract_id = env.register_contract(None, StellarWrapContract);
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
+    let signing_key = SigningKey::from_bytes(&[1u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
     let admin = Address::generate(&env);
     let user_a = Address::generate(&env);
     let user_b = Address::generate(&env);
 
-    client.initialize(&admin);
+    client.initialize(&admin, &admin_pubkey);
     env.mock_all_auths();
-
-    use soroban_sdk::symbol_short;
 
     // Admin creates a signature for User A
     let data_hash_for_a = BytesN::from_array(&env, &[42u8; 32]);
     let archetype = symbol_short!("architect");
-    let period = symbol_short!("dec2025");
+    let period = 202512u64; // December 2025
+
+    let signature_a = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user_a,
+        period,
+        &archetype,
+        &data_hash_for_a,
+    );
 
     // User A mints successfully
-    client.mint_wrap(&user_a, &data_hash_for_a, &archetype, &period);
+    client.mint_wrap(&user_a, &period, &archetype, &data_hash_for_a, &signature_a);
 
     // Verify User A has the wrap
     let wrap_a = client.get_wrap(&user_a, &period);
@@ -142,8 +241,19 @@ fn test_signature_cannot_be_stolen_by_another_user() {
 
     // User B tries to mint with their own period (this is allowed)
     let data_hash_for_b = BytesN::from_array(&env, &[99u8; 32]);
-    let period_b = symbol_short!("jan2026");
-    client.mint_wrap(&user_b, &data_hash_for_b, &archetype, &period_b);
+    let period_b = 202601u64; // January 2026
+
+    let signature_b = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user_b,
+        period_b,
+        &archetype,
+        &data_hash_for_b,
+    );
+
+    client.mint_wrap(&user_b, &period_b, &archetype, &data_hash_for_b, &signature_b);
 
     // Verify both users have their respective wraps and they're distinct
     let wrap_a = client.get_wrap(&user_a, &period).unwrap();
@@ -173,22 +283,33 @@ fn test_cross_contract_replay_protection() {
     let client_v1 = StellarWrapContractClient::new(&env, &contract_v1);
     let client_v2 = StellarWrapContractClient::new(&env, &contract_v2);
 
+    let signing_key = SigningKey::from_bytes(&[1u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
 
     // Initialize both contracts with the same admin
-    client_v1.initialize(&admin);
-    client_v2.initialize(&admin);
+    client_v1.initialize(&admin, &admin_pubkey);
+    client_v2.initialize(&admin, &admin_pubkey);
 
     env.mock_all_auths();
 
-    use soroban_sdk::symbol_short;
     let data_hash = BytesN::from_array(&env, &[42u8; 32]);
     let archetype = symbol_short!("architect");
-    let period = symbol_short!("dec2025");
+    let period = 202512u64; // December 2025
+
+    let signature_v1 = sign_payload(
+        &env,
+        &signing_key,
+        &contract_v1,
+        &user,
+        period,
+        &archetype,
+        &data_hash,
+    );
 
     // Mint successfully on V1
-    client_v1.mint_wrap(&user, &data_hash, &archetype, &period);
+    client_v1.mint_wrap(&user, &period, &archetype, &data_hash, &signature_v1);
 
     // Verify the wrap exists on V1
     let wrap_v1 = client_v1.get_wrap(&user, &period);
@@ -196,7 +317,17 @@ fn test_cross_contract_replay_protection() {
 
     // The same user can mint on V2 (they are independent contracts)
     // This should succeed because they are different contract instances
-    client_v2.mint_wrap(&user, &data_hash, &archetype, &period);
+    let signature_v2 = sign_payload(
+        &env,
+        &signing_key,
+        &contract_v2,
+        &user,
+        period,
+        &archetype,
+        &data_hash,
+    );
+
+    client_v2.mint_wrap(&user, &period, &archetype, &data_hash, &signature_v2);
 
     // Verify both contracts have independent storage
     let wrap_v2 = client_v2.get_wrap(&user, &period);
@@ -222,22 +353,33 @@ fn test_gas_analysis_mint_operation() {
     let contract_id = env.register_contract(None, StellarWrapContract);
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
+    let signing_key = SigningKey::from_bytes(&[1u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
 
-    client.initialize(&admin);
+    client.initialize(&admin, &admin_pubkey);
     env.mock_all_auths();
 
-    use soroban_sdk::symbol_short;
     let data_hash = BytesN::from_array(&env, &[42u8; 32]);
     let archetype = symbol_short!("architect");
-    let period = symbol_short!("dec2025");
+    let period = 202512u64; // December 2025
+
+    let signature = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user,
+        period,
+        &archetype,
+        &data_hash,
+    );
 
     // Reset budget before the mint operation
     env.budget().reset_default();
 
     // Perform the mint operation
-    client.mint_wrap(&user, &data_hash, &archetype, &period);
+    client.mint_wrap(&user, &period, &archetype, &data_hash, &signature);
 
     // Get budget consumption
     env.budget().print();
@@ -271,13 +413,13 @@ fn test_gas_analysis_multiple_mints() {
     let contract_id = env.register_contract(None, StellarWrapContract);
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
+    let signing_key = SigningKey::from_bytes(&[1u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
 
-    client.initialize(&admin);
+    client.initialize(&admin, &admin_pubkey);
     env.mock_all_auths();
-
-    use soroban_sdk::symbol_short;
 
     env.budget().reset_default();
 
@@ -286,16 +428,26 @@ fn test_gas_analysis_multiple_mints() {
         let data_hash = BytesN::from_array(&env, &[i as u8; 32]);
         let archetype = symbol_short!("architect");
 
-        // Create unique period symbols
+        // Create unique period values
         let period = match i {
-            0 => symbol_short!("dec2025"),
-            1 => symbol_short!("jan2026"),
-            2 => symbol_short!("feb2026"),
-            3 => symbol_short!("mar2026"),
-            _ => symbol_short!("apr2026"),
+            0 => 202512u64, // December 2025
+            1 => 202601u64, // January 2026
+            2 => 202602u64, // February 2026
+            3 => 202603u64, // March 2026
+            _ => 202604u64, // April 2026
         };
 
-        client.mint_wrap(&user, &data_hash, &archetype, &period);
+        let signature = sign_payload(
+            &env,
+            &signing_key,
+            &contract_id,
+            &user,
+            period,
+            &archetype,
+            &data_hash,
+        );
+
+        client.mint_wrap(&user, &period, &archetype, &data_hash, &signature);
     }
 
     let cpu_insns = env.budget().cpu_instruction_cost();
@@ -315,13 +467,13 @@ fn test_timestamp_is_from_ledger_not_user() {
     let contract_id = env.register_contract(None, StellarWrapContract);
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
+    let signing_key = SigningKey::from_bytes(&[1u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
 
-    client.initialize(&admin);
+    client.initialize(&admin, &admin_pubkey);
     env.mock_all_auths();
-
-    use soroban_sdk::symbol_short;
 
     // Set specific ledger timestamp
     env.ledger().with_mut(|li| {
@@ -330,9 +482,19 @@ fn test_timestamp_is_from_ledger_not_user() {
 
     let data_hash = BytesN::from_array(&env, &[42u8; 32]);
     let archetype = symbol_short!("architect");
-    let period = symbol_short!("dec2025");
+    let period = 202512u64; // December 2025
 
-    client.mint_wrap(&user, &data_hash, &archetype, &period);
+    let signature = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user,
+        period,
+        &archetype,
+        &data_hash,
+    );
+
+    client.mint_wrap(&user, &period, &archetype, &data_hash, &signature);
 
     let wrap = client.get_wrap(&user, &period).unwrap();
 
@@ -344,8 +506,18 @@ fn test_timestamp_is_from_ledger_not_user() {
         li.timestamp = 2000000;
     });
 
-    let period_2 = symbol_short!("jan2026");
-    client.mint_wrap(&user, &data_hash, &archetype, &period_2);
+    let period_2 = 202601u64; // January 2026
+    let signature_2 = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user,
+        period_2,
+        &archetype,
+        &data_hash,
+    );
+
+    client.mint_wrap(&user, &period_2, &archetype, &data_hash, &signature_2);
 
     let wrap_2 = client.get_wrap(&user, &period_2).unwrap();
     assert_eq!(
@@ -362,20 +534,31 @@ fn test_edge_case_long_symbols() {
     let contract_id = env.register_contract(None, StellarWrapContract);
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
+    let signing_key = SigningKey::from_bytes(&[1u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
 
-    client.initialize(&admin);
+    client.initialize(&admin, &admin_pubkey);
     env.mock_all_auths();
 
-    use soroban_sdk::symbol_short;
     let data_hash = BytesN::from_array(&env, &[42u8; 32]);
 
     // symbol_short! supports up to 9 ASCII characters
     let archetype = symbol_short!("architect");
-    let period = symbol_short!("december"); // 8 chars - within limit
+    let period = 202512u64; // December 2025
 
-    client.mint_wrap(&user, &data_hash, &archetype, &period);
+    let signature = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user,
+        period,
+        &archetype,
+        &data_hash,
+    );
+
+    client.mint_wrap(&user, &period, &archetype, &data_hash, &signature);
 
     let wrap = client.get_wrap(&user, &period);
     assert!(wrap.is_some(), "Should handle reasonably long symbols");
@@ -390,18 +573,29 @@ fn test_non_admin_cannot_mint() {
     let contract_id = env.register_contract(None, StellarWrapContract);
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
+    let signing_key = SigningKey::from_bytes(&[1u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
     let _attacker = Address::generate(&env);
 
-    client.initialize(&admin);
+    client.initialize(&admin, &admin_pubkey);
 
     // Don't mock auth - let it fail naturally
-    use soroban_sdk::symbol_short;
     let data_hash = BytesN::from_array(&env, &[42u8; 32]);
     let archetype = symbol_short!("architect");
-    let period = symbol_short!("dec2025");
+    let period = 202512u64; // December 2025
+
+    let signature = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user,
+        period,
+        &archetype,
+        &data_hash,
+    );
 
     // This should panic because attacker is not authorized
-    client.mint_wrap(&user, &data_hash, &archetype, &period);
+    client.mint_wrap(&user, &period, &archetype, &data_hash, &signature);
 }
