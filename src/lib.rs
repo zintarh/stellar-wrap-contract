@@ -1,17 +1,8 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract,
-    contractimpl,
-    contracterror,
-    panic_with_error,
-    Address,
-    BytesN,
-    Env,
-    Symbol,
-    Vec,
-    Val,
-    IntoVal,
+    contract, contracterror, contractimpl, panic_with_error, Address, BytesN, Env, IntoVal, Symbol,
+    Val, Vec,
 };
 
 mod storage_types;
@@ -41,6 +32,20 @@ impl StellarWrapContract {
         }
 
         e.storage().instance().set(&key, &admin);
+    }
+
+    /// Update the admin address. Only callable by the current admin.
+    ///
+    /// Security: `require_auth()` verifies authorization via the call stack.
+    pub fn update_admin(e: Env, new_admin: Address) {
+        let current_admin: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
+
+        current_admin.require_auth();
+        e.storage().instance().set(&DataKey::Admin, &new_admin);
     }
 
     pub fn mint_wrap(
@@ -83,15 +88,12 @@ impl StellarWrapContract {
 
         let topics: Vec<Val> = Vec::from_array(
             &e,
-            [
-                symbol_short!("mint").into_val(&e),
-                to.clone().into_val(&e),
-            ],
+            [symbol_short!("mint").into_val(&e), to.clone().into_val(&e)],
         );
 
         // Convert Symbol to a simple u64 hash for the event data
         let period_u64 = symbol_to_u64(&period);
-        
+
         e.events().publish(topics, period_u64);
     }
 
