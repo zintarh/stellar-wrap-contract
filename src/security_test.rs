@@ -253,7 +253,13 @@ fn test_signature_cannot_be_stolen_by_another_user() {
         &data_hash_for_b,
     );
 
-    client.mint_wrap(&user_b, &period_b, &archetype, &data_hash_for_b, &signature_b);
+    client.mint_wrap(
+        &user_b,
+        &period_b,
+        &archetype,
+        &data_hash_for_b,
+        &signature_b,
+    );
 
     // Verify both users have their respective wraps and they're distinct
     let wrap_a = client.get_wrap(&user_a, &period).unwrap();

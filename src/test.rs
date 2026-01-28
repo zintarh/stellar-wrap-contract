@@ -108,9 +108,7 @@ fn test_mint_emits_event() {
     assert_eq!(event_user, user);
     assert_eq!(event_period, period);
     assert_eq!(event_archetype, archetype);
-
 }
-
 
 #[test]
 fn test_balance_of_and_count() {
