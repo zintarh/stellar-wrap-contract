@@ -35,7 +35,19 @@ impl StellarWrapContract {
             .set(&DataKey::AdminPubKey, &admin_pubkey);
     }
 
-    /// Users claim their wrap using an Admin signature (from HEAD).
+    /// Update the admin address. Only callable by the current admin.
+    pub fn update_admin(e: Env, new_admin: Address) {
+        let current_admin: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
+
+        current_admin.require_auth();
+        e.storage().instance().set(&DataKey::Admin, &new_admin);
+    }
+
+    /// Users claim their wrap using an Admin signature.
     pub fn mint_wrap(
         e: Env,
         user: Address,
@@ -44,14 +56,17 @@ impl StellarWrapContract {
         data_hash: BytesN<32>,
         signature: BytesN<64>,
     ) {
-        // 1. Verify initialization
+        // 1. Security: Ensure the user actually signed this transaction
+        user.require_auth();
+
+        // 2. Verify initialization
         let admin_pubkey: BytesN<32> = e
             .storage()
             .instance()
             .get(&DataKey::AdminPubKey)
             .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
 
-        // 2. Reconstruct Payload (Contract -> User -> Period -> Archetype -> Data Hash)
+        // 3. Reconstruct Payload
         let mut payload = Bytes::new(&e);
         payload.append(&e.current_contract_address().to_xdr(&e));
         payload.append(&user.clone().to_xdr(&e));
@@ -59,50 +74,63 @@ impl StellarWrapContract {
         payload.append(&archetype.clone().to_xdr(&e));
         payload.append(&data_hash.clone().to_xdr(&e));
 
-        // 3. Verify Signature
+        // 4. Verify Admin Signature
         e.crypto()
             .ed25519_verify(&admin_pubkey, &payload, &signature);
 
-        // 4. Check Duplicates
+        // 5. Check Duplicates & Store Record (Switch to Persistent)
         let wrap_key = DataKey::Wrap(user.clone(), period);
-        if e.storage().instance().has(&wrap_key) {
+        if e.storage().persistent().has(&wrap_key) {
             panic_with_error!(e, ContractError::WrapAlreadyExists);
         }
 
-        // 5. Store Record
         let record = WrapRecord {
             timestamp: e.ledger().timestamp(),
             data_hash,
             archetype: archetype.clone(),
             period,
         };
-        e.storage().instance().set(&wrap_key, &record);
 
-        // 6. Update Balance (User Registry Count)
+        // Store in persistent and extend TTL to ~1 year
+        let ttl_one_year = 17280 * 365;
+        e.storage().persistent().set(&wrap_key, &record);
+        e.storage()
+            .persistent()
+            .extend_ttl(&wrap_key, ttl_one_year, ttl_one_year);
+
+        // 6. Update Balance (Switch to Persistent)
         let count_key = DataKey::WrapCount(user.clone());
-        let current_count: u32 = e.storage().instance().get(&count_key).unwrap_or(0);
-        e.storage().instance().set(&count_key, &(current_count + 1));
+        let current_count: u32 = e.storage().persistent().get(&count_key).unwrap_or(0);
+        e.storage()
+            .persistent()
+            .set(&count_key, &(current_count + 1));
+        e.storage()
+            .persistent()
+            .extend_ttl(&count_key, ttl_one_year, ttl_one_year);
 
-        // 7. Emit Event (Using the structured topics from main)
+        // 7. Emit Event
         e.events()
             .publish((symbol_short!("mint"), user, period), archetype);
     }
 
-    // --- Read Functions (SEP-41 Compatibility & Helpers) ---
+    // --- Read Functions ---
 
     pub fn get_wrap(e: Env, user: Address, period: u64) -> Option<WrapRecord> {
-        e.storage().instance().get(&DataKey::Wrap(user, period))
+        // Changed .instance() to .persistent() to match mint_wrap
+        e.storage().persistent().get(&DataKey::Wrap(user, period))
     }
 
     pub fn balance_of(e: Env, id: Address) -> i128 {
         let count_key = DataKey::WrapCount(id);
+        // Changed .instance() to .persistent() to match mint_wrap
         e.storage()
-            .instance()
+            .persistent()
             .get::<_, u32>(&count_key)
             .unwrap_or(0) as i128
     }
 
     pub fn get_admin(e: Env) -> Option<Address> {
+        // This stays .instance() because initialize() uses instance()
         e.storage().instance().get(&DataKey::Admin)
     }
 
