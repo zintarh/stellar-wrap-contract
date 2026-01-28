@@ -89,42 +89,54 @@ fn test_mint_emits_event() {
     client.mint_wrap(&user, &dummy_hash, &archetype, &period);
 
     let events = env.events().all();
-    
+
     assert!(events.len() > 0, "No events emitted");
-    
+
     let mut mint_event_count = 0;
     let mut found_event_topics = None;
     let mut found_event_data = None;
-    
+
     for i in 0..events.len() {
         let event = events.get(i).unwrap();
         let (_, topics, data) = event;
-        
-        if topics.len() >= 1 && topics.get(0).unwrap().get_payload() == symbol_short!("mint").to_val().get_payload() {
+
+        if topics.len() >= 1
+            && topics.get(0).unwrap().get_payload() == symbol_short!("mint").to_val().get_payload()
+        {
             mint_event_count += 1;
             found_event_topics = Some(topics);
             found_event_data = Some(data);
         }
     }
-    
+
     assert_eq!(mint_event_count, 1, "Should emit exactly one mint event");
-    
+
     let topics = found_event_topics.unwrap();
     let data = found_event_data.unwrap();
-    
-    assert_eq!(topics.len(), 2, "Event should have 2 topics: 'mint' and user address");
-    
+
+    assert_eq!(
+        topics.len(),
+        2,
+        "Event should have 2 topics: 'mint' and user address"
+    );
+
     assert_eq!(
         topics.get(0).unwrap().get_payload(),
         symbol_short!("mint").to_val().get_payload(),
         "First topic should be 'mint'"
     );
-    
+
     let second_topic = topics.get(1).unwrap().get_payload();
-    assert!(second_topic != 0, "Second topic (user address) should exist and be non-zero");
+    assert!(
+        second_topic != 0,
+        "Second topic (user address) should exist and be non-zero"
+    );
 
     let event_data_payload = data.get_payload();
-    assert!(event_data_payload != 0, "Event data (period as u64) should exist and be non-zero");
+    assert!(
+        event_data_payload != 0,
+        "Event data (period as u64) should exist and be non-zero"
+    );
 }
 
 #[test]

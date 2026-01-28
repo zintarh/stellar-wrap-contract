@@ -1,17 +1,8 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract,
-    contractimpl,
-    contracterror,
-    panic_with_error,
-    Address,
-    BytesN,
-    Env,
-    Symbol,
-    Vec,
-    Val,
-    IntoVal,
+    contract, contracterror, contractimpl, panic_with_error, Address, BytesN, Env, IntoVal, Symbol,
+    Val, Vec,
 };
 
 mod storage_types;
@@ -83,15 +74,12 @@ impl StellarWrapContract {
 
         let topics: Vec<Val> = Vec::from_array(
             &e,
-            [
-                symbol_short!("mint").into_val(&e),
-                to.clone().into_val(&e),
-            ],
+            [symbol_short!("mint").into_val(&e), to.clone().into_val(&e)],
         );
 
         // Convert Symbol to a simple u64 hash for the event data
         let period_u64 = symbol_to_u64(&period);
-        
+
         e.events().publish(topics, period_u64);
     }
 
@@ -111,6 +99,6 @@ fn symbol_to_u64(symbol: &Symbol) -> u64 {
 }
 
 #[cfg(test)]
-mod test;
-#[cfg(test)]
 mod security_test;
+#[cfg(test)]
+mod test;

@@ -1,6 +1,6 @@
 #![cfg(test)]
 //! Security Test Suite for Stellar Wrap Contract
-//! 
+//!
 //! This module contains adversarial tests designed to ensure the contract
 //! fails safely when attacked. We test replay attacks, identity theft,
 //! cross-contract replay protection, and resource consumption.
@@ -91,7 +91,7 @@ fn test_multiple_periods_for_same_user_success() {
     let data_hash_2 = BytesN::from_array(&env, &[99u8; 32]);
     let data_hash_3 = BytesN::from_array(&env, &[77u8; 32]);
     let archetype = symbol_short!("architect");
-    
+
     let period_1 = symbol_short!("dec2025");
     let period_2 = symbol_short!("jan2026");
     let period_3 = symbol_short!("feb2026");
@@ -109,7 +109,7 @@ fn test_multiple_periods_for_same_user_success() {
 
 /// Test 4: Identity Theft / Signature Mismatch Attack
 /// Tests that a signature intended for User A cannot be used by User B
-/// 
+///
 /// NOTE: This test currently relies on the admin authorization check.
 /// For full security, the signature verification should cryptographically
 /// bind the payload to the specific user address.
@@ -127,7 +127,7 @@ fn test_signature_cannot_be_stolen_by_another_user() {
     env.mock_all_auths();
 
     use soroban_sdk::symbol_short;
-    
+
     // Admin creates a signature for User A
     let data_hash_for_a = BytesN::from_array(&env, &[42u8; 32]);
     let archetype = symbol_short!("architect");
@@ -135,7 +135,7 @@ fn test_signature_cannot_be_stolen_by_another_user() {
 
     // User A mints successfully
     client.mint_wrap(&user_a, &data_hash_for_a, &archetype, &period);
-    
+
     // Verify User A has the wrap
     let wrap_a = client.get_wrap(&user_a, &period);
     assert!(wrap_a.is_some(), "User A should have the wrap");
@@ -148,13 +148,16 @@ fn test_signature_cannot_be_stolen_by_another_user() {
     // Verify both users have their respective wraps and they're distinct
     let wrap_a = client.get_wrap(&user_a, &period).unwrap();
     let wrap_b = client.get_wrap(&user_b, &period_b).unwrap();
-    
+
     assert_eq!(wrap_a.data_hash, data_hash_for_a);
     assert_eq!(wrap_b.data_hash, data_hash_for_b);
-    
+
     // User B should NOT have User A's period
     let user_b_period_dec = client.get_wrap(&user_b, &period);
-    assert!(user_b_period_dec.is_none(), "User B should not have User A's period");
+    assert!(
+        user_b_period_dec.is_none(),
+        "User B should not have User A's period"
+    );
 }
 
 /// Test 5: Cross-Contract Replay Protection
@@ -162,11 +165,11 @@ fn test_signature_cannot_be_stolen_by_another_user() {
 #[test]
 fn test_cross_contract_replay_protection() {
     let env = Env::default();
-    
+
     // Deploy two separate contract instances (V1 and V2)
     let contract_v1 = env.register_contract(None, StellarWrapContract);
     let contract_v2 = env.register_contract(None, StellarWrapContract);
-    
+
     let client_v1 = StellarWrapContractClient::new(&env, &contract_v1);
     let client_v2 = StellarWrapContractClient::new(&env, &contract_v2);
 
@@ -176,7 +179,7 @@ fn test_cross_contract_replay_protection() {
     // Initialize both contracts with the same admin
     client_v1.initialize(&admin);
     client_v2.initialize(&admin);
-    
+
     env.mock_all_auths();
 
     use soroban_sdk::symbol_short;
@@ -186,7 +189,7 @@ fn test_cross_contract_replay_protection() {
 
     // Mint successfully on V1
     client_v1.mint_wrap(&user, &data_hash, &archetype, &period);
-    
+
     // Verify the wrap exists on V1
     let wrap_v1 = client_v1.get_wrap(&user, &period);
     assert!(wrap_v1.is_some(), "Wrap should exist on contract V1");
@@ -194,15 +197,15 @@ fn test_cross_contract_replay_protection() {
     // The same user can mint on V2 (they are independent contracts)
     // This should succeed because they are different contract instances
     client_v2.mint_wrap(&user, &data_hash, &archetype, &period);
-    
+
     // Verify both contracts have independent storage
     let wrap_v2 = client_v2.get_wrap(&user, &period);
     assert!(wrap_v2.is_some(), "Wrap should exist on contract V2");
-    
+
     // Both wraps should exist independently
     assert!(client_v1.get_wrap(&user, &period).is_some());
     assert!(client_v2.get_wrap(&user, &period).is_some());
-    
+
     // NOTE: For full cross-contract replay protection, the signature
     // verification should include the contract address in the signed payload.
     // This test demonstrates that the contracts currently have independent storage,
@@ -215,7 +218,7 @@ fn test_cross_contract_replay_protection() {
 fn test_gas_analysis_mint_operation() {
     let env = Env::default();
     env.budget().reset_unlimited();
-    
+
     let contract_id = env.register_contract(None, StellarWrapContract);
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -232,22 +235,26 @@ fn test_gas_analysis_mint_operation() {
 
     // Reset budget before the mint operation
     env.budget().reset_default();
-    
+
     // Perform the mint operation
     client.mint_wrap(&user, &data_hash, &archetype, &period);
-    
+
     // Get budget consumption
     env.budget().print();
-    
+
     // Get actual CPU instructions used
     let cpu_insns = env.budget().cpu_instruction_cost();
     let mem_bytes = env.budget().memory_bytes_cost();
-    
+
     // Assert reasonable upper bounds (these values should be tuned based on actual needs)
     // For mainnet deployment, you want these to be as low as possible
-    assert!(cpu_insns < 10_000_000, "CPU instructions too high: {}", cpu_insns);
+    assert!(
+        cpu_insns < 10_000_000,
+        "CPU instructions too high: {}",
+        cpu_insns
+    );
     assert!(mem_bytes < 100_000, "Memory usage too high: {}", mem_bytes);
-    
+
     // Gas analysis results:
     // CPU Instructions: Check assertion output
     // Memory Bytes: Check assertion output
@@ -260,7 +267,7 @@ fn test_gas_analysis_mint_operation() {
 fn test_gas_analysis_multiple_mints() {
     let env = Env::default();
     env.budget().reset_unlimited();
-    
+
     let contract_id = env.register_contract(None, StellarWrapContract);
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -271,14 +278,14 @@ fn test_gas_analysis_multiple_mints() {
     env.mock_all_auths();
 
     use soroban_sdk::symbol_short;
-    
+
     env.budget().reset_default();
-    
+
     // Perform 5 mints for different periods
     for i in 0..5 {
         let data_hash = BytesN::from_array(&env, &[i as u8; 32]);
         let archetype = symbol_short!("architect");
-        
+
         // Create unique period symbols
         let period = match i {
             0 => symbol_short!("dec2025"),
@@ -287,10 +294,10 @@ fn test_gas_analysis_multiple_mints() {
             3 => symbol_short!("mar2026"),
             _ => symbol_short!("apr2026"),
         };
-        
+
         client.mint_wrap(&user, &data_hash, &archetype, &period);
     }
-    
+
     let cpu_insns = env.budget().cpu_instruction_cost();
     let mem_bytes = env.budget().memory_bytes_cost();
 
@@ -315,33 +322,36 @@ fn test_timestamp_is_from_ledger_not_user() {
     env.mock_all_auths();
 
     use soroban_sdk::symbol_short;
-    
+
     // Set specific ledger timestamp
     env.ledger().with_mut(|li| {
         li.timestamp = 1000000;
     });
-    
+
     let data_hash = BytesN::from_array(&env, &[42u8; 32]);
     let archetype = symbol_short!("architect");
     let period = symbol_short!("dec2025");
 
     client.mint_wrap(&user, &data_hash, &archetype, &period);
-    
+
     let wrap = client.get_wrap(&user, &period).unwrap();
-    
+
     // Verify timestamp matches ledger, not any user-provided value
     assert_eq!(wrap.timestamp, 1000000, "Timestamp should come from ledger");
-    
+
     // Advance ledger time and mint another period
     env.ledger().with_mut(|li| {
         li.timestamp = 2000000;
     });
-    
+
     let period_2 = symbol_short!("jan2026");
     client.mint_wrap(&user, &data_hash, &archetype, &period_2);
-    
+
     let wrap_2 = client.get_wrap(&user, &period_2).unwrap();
-    assert_eq!(wrap_2.timestamp, 2000000, "Second timestamp should match new ledger time");
+    assert_eq!(
+        wrap_2.timestamp, 2000000,
+        "Second timestamp should match new ledger time"
+    );
 }
 
 /// Test 9: Edge Case - Maximum Symbol Length
@@ -360,13 +370,13 @@ fn test_edge_case_long_symbols() {
 
     use soroban_sdk::symbol_short;
     let data_hash = BytesN::from_array(&env, &[42u8; 32]);
-    
+
     // symbol_short! supports up to 9 ASCII characters
     let archetype = symbol_short!("architect");
     let period = symbol_short!("december"); // 8 chars - within limit
 
     client.mint_wrap(&user, &data_hash, &archetype, &period);
-    
+
     let wrap = client.get_wrap(&user, &period);
     assert!(wrap.is_some(), "Should handle reasonably long symbols");
 }
@@ -385,7 +395,7 @@ fn test_non_admin_cannot_mint() {
     let _attacker = Address::generate(&env);
 
     client.initialize(&admin);
-    
+
     // Don't mock auth - let it fail naturally
     use soroban_sdk::symbol_short;
     let data_hash = BytesN::from_array(&env, &[42u8; 32]);
