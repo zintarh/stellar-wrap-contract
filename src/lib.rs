@@ -1,9 +1,34 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, panic_with_error, symbol_short, xdr::ToXdr, Address,
-    Bytes, BytesN, Env, String, Symbol,
+    contract, contracterror, contractimpl, contractmeta, contracttype, panic_with_error,
+    symbol_short, xdr::ToXdr, Address, Bytes, BytesN, Env, String, Symbol,
 };
+
+contractmeta!(
+    key = "name",
+    val = "Stellar Wrap Registry"
+);
+contractmeta!(
+    key = "version",
+    val = "0.1.0"
+);
+contractmeta!(
+    key = "repo",
+    val = "https://github.com/calebux/stellar-wrap-contract"
+);
+contractmeta!(
+    key = "description",
+    val = "On-chain Soulbound Token registry for Stellar Wrap. Stores non-transferable wrap records linked to user addresses."
+);
+
+#[contracttype]
+pub struct ContractInfo {
+    pub name: String,
+    pub version: String,
+    pub repo: String,
+    pub description: String,
+}
 
 mod storage_types;
 use storage_types::{DataKey, WrapRecord};
@@ -182,6 +207,18 @@ impl StellarWrapContract {
     pub fn get_admin(e: Env) -> Option<Address> {
         // This stays .instance() because initialize() uses instance()
         e.storage().instance().get(&DataKey::Admin)
+    }
+
+    pub fn contract_info(e: Env) -> ContractInfo {
+        ContractInfo {
+            name: String::from_str(&e, "Stellar Wrap Registry"),
+            version: String::from_str(&e, "0.1.0"),
+            repo: String::from_str(&e, "https://github.com/calebux/stellar-wrap-contract"),
+            description: String::from_str(
+                &e,
+                "On-chain Soulbound Token registry for Stellar Wrap.",
+            ),
+        }
     }
 
     pub fn name(e: Env) -> String {
