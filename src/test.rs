@@ -234,6 +234,27 @@ fn test_token_metadata() {
     assert_eq!(client.symbol(), String::from_str(&env, "WRAP"));
 }
 
+// ─── Issue #56: contract_info tests ─────────────────────────────────────────
+
+#[test]
+fn test_contract_info_returns_correct_fields() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let info = client.contract_info();
+    assert_eq!(info.name, String::from_str(&env, "Stellar Wrap Registry"));
+    assert_eq!(info.version, String::from_str(&env, "0.1.0"));
+    assert_eq!(
+        info.repo,
+        String::from_str(&env, "https://github.com/zintarh/stellar-wrap-contract")
+    );
+    assert_eq!(
+        info.description,
+        String::from_str(&env, "Soulbound token registry for Stellar Wrap")
+    );
+}
+
 // ─── Issue #84: extend_ttl tests ────────────────────────────────────────────
 
 #[test]

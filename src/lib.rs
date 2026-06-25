@@ -6,7 +6,7 @@ use soroban_sdk::{
 };
 
 mod storage_types;
-use storage_types::{DataKey, WrapRecord};
+use storage_types::{ContractInfo, DataKey, WrapRecord};
 
 soroban_sdk::contractmeta!(
     key = "Description",
@@ -354,6 +354,16 @@ impl StellarWrapContract {
     /// Return the number of decimals. Soulbound tokens are non-divisible, so this is always `0`.
     pub fn decimals(_e: Env) -> u32 {
         0
+    }
+
+    /// Return contract-level metadata useful for explorers and indexers.
+    pub fn contract_info(e: Env) -> ContractInfo {
+        ContractInfo {
+            name: String::from_str(&e, "Stellar Wrap Registry"),
+            version: String::from_str(&e, "0.1.0"),
+            repo: String::from_str(&e, "https://github.com/zintarh/stellar-wrap-contract"),
+            description: String::from_str(&e, "Soulbound token registry for Stellar Wrap"),
+        }
     }
 
     /// Upgrade the contract WASM to a new version.
