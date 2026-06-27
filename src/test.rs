@@ -851,6 +851,7 @@ fn test_revoke_requires_admin_auth() {
             data_hash: BytesN::from_array(&env, &[16u8; 32]),
             archetype: symbol_short!("arch"),
             period: 2026,
+            image_uri: String::from_str(&env, ""),
         };
         env.storage().persistent().set(&wrap_key, &record);
         env.storage().persistent().set(&count_key, &1u32);
@@ -1286,4 +1287,382 @@ fn test_update_wrap_zero_hash_rejected() {
     let zero_hash = BytesN::from_array(&env, &[0u8; 32]);
     let sig2 = sign_update_payload(&env, &signing_key, &contract_id, &user, period, &archetype, &zero_hash);
     client.update_wrap(&user, &period, &zero_hash, &archetype, &sig2);
+}
+
+// ─── Merkle batch claim tests ───────────────────────────────────────────────
+
+use crate::merkle::{compute_merkle_leaf, hash_pair};
+
+fn merkle_root_for_leaves(env: &Env, leaves: &[BytesN<32>]) -> BytesN<32> {
+    assert!(!leaves.is_empty());
+    if leaves.len() == 1 {
+        return leaves[0].clone();
+    }
+    let mut layer: soroban_sdk::Vec<BytesN<32>> = soroban_sdk::Vec::new(env);
+    for leaf in leaves {
+        layer.push_back(leaf.clone());
+    }
+    while layer.len() > 1 {
+        let mut next = soroban_sdk::Vec::new(env);
+        let mut i = 0u32;
+        while i < layer.len() {
+            if i + 1 < layer.len() {
+                let pair = hash_pair(env, &layer.get(i).unwrap(), &layer.get(i + 1).unwrap());
+                next.push_back(pair);
+                i += 2;
+            } else {
+                next.push_back(layer.get(i).unwrap());
+                i += 1;
+            }
+        }
+        layer = next;
+    }
+    layer.get(0).unwrap()
+}
+
+fn merkle_proof_for_index(env: &Env, leaves: &[BytesN<32>], index: usize) -> soroban_sdk::Vec<BytesN<32>> {
+    let mut proof = soroban_sdk::Vec::new(env);
+    let mut idx = index;
+    let mut layer: std::vec::Vec<BytesN<32>> = leaves.to_vec();
+    while layer.len() > 1 {
+        let sibling_idx = if idx % 2 == 0 { idx + 1 } else { idx - 1 };
+        if sibling_idx < layer.len() {
+            proof.push_back(layer[sibling_idx].clone());
+        }
+        let mut next = std::vec::Vec::new();
+        let mut i = 0;
+        while i < layer.len() {
+            if i + 1 < layer.len() {
+                next.push(hash_pair(env, &layer[i], &layer[i + 1]));
+                i += 2;
+            } else {
+                next.push(layer[i].clone());
+                i += 1;
+            }
+        }
+        idx /= 2;
+        layer = next;
+    }
+    proof
+}
+
+#[test]
+fn test_set_merkle_root_and_valid_claim() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let signing_key = SigningKey::from_bytes(&[40u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    client.initialize(&admin, &admin_pubkey);
+    env.mock_all_auths();
+
+    let period = 202512u64;
+    let archetype = symbol_short!("builder");
+    let data_hash = BytesN::from_array(&env, &[50u8; 32]);
+
+    let leaf = compute_merkle_leaf(&env, &user, period, &archetype, &data_hash);
+    let root = merkle_root_for_leaves(&env, &[leaf.clone()]);
+    client.set_merkle_root(&period, &root);
+
+    let proof = merkle_proof_for_index(&env, &[leaf], 0);
+    client.claim_wrap(&user, &period, &archetype, &data_hash, &proof);
+
+    let wrap = client.get_wrap(&user, &period).unwrap();
+    assert_eq!(wrap.data_hash, data_hash);
+    assert_eq!(wrap.archetype, archetype);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #9)")]
+fn test_merkle_invalid_proof_fails() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let admin_pubkey = BytesN::from_array(&env, &[1u8; 32]);
+    let user = Address::generate(&env);
+
+    client.initialize(&admin, &admin_pubkey);
+    env.mock_all_auths();
+
+    let period = 202512u64;
+    let archetype = symbol_short!("builder");
+    let data_hash = BytesN::from_array(&env, &[51u8; 32]);
+    let root = BytesN::from_array(&env, &[99u8; 32]);
+    client.set_merkle_root(&period, &root);
+
+    let bad_proof = soroban_sdk::vec![&env, BytesN::from_array(&env, &[1u8; 32])];
+    client.claim_wrap(&user, &period, &archetype, &data_hash, &bad_proof);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #10)")]
+fn test_merkle_double_claim_fails() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let admin_pubkey = BytesN::from_array(&env, &[1u8; 32]);
+    let user = Address::generate(&env);
+
+    client.initialize(&admin, &admin_pubkey);
+    env.mock_all_auths();
+
+    let period = 202512u64;
+    let archetype = symbol_short!("builder");
+    let data_hash = BytesN::from_array(&env, &[52u8; 32]);
+    let leaf = compute_merkle_leaf(&env, &user, period, &archetype, &data_hash);
+    let root = merkle_root_for_leaves(&env, &[leaf.clone()]);
+    client.set_merkle_root(&period, &root);
+    let proof = merkle_proof_for_index(&env, &[leaf], 0);
+
+    client.claim_wrap(&user, &period, &archetype, &data_hash, &proof);
+    client.claim_wrap(&user, &period, &archetype, &data_hash, &proof);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #9)")]
+fn test_merkle_wrong_user_proof_fails() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let admin_pubkey = BytesN::from_array(&env, &[1u8; 32]);
+    let user_a = Address::generate(&env);
+    let user_b = Address::generate(&env);
+
+    client.initialize(&admin, &admin_pubkey);
+    env.mock_all_auths();
+
+    let period = 202512u64;
+    let archetype = symbol_short!("builder");
+    let hash_a = BytesN::from_array(&env, &[53u8; 32]);
+    let hash_b = BytesN::from_array(&env, &[54u8; 32]);
+
+    let leaf_a = compute_merkle_leaf(&env, &user_a, period, &archetype, &hash_a);
+    let leaf_b = compute_merkle_leaf(&env, &user_b, period, &archetype, &hash_b);
+    let root = merkle_root_for_leaves(&env, &[leaf_a.clone(), leaf_b.clone()]);
+    client.set_merkle_root(&period, &root);
+
+    let proof_for_a = merkle_proof_for_index(&env, &[leaf_a, leaf_b], 0);
+    client.claim_wrap(&user_b, &period, &archetype, &hash_b, &proof_for_a);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #9)")]
+fn test_merkle_wrong_period_proof_fails() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let admin_pubkey = BytesN::from_array(&env, &[1u8; 32]);
+    let user = Address::generate(&env);
+
+    client.initialize(&admin, &admin_pubkey);
+    env.mock_all_auths();
+
+    let archetype = symbol_short!("builder");
+    let data_hash = BytesN::from_array(&env, &[55u8; 32]);
+    let leaf_2024 = compute_merkle_leaf(&env, &user, 2024, &archetype, &data_hash);
+    let root = merkle_root_for_leaves(&env, &[leaf_2024.clone()]);
+    client.set_merkle_root(&2025, &root);
+
+    let proof = merkle_proof_for_index(&env, &[leaf_2024], 0);
+    client.claim_wrap(&user, &2025, &archetype, &data_hash, &proof);
+}
+
+// ─── Schema migration tests ─────────────────────────────────────────────────
+
+use crate::storage_types::{WrapRecordV1, SCHEMA_VERSION, SCHEMA_VERSION_V2};
+
+#[test]
+fn test_lazy_migration_v1_record_readable() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let admin_pubkey = BytesN::from_array(&env, &[1u8; 32]);
+    let user = Address::generate(&env);
+    client.initialize(&admin, &admin_pubkey);
+
+    let period = 2024u64;
+    let archetype = symbol_short!("arch");
+    let data_hash = BytesN::from_array(&env, &[70u8; 32]);
+
+    env.as_contract(&contract_id, || {
+        let wrap_key = DataKey::Wrap(user.clone(), period);
+        let v1 = WrapRecordV1 {
+            timestamp: 1000,
+            data_hash: data_hash.clone(),
+            archetype: archetype.clone(),
+            period,
+        };
+        env.storage().persistent().set(&wrap_key, &v1);
+        env.storage()
+            .instance()
+            .set(&DataKey::SchemaVersion, &SCHEMA_VERSION);
+    });
+
+    let wrap = client.get_wrap(&user, &period).unwrap();
+    assert_eq!(wrap.data_hash, data_hash);
+    assert_eq!(wrap.image_uri, String::from_str(&env, ""));
+}
+
+#[test]
+fn test_migrate_advances_schema_version() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let admin_pubkey = BytesN::from_array(&env, &[1u8; 32]);
+    client.initialize(&admin, &admin_pubkey);
+    env.mock_all_auths();
+
+    assert_eq!(client.get_schema_version(), SCHEMA_VERSION);
+    let new_version = client.migrate(&SCHEMA_VERSION, &SCHEMA_VERSION_V2);
+    assert_eq!(new_version, SCHEMA_VERSION_V2);
+    assert_eq!(client.get_schema_version(), SCHEMA_VERSION_V2);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #11)")]
+fn test_migrate_only_once_per_transition() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let admin_pubkey = BytesN::from_array(&env, &[1u8; 32]);
+    client.initialize(&admin, &admin_pubkey);
+    env.mock_all_auths();
+
+    client.migrate(&SCHEMA_VERSION, &SCHEMA_VERSION_V2);
+    client.migrate(&SCHEMA_VERSION, &SCHEMA_VERSION_V2);
+}
+
+#[test]
+fn test_migrate_emits_event_and_transforms_on_read() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let admin_pubkey = BytesN::from_array(&env, &[1u8; 32]);
+    let user = Address::generate(&env);
+    client.initialize(&admin, &admin_pubkey);
+    env.mock_all_auths();
+
+    let period = 2025u64;
+    env.as_contract(&contract_id, || {
+        let wrap_key = DataKey::Wrap(user.clone(), period);
+        let v1 = WrapRecordV1 {
+            timestamp: 2000,
+            data_hash: BytesN::from_array(&env, &[71u8; 32]),
+            archetype: symbol_short!("defi"),
+            period,
+        };
+        env.storage().persistent().set(&wrap_key, &v1);
+    });
+
+    client.migrate(&SCHEMA_VERSION, &SCHEMA_VERSION_V2);
+    let wrap = client.get_wrap(&user, &period).unwrap();
+    assert_eq!(wrap.period, period);
+    assert_eq!(wrap.image_uri, String::from_str(&env, ""));
+}
+
+// ─── Opt-out privacy tests ────────────────────────────────────────────────────
+
+#[test]
+fn test_opt_out_hides_wraps_opt_in_reveals() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let signing_key = SigningKey::from_bytes(&[60u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    client.initialize(&admin, &admin_pubkey);
+    env.mock_all_auths();
+
+    let period = 2025u64;
+    let archetype = symbol_short!("arch");
+    let hash = BytesN::from_array(&env, &[80u8; 32]);
+    let sig = sign_payload(&env, &signing_key, &contract_id, &user, period, &archetype, &hash);
+    client.mint_wrap(&user, &period, &archetype, &hash, &sig);
+
+    assert!(client.get_wrap(&user, &period).is_some());
+    assert!(!client.is_opted_out(&user));
+
+    client.opt_out(&user);
+    assert!(client.is_opted_out(&user));
+    assert!(client.get_wrap(&user, &period).is_none());
+    assert!(client.get_latest_wrap(&user).is_none());
+    assert_eq!(client.balance_of(&user), 1);
+
+    client.opt_in(&user);
+    assert!(!client.is_opted_out(&user));
+    assert!(client.get_wrap(&user, &period).is_some());
+}
+
+#[test]
+fn test_opt_out_verify_data_still_works() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let signing_key = SigningKey::from_bytes(&[61u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    client.initialize(&admin, &admin_pubkey);
+    env.mock_all_auths();
+
+    let data_json = Bytes::from_slice(&env, b"{\"score\":42}");
+    let data_hash_raw = env.crypto().sha256(&data_json);
+    let data_hash = BytesN::from_array(&env, &data_hash_raw.to_array());
+    let archetype = symbol_short!("arch");
+    let period = 2025u64;
+    let sig = sign_payload(&env, &signing_key, &contract_id, &user, period, &archetype, &data_hash);
+    client.mint_wrap(&user, &period, &archetype, &data_hash, &sig);
+
+    client.opt_out(&user);
+    assert!(client.verify_data(&user, &period, &data_json));
+}
+
+#[test]
+fn test_admin_can_revoke_opted_out_wrap() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let signing_key = SigningKey::from_bytes(&[62u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    client.initialize(&admin, &admin_pubkey);
+    env.mock_all_auths();
+
+    let period = 2025u64;
+    let archetype = symbol_short!("arch");
+    let hash = BytesN::from_array(&env, &[81u8; 32]);
+    let sig = sign_payload(&env, &signing_key, &contract_id, &user, period, &archetype, &hash);
+    client.mint_wrap(&user, &period, &archetype, &hash, &sig);
+
+    client.opt_out(&user);
+    client.revoke_wrap(&user, &period);
+    assert_eq!(client.balance_of(&user), 0);
 }

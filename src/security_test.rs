@@ -11,7 +11,7 @@ use soroban_sdk::{
     symbol_short,
     testutils::{Address as _, Ledger},
     xdr::ToXdr,
-    Address, Bytes, BytesN, Env,
+    Address, Bytes, BytesN, Env, Symbol,
 };
 
 /// Helper function to sign payloads for testing
@@ -604,4 +604,145 @@ fn test_non_admin_cannot_mint() {
 
     // This should panic because attacker is not authorized
     client.mint_wrap(&user, &period, &archetype, &data_hash, &signature);
+}
+
+// ─── Degenerate Ed25519 key/signature edge cases ────────────────────────────
+//
+// `ed25519_verify` is a host function; invalid keys/signatures panic with a
+// VM crypto error (not a `ContractError`). Expected: invocation aborts before
+// any wrap record is stored.
+
+/// All-zero pubkey (identity point) — invalid Ed25519 public key.
+/// Expected: VM crypto panic during `ed25519_verify`, no wrap stored.
+#[test]
+#[should_panic]
+fn test_mint_with_all_zero_pubkey_rejected() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let zero_pubkey = BytesN::from_array(&env, &[0u8; 32]);
+    let user = Address::generate(&env);
+
+    client.initialize(&admin, &zero_pubkey);
+    env.mock_all_auths();
+
+    let data_hash = BytesN::from_array(&env, &[42u8; 32]);
+    let archetype = symbol_short!("architect");
+    let period = 202512u64;
+    let signature = BytesN::from_array(&env, &[1u8; 64]);
+
+    client.mint_wrap(&user, &period, &archetype, &data_hash, &signature);
+}
+
+/// All-ones (0xFF) pubkey — invalid curve point.
+/// Expected: VM crypto panic during `ed25519_verify`.
+#[test]
+#[should_panic]
+fn test_mint_with_all_ones_pubkey_rejected() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let ones_pubkey = BytesN::from_array(&env, &[0xff; 32]);
+    let user = Address::generate(&env);
+
+    client.initialize(&admin, &ones_pubkey);
+    env.mock_all_auths();
+
+    let data_hash = BytesN::from_array(&env, &[42u8; 32]);
+    let archetype = symbol_short!("architect");
+    let period = 202512u64;
+    let signature = BytesN::from_array(&env, &[1u8; 64]);
+
+    client.mint_wrap(&user, &period, &archetype, &data_hash, &signature);
+}
+
+/// Valid pubkey but all-zero signature.
+/// Expected: VM crypto panic during `ed25519_verify`.
+#[test]
+#[should_panic]
+fn test_mint_with_all_zero_signature_rejected() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let signing_key = SigningKey::from_bytes(&[1u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    client.initialize(&admin, &admin_pubkey);
+    env.mock_all_auths();
+
+    let data_hash = BytesN::from_array(&env, &[42u8; 32]);
+    let archetype = symbol_short!("architect");
+    let period = 202512u64;
+    let zero_sig = BytesN::from_array(&env, &[0u8; 64]);
+
+    client.mint_wrap(&user, &period, &archetype, &data_hash, &zero_sig);
+}
+
+/// Valid pubkey but all-ones (0xFF) signature.
+/// Expected: VM crypto panic during `ed25519_verify`.
+#[test]
+#[should_panic]
+fn test_mint_with_all_ones_signature_rejected() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let signing_key = SigningKey::from_bytes(&[1u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    client.initialize(&admin, &admin_pubkey);
+    env.mock_all_auths();
+
+    let data_hash = BytesN::from_array(&env, &[42u8; 32]);
+    let archetype = symbol_short!("architect");
+    let period = 202512u64;
+    let ones_sig = BytesN::from_array(&env, &[0xff; 64]);
+
+    client.mint_wrap(&user, &period, &archetype, &data_hash, &ones_sig);
+}
+
+/// Valid pubkey but single-bit tampered signature.
+/// Expected: VM crypto panic during `ed25519_verify`.
+#[test]
+#[should_panic]
+fn test_mint_with_tampered_signature_rejected() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let signing_key = SigningKey::from_bytes(&[1u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    client.initialize(&admin, &admin_pubkey);
+    env.mock_all_auths();
+
+    let data_hash = BytesN::from_array(&env, &[42u8; 32]);
+    let archetype = symbol_short!("architect");
+    let period = 202512u64;
+
+    let mut sig_bytes = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user,
+        period,
+        &archetype,
+        &data_hash,
+    )
+    .to_array();
+    sig_bytes[0] ^= 0x01;
+    let tampered_sig = BytesN::from_array(&env, &sig_bytes);
+
+    client.mint_wrap(&user, &period, &archetype, &data_hash, &tampered_sig);
 }

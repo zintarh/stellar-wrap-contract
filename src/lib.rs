@@ -5,8 +5,12 @@ use soroban_sdk::{
     Bytes, BytesN, Env, String, Symbol,
 };
 
+mod merkle;
 mod storage_types;
-use storage_types::{ContractInfo, DataKey, WrapRecord};
+use merkle::{compute_merkle_leaf, verify_merkle_proof};
+use storage_types::{
+    ContractInfo, DataKey, WrapRecord, WrapRecordV1, SCHEMA_VERSION, SCHEMA_VERSION_V2,
+};
 
 soroban_sdk::contractmeta!(
     key = "Description",
@@ -35,6 +39,14 @@ pub enum ContractError {
     InvalidSignature = 6,
     /// `data_hash` is all-zero bytes, which indicates missing or invalid data. (code 7)
     InvalidDataHash = 7,
+    /// No merkle root has been published for this period. (code 8)
+    MerkleRootNotSet = 8,
+    /// The provided merkle proof does not verify against the stored root. (code 9)
+    InvalidMerkleProof = 9,
+    /// This `(user, period)` merkle claim has already been redeemed. (code 10)
+    MerkleAlreadyClaimed = 10,
+    /// `migrate()` was called with invalid version parameters. (code 11)
+    InvalidMigration = 11,
 }
 
 #[contract]
@@ -59,6 +71,9 @@ impl StellarWrapContract {
         e.storage()
             .instance()
             .set(&DataKey::AdminPubKey, &admin_pubkey);
+        e.storage()
+            .instance()
+            .set(&DataKey::SchemaVersion, &SCHEMA_VERSION);
     }
 
     /// Replace the current admin with a new address.
@@ -170,16 +185,245 @@ impl StellarWrapContract {
             data_hash,
             archetype: archetype.clone(),
             period,
+            image_uri: String::from_str(&e, ""),
         };
 
-        // Store in persistent and extend TTL to ~1 year
+        Self::persist_wrap_record(&e, user.clone(), period, record, archetype);
+
+        e.storage().temporary().remove(&guard_key);
+    }
+    /// Publish a merkle root for batch wrap claims in a given period (admin-only).
+    ///
+    /// Off-chain, build a binary merkle tree over leaves defined as:
+    /// `SHA-256(XDR(user) ‖ XDR(period) ‖ XDR(archetype) ‖ XDR(data_hash))`.
+    /// Internal nodes use `SHA-256(min(h1,h2) ‖ max(h1,h2))` (lexicographic order).
+    pub fn set_merkle_root(e: Env, period: u64, root: BytesN<32>) {
+        let admin: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
+        admin.require_auth();
+
+        e.storage()
+            .instance()
+            .set(&DataKey::MerkleRoot(period), &root);
+
+        e.events()
+            .publish((symbol_short!("merkle"), symbol_short!("root"), period), root);
+    }
+
+    /// Claim a wrap using a merkle proof against a published root for `period`.
+    ///
+    /// Requires `user.require_auth()`. Produces the same `WrapRecord` and `mint` event as
+    /// `mint_wrap`, without an admin signature per claim.
+    pub fn claim_wrap(
+        e: Env,
+        user: Address,
+        period: u64,
+        archetype: Symbol,
+        data_hash: BytesN<32>,
+        proof: soroban_sdk::Vec<BytesN<32>>,
+    ) {
+        user.require_auth();
+
+        let guard_key = DataKey::MintGuard(user.clone());
+        if e.storage().temporary().has(&guard_key) {
+            panic_with_error!(e, ContractError::Unauthorized);
+        }
+        e.storage().temporary().set(&guard_key, &true);
+
+        e.storage()
+            .instance()
+            .get::<_, Address>(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
+
+        if data_hash == BytesN::from_array(&e, &[0u8; 32]) {
+            panic_with_error!(e, ContractError::InvalidDataHash);
+        }
+
+        let root: BytesN<32> = e
+            .storage()
+            .instance()
+            .get(&DataKey::MerkleRoot(period))
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::MerkleRootNotSet));
+
+        let leaf = compute_merkle_leaf(&e, &user, period, &archetype, &data_hash);
+        if !verify_merkle_proof(&e, &root, &leaf, &proof) {
+            panic_with_error!(e, ContractError::InvalidMerkleProof);
+        }
+
+        let claim_key = DataKey::MerkleClaimed(user.clone(), period);
+        if e.storage().persistent().has(&claim_key) {
+            panic_with_error!(e, ContractError::MerkleAlreadyClaimed);
+        }
+
+        let wrap_key = DataKey::Wrap(user.clone(), period);
+        if e.storage().persistent().has(&wrap_key) {
+            panic_with_error!(e, ContractError::WrapAlreadyExists);
+        }
+
+        let record = WrapRecord {
+            timestamp: e.ledger().timestamp(),
+            data_hash,
+            archetype: archetype.clone(),
+            period,
+            image_uri: String::from_str(&e, ""),
+        };
+
         let ttl_one_year = 17280 * 365;
-        e.storage().persistent().set(&wrap_key, &record);
+        e.storage().persistent().set(&claim_key, &true);
+        e.storage()
+            .persistent()
+            .extend_ttl(&claim_key, ttl_one_year, ttl_one_year);
+
+        Self::persist_wrap_record(&e, user.clone(), period, record, archetype);
+
+        e.storage().temporary().remove(&guard_key);
+    }
+
+    /// Run a one-shot schema migration after a WASM upgrade (admin-only).
+    ///
+    /// Records are lazily upgraded on read via `get_wrap`. This function advances
+    /// `SchemaVersion` and may only be called once per version transition.
+    pub fn migrate(e: Env, from_version: u32, to_version: u32) -> u32 {
+        let admin: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
+        admin.require_auth();
+
+        let current: u32 = e
+            .storage()
+            .instance()
+            .get(&DataKey::SchemaVersion)
+            .unwrap_or(SCHEMA_VERSION);
+
+        if current != from_version || to_version != from_version + 1 {
+            panic_with_error!(e, ContractError::InvalidMigration);
+        }
+
+        e.storage()
+            .instance()
+            .set(&DataKey::SchemaVersion, &to_version);
+
+        e.events().publish(
+            (symbol_short!("schema"), symbol_short!("migrat")),
+            (from_version, to_version),
+        );
+
+        to_version
+    }
+
+    /// Return the current storage schema version.
+    pub fn get_schema_version(e: Env) -> u32 {
+        e.storage()
+            .instance()
+            .get(&DataKey::SchemaVersion)
+            .unwrap_or(SCHEMA_VERSION)
+    }
+
+    /// Hide all wrap records for `user` from public queries (`get_wrap`, `get_latest_wrap`).
+    pub fn opt_out(e: Env, user: Address) {
+        user.require_auth();
+        e.storage()
+            .instance()
+            .get::<_, Address>(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
+
+        let ttl_one_year = 17280 * 365;
+        e.storage()
+            .persistent()
+            .set(&DataKey::UserOptOut(user.clone()), &true);
+        e.storage().persistent().extend_ttl(
+            &DataKey::UserOptOut(user.clone()),
+            ttl_one_year,
+            ttl_one_year,
+        );
+
+        e.events()
+            .publish((symbol_short!("opt_out"), user), true);
+    }
+
+    /// Re-enable public visibility of wrap records for `user`.
+    pub fn opt_in(e: Env, user: Address) {
+        user.require_auth();
+        e.storage()
+            .instance()
+            .get::<_, Address>(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
+
+        e.storage().persistent().remove(&DataKey::UserOptOut(user.clone()));
+
+        e.events()
+            .publish((symbol_short!("opt_in"), user), true);
+    }
+
+    /// Return whether `user` has opted out of public wrap visibility.
+    pub fn is_opted_out(e: Env, user: Address) -> bool {
+        e.storage()
+            .persistent()
+            .get(&DataKey::UserOptOut(user))
+            .unwrap_or(false)
+    }
+
+    fn schema_version(e: &Env) -> u32 {
+        e.storage()
+            .instance()
+            .get(&DataKey::SchemaVersion)
+            .unwrap_or(SCHEMA_VERSION)
+    }
+
+    fn v1_to_v2(e: &Env, v1: &WrapRecordV1) -> WrapRecord {
+        WrapRecord {
+            timestamp: v1.timestamp,
+            data_hash: v1.data_hash.clone(),
+            archetype: v1.archetype.clone(),
+            period: v1.period,
+            image_uri: String::from_str(e, ""),
+        }
+    }
+
+    fn migrate_v1_record(e: &Env, user: &Address, period: u64, v1: WrapRecordV1) -> WrapRecord {
+        let migrated = Self::v1_to_v2(e, &v1);
+        let wrap_key = DataKey::Wrap(user.clone(), period);
+        let ttl_one_year = 17280 * 365;
+        e.storage().persistent().set(&wrap_key, &migrated);
+        e.storage()
+            .persistent()
+            .extend_ttl(&wrap_key, ttl_one_year, ttl_one_year);
+        e.events().publish(
+            (symbol_short!("migrat"), user.clone(), period),
+            v1.archetype,
+        );
+        migrated
+    }
+
+    fn persist_wrap_record(
+        e: &Env,
+        user: Address,
+        period: u64,
+        record: WrapRecord,
+        archetype: Symbol,
+    ) {
+        let wrap_key = DataKey::Wrap(user.clone(), period);
+        let ttl_one_year = 17280 * 365;
+        if Self::schema_version(e) < SCHEMA_VERSION_V2 {
+            let v1 = WrapRecordV1 {
+                timestamp: record.timestamp,
+                data_hash: record.data_hash,
+                archetype: record.archetype.clone(),
+                period: record.period,
+            };
+            e.storage().persistent().set(&wrap_key, &v1);
+        } else {
+            e.storage().persistent().set(&wrap_key, &record);
+        }
         e.storage()
             .persistent()
             .extend_ttl(&wrap_key, ttl_one_year, ttl_one_year);
 
-        // 7. Update Balance
         let count_key = DataKey::WrapCount(user.clone());
         let current_count: u32 = e.storage().persistent().get(&count_key).unwrap_or(0);
         e.storage()
@@ -189,7 +433,6 @@ impl StellarWrapContract {
             .persistent()
             .extend_ttl(&count_key, ttl_one_year, ttl_one_year);
 
-        // 7b. Track latest period for get_latest_wrap
         let latest_key = DataKey::LatestPeriod(user.clone());
         let current_latest: u64 = e.storage().persistent().get(&latest_key).unwrap_or(0);
         if period > current_latest {
@@ -199,12 +442,35 @@ impl StellarWrapContract {
                 .extend_ttl(&latest_key, ttl_one_year, ttl_one_year);
         }
 
-        // Clear guard on successful completion.
-        e.storage().temporary().remove(&guard_key);
-
-        // 8. Emit Event
         e.events()
             .publish((symbol_short!("mint"), user, period), archetype);
+    }
+
+    fn load_wrap_record(e: &Env, user: &Address, period: u64) -> Option<WrapRecord> {
+        let wrap_key = DataKey::Wrap(user.clone(), period);
+        let schema = Self::schema_version(e);
+
+        if schema < SCHEMA_VERSION_V2 {
+            return e
+                .storage()
+                .persistent()
+                .get::<_, WrapRecordV1>(&wrap_key)
+                .map(|v1| Self::v1_to_v2(e, &v1));
+        }
+
+        // After migration, unread v1 records must be tried before v2 deserialization.
+        if let Some(v1) = e.storage().persistent().get::<_, WrapRecordV1>(&wrap_key) {
+            return Some(Self::migrate_v1_record(e, user, period, v1));
+        }
+
+        e.storage().persistent().get::<_, WrapRecord>(&wrap_key)
+    }
+
+    fn user_is_opted_out(e: &Env, user: &Address) -> bool {
+        e.storage()
+            .persistent()
+            .get(&DataKey::UserOptOut(user.clone()))
+            .unwrap_or(false)
     }
 
     /// Update an existing wrap record's data_hash and archetype (admin-only).
@@ -263,10 +529,7 @@ impl StellarWrapContract {
             .ed25519_verify(&admin_pubkey, &payload, &signature);
 
         let wrap_key = DataKey::Wrap(user.clone(), period);
-        let existing: WrapRecord = e
-            .storage()
-            .persistent()
-            .get(&wrap_key)
+        let existing: WrapRecord = Self::load_wrap_record(&e, &user, period)
             .unwrap_or_else(|| panic_with_error!(e, ContractError::WrapNotFound));
 
         let updated = WrapRecord {
@@ -274,10 +537,21 @@ impl StellarWrapContract {
             data_hash: new_data_hash,
             archetype: new_archetype.clone(),
             period,
+            image_uri: existing.image_uri,
         };
 
         let ttl_one_year = 17280 * 365;
-        e.storage().persistent().set(&wrap_key, &updated);
+        if Self::schema_version(&e) < SCHEMA_VERSION_V2 {
+            let v1 = WrapRecordV1 {
+                timestamp: updated.timestamp,
+                data_hash: updated.data_hash.clone(),
+                archetype: updated.archetype.clone(),
+                period: updated.period,
+            };
+            e.storage().persistent().set(&wrap_key, &v1);
+        } else {
+            e.storage().persistent().set(&wrap_key, &updated);
+        }
         e.storage()
             .persistent()
             .extend_ttl(&wrap_key, ttl_one_year, ttl_one_year);
@@ -325,7 +599,10 @@ impl StellarWrapContract {
     /// # Returns
     /// `Some(WrapRecord)` if a record exists, `None` otherwise.
     pub fn get_wrap(e: Env, user: Address, period: u64) -> Option<WrapRecord> {
-        e.storage().persistent().get(&DataKey::Wrap(user, period))
+        if Self::user_is_opted_out(&e, &user) {
+            return None;
+        }
+        Self::load_wrap_record(&e, &user, period)
     }
 
     /// Return the total number of wrap records minted for a user (their SBT balance).
@@ -357,8 +634,7 @@ impl StellarWrapContract {
     /// # Returns
     /// `true` if the hash matches, `false` if it does not or if no record exists.
     pub fn verify_data(e: Env, user: Address, period: u64, data: Bytes) -> bool {
-        let wrap: Option<WrapRecord> = e.storage().persistent().get(&DataKey::Wrap(user, period));
-        match wrap {
+        match Self::load_wrap_record(&e, &user, period) {
             Some(record) => {
                 let computed_hash = e.crypto().sha256(&data);
                 record.data_hash == BytesN::from_array(&e, &computed_hash.to_array())
@@ -375,9 +651,12 @@ impl StellarWrapContract {
     /// # Returns
     /// `Some(WrapRecord)` for the latest period, or `None` if the user has no wraps.
     pub fn get_latest_wrap(e: Env, user: Address) -> Option<WrapRecord> {
+        if Self::user_is_opted_out(&e, &user) {
+            return None;
+        }
         let latest_key = DataKey::LatestPeriod(user.clone());
         let period: u64 = e.storage().persistent().get(&latest_key)?;
-        e.storage().persistent().get(&DataKey::Wrap(user, period))
+        Self::load_wrap_record(&e, &user, period)
     }
 
     /// Extend the TTL (time-to-live) for all persistent storage entries belonging to a user.

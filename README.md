@@ -142,6 +142,51 @@ The contract supports in-place WASM upgrades via Soroban's `update_current_contr
 
 Only the admin address can trigger an upgrade. Any call without valid admin authorization will be rejected.
 
+### Storage Schema Migration (v1 → v2)
+
+Schema version is stored in instance storage (`DataKey::SchemaVersion`). `initialize()` sets version `1`. After deploying upgraded WASM that adds the `image_uri` field to `WrapRecord`, the admin must call:
+
+```
+migrate(from_version=1, to_version=2)
+```
+
+**Procedure:**
+1. Upload and deploy new WASM via `upgrade(new_wasm_hash)`.
+2. Call `migrate(1, 2)` once — requires admin auth. Emits a `(schema, migrat)` event.
+3. Verify `get_schema_version()` returns `2`.
+4. Existing v1 records are **lazily migrated** on first `get_wrap` read: upgraded in storage and a `(migrat, user, period)` event is emitted.
+
+`migrate()` is guarded — it only succeeds when the stored version equals `from_version` and `to_version == from_version + 1`. A second call with the same transition panics with `InvalidMigration` (#11).
+
+While schema version is `1`, new mints are stored in v1 format. After migration, new mints use v2 format (`image_uri` included).
+
+### Merkle Batch Claims
+
+For large airdrops, the admin publishes a single merkle root per period instead of signing each mint:
+
+1. **Off-chain:** Build a binary merkle tree over claim leaves (see `scripts/merkle.ts`).
+2. **On-chain:** Admin calls `set_merkle_root(period, root)`.
+3. **Claim:** Each user calls `claim_wrap(user, period, archetype, data_hash, proof)` with `user.require_auth()`.
+
+**Leaf encoding** (must match contract `compute_merkle_leaf`):
+
+```
+leaf = SHA-256( XDR(user) ‖ XDR(period) ‖ XDR(archetype) ‖ XDR(data_hash) )
+```
+
+**Internal nodes:** `SHA-256( min(left,right) ‖ max(left,right) )` (32-byte hashes, lexicographic order).
+
+Double-claims are prevented via `MerkleClaimed(user, period)`. Claims produce the same `WrapRecord` and `(mint, user, period)` event as `mint_wrap`.
+
+### User Privacy Opt-Out
+
+Users may hide their wraps from public queries without deleting soulbound records:
+
+- `opt_out(user)` — requires user auth; `get_wrap` / `get_latest_wrap` return `None`
+- `opt_in(user)` — restores visibility
+- `balance_of` and `verify_data` remain functional for composability
+- Admin `revoke_wrap` still works on opted-out users
+
 ---
 
 ## 📊 Design Decision: On-Chain `WrapCount` and `balance_of`
