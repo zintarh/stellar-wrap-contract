@@ -116,6 +116,121 @@ fn test_mint_emits_event() {
 }
 
 #[test]
+fn test_streak_after_first_mint_is_one() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let signing_key = SigningKey::from_bytes(&[13u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    client.initialize(&admin, &admin_pubkey);
+    env.mock_all_auths();
+
+    let period = 202402u64;
+    let archetype = symbol_short!("arch");
+    let hash = BytesN::from_array(&env, &[1u8; 32]);
+    let signature = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user,
+        period,
+        &archetype,
+        &hash,
+    );
+
+    client.mint_wrap(&user, &period, &archetype, &hash, &signature);
+    assert_eq!(client.get_streak(&user), 1);
+}
+
+#[test]
+fn test_streak_increments_for_consecutive_months_and_year_boundary() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let signing_key = SigningKey::from_bytes(&[14u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    client.initialize(&admin, &admin_pubkey);
+    env.mock_all_auths();
+
+    let archetype = symbol_short!("arch");
+    let hash = BytesN::from_array(&env, &[2u8; 32]);
+
+    let signature_1 = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user,
+        202412u64,
+        &archetype,
+        &hash,
+    );
+    client.mint_wrap(&user, &202412u64, &archetype, &hash, &signature_1);
+    assert_eq!(client.get_streak(&user), 1);
+
+    let signature_2 = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user,
+        202501u64,
+        &archetype,
+        &hash,
+    );
+    client.mint_wrap(&user, &202501u64, &archetype, &hash, &signature_2);
+    assert_eq!(client.get_streak(&user), 2);
+}
+
+#[test]
+fn test_streak_resets_after_gap() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let signing_key = SigningKey::from_bytes(&[15u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    client.initialize(&admin, &admin_pubkey);
+    env.mock_all_auths();
+
+    let archetype = symbol_short!("arch");
+    let hash = BytesN::from_array(&env, &[3u8; 32]);
+
+    let signature_1 = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user,
+        202501u64,
+        &archetype,
+        &hash,
+    );
+    client.mint_wrap(&user, &202501u64, &archetype, &hash, &signature_1);
+    assert_eq!(client.get_streak(&user), 1);
+
+    let signature_2 = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user,
+        202503u64,
+        &archetype,
+        &hash,
+    );
+    client.mint_wrap(&user, &202503u64, &archetype, &hash, &signature_2);
+    assert_eq!(client.get_streak(&user), 1);
+}
+
+#[test]
 fn test_balance_of_and_count() {
     let env = Env::default();
     let contract_id = env.register_contract(None, StellarWrapContract);
