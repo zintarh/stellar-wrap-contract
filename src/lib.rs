@@ -47,7 +47,10 @@ pub enum ContractError {
     MerkleAlreadyClaimed = 10,
     /// `migrate()` was called with invalid version parameters. (code 11)
     InvalidMigration = 11,
+    /// Storage deposit/budget exceeded (code 12)
+    StorageDepositExceeded = 12,
 }
+
 
 #[contract]
 pub struct StellarWrapContract;
@@ -101,6 +104,65 @@ impl StellarWrapContract {
             (current_admin, new_admin),
         );
     }
+
+    /// Charge storage deposit units for a user before performing a persistent write.
+    ///
+    /// This is a lightweight DoS prevention mechanism: without it, an attacker can
+    /// spam unique `(user, period)` keys to exhaust the contract's storage.
+    ///
+    /// The contract uses “deposit units” rather than trying to measure real
+    /// Soroban storage cost.
+    fn charge_storage_or_panic(e: &Env, user: &Address, amount: u64) {
+        let total_budget: u64 = e
+            .storage()
+            .instance()
+            .get(&DataKey::StorageBudgetTotal)
+            .unwrap_or(0);
+        let per_user_budget: u64 = e
+            .storage()
+            .instance()
+            .get(&DataKey::StorageBudgetPerUser)
+            .unwrap_or(0);
+
+        // If budgets are unset/zero, treat as unlimited (backwards-compatible).
+        if total_budget == 0 && per_user_budget == 0 {
+            return;
+        }
+
+        let total_used: u64 = e
+            .storage()
+            .instance()
+            .get(&DataKey::StorageDepositTotalUsed)
+            .unwrap_or(0);
+
+        let user_used: u64 = e
+            .storage()
+            .persistent()
+            .get::<_, u64>(&DataKey::StorageDepositUsed(user.clone()))
+            .unwrap_or(0);
+
+        let new_total = total_used.saturating_add(amount);
+        let new_user = user_used.saturating_add(amount);
+
+        if total_budget != 0 && new_total > total_budget {
+            panic_with_error!(e, ContractError::StorageDepositExceeded);
+        }
+        if per_user_budget != 0 && new_user > per_user_budget {
+            panic_with_error!(e, ContractError::StorageDepositExceeded);
+        }
+
+        if total_budget != 0 {
+            e.storage()
+                .instance()
+                .set(&DataKey::StorageDepositTotalUsed, &new_total);
+        }
+        if per_user_budget != 0 {
+            e.storage()
+                .persistent()
+                .set(&DataKey::StorageDepositUsed(user.clone()), &new_user);
+        }
+    }
+
 
     /// Mint a soulbound wrap record for a user.
     ///
@@ -180,7 +242,14 @@ impl StellarWrapContract {
             panic_with_error!(e, ContractError::WrapAlreadyExists);
         }
 
+        // DoS protection: charge before any new persistent writes.
+        // We conservatively charge 3 units for the new persistent keys that
+        // `persist_wrap_record` would add/update.
+        Self::charge_storage_or_panic(&e, &user, 3);
+
+
         let record = WrapRecord {
+
             timestamp: e.ledger().timestamp(),
             data_hash,
             archetype: archetype.clone(),
@@ -225,6 +294,7 @@ impl StellarWrapContract {
         data_hash: BytesN<32>,
         proof: soroban_sdk::Vec<BytesN<32>>,
     ) {
+
         user.require_auth();
 
         let guard_key = DataKey::MintGuard(user.clone());
@@ -272,12 +342,17 @@ impl StellarWrapContract {
         };
 
         let ttl_one_year = 17280 * 365;
+        // DoS protection: charge before any new persistent writes.
+        // Claiming adds MerkleClaimed + Wrap + aux counters.
+        Self::charge_storage_or_panic(&e, &user, 3);
+
         e.storage().persistent().set(&claim_key, &true);
         e.storage()
             .persistent()
             .extend_ttl(&claim_key, ttl_one_year, ttl_one_year);
 
         Self::persist_wrap_record(&e, user.clone(), period, record, archetype);
+
 
         e.storage().temporary().remove(&guard_key);
     }

@@ -39,6 +39,22 @@ pub enum DataKey {
     AdminPubKey,
     /// Current storage schema version (instance storage)
     SchemaVersion,
+
+    // ─── Storage deposit / DoS protection ────────────────────────────────
+    /// Global storage budget (in arbitrary “deposit units”).
+    /// When the contract’s total charged units exceed this value, further
+    /// persistent writes that would increase deposits are rejected.
+    StorageBudgetTotal,
+
+    /// Per-user storage budget (in arbitrary “deposit units”).
+    StorageBudgetPerUser,
+
+    /// Tracks total charged deposit units for the contract.
+    StorageDepositTotalUsed,
+
+    /// Tracks charged deposit units for a specific user.
+    StorageDepositUsed(Address),
+
     /// Stores individual WrapRecords (mapped by User and Period)
     /// Using u64 for period ensures consistent indexing
     Wrap(Address, u64),
@@ -60,3 +76,4 @@ pub enum DataKey {
 pub const SCHEMA_VERSION: u32 = 1;
 /// Target schema version after v1 → v2 migration (`image_uri` field).
 pub const SCHEMA_VERSION_V2: u32 = 2;
+
