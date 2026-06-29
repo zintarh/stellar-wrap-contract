@@ -668,6 +668,27 @@ impl StellarWrapContract {
         }
     }
 
+    /// Lightweight existence check — returns `true` if a wrap record exists for
+    /// `(user, period)`, `false` otherwise.
+    ///
+    /// This is cheaper than `get_wrap()` for callers that only need to know whether
+    /// a wrap exists, because it performs a single persistent-storage `has()` probe
+    /// without deserializing the full `WrapRecord`.
+    ///
+    /// # Parameters
+    /// - `user`: The address to check.
+    /// - `period`: The period identifier to look up.
+    ///
+    /// # Returns
+    /// `true` if a `WrapRecord` is stored for `(user, period)`, `false` otherwise.
+    /// Note: this returns `true` even when the user has opted out of visibility —
+    /// use `get_wrap()` when you need to respect opt-out status.
+    pub fn has_wrap(e: Env, user: Address, period: u64) -> bool {
+        e.storage()
+            .persistent()
+            .has(&DataKey::Wrap(user, period))
+    }
+
             }
             None => false,
         }

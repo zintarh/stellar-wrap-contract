@@ -1845,3 +1845,172 @@ fn test_update_wrap_zero_hash_rejected() {
     env.mock_all_auths();
     register_test_archetypes(&client);
 
+
+// ─── Issue #53: has_wrap() tests ────────────────────────────────────────────
+
+/// has_wrap() returns false before any wrap is minted for a user+period pair.
+#[test]
+fn test_has_wrap_returns_false_before_mint() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let pubkey = BytesN::from_array(&env, &[60u8; 32]);
+    client.initialize(&admin, &pubkey);
+
+    let user = Address::generate(&env);
+    let period = 202406u64;
+
+    assert!(!client.has_wrap(&user, &period));
+}
+
+/// has_wrap() returns true after a successful mint for the same user+period.
+#[test]
+fn test_has_wrap_returns_true_after_mint() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let signing_key = SigningKey::from_bytes(&[61u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    client.initialize(&admin, &admin_pubkey);
+    env.mock_all_auths();
+    register_test_archetypes(&client);
+
+    let period = 202406u64;
+    let archetype = symbol_short!("arch");
+    let data_hash = BytesN::from_array(&env, &[61u8; 32]);
+    let signature = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user,
+        period,
+        &archetype,
+        &data_hash,
+        u32::MAX,
+    );
+
+    // Before mint: should not exist.
+    assert!(!client.has_wrap(&user, &period));
+
+    client.mint_wrap(&user, &period, &archetype, &data_hash, &signature);
+
+    // After mint: must exist.
+    assert!(client.has_wrap(&user, &period));
+}
+
+/// has_wrap() is period-scoped: true for minted period, false for different period.
+#[test]
+fn test_has_wrap_is_scoped_to_period() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let signing_key = SigningKey::from_bytes(&[62u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    client.initialize(&admin, &admin_pubkey);
+    env.mock_all_auths();
+    register_test_archetypes(&client);
+
+    let period_a = 202406u64;
+    let period_b = 202407u64;
+    let archetype = symbol_short!("arch");
+    let data_hash = BytesN::from_array(&env, &[62u8; 32]);
+    let signature = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user,
+        period_a,
+        &archetype,
+        &data_hash,
+        u32::MAX,
+    );
+
+    client.mint_wrap(&user, &period_a, &archetype, &data_hash, &signature);
+
+    assert!(client.has_wrap(&user, &period_a));
+    assert!(!client.has_wrap(&user, &period_b));
+}
+
+/// has_wrap() returns false after the wrap is revoked.
+#[test]
+fn test_has_wrap_returns_false_after_revoke() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let signing_key = SigningKey::from_bytes(&[63u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    client.initialize(&admin, &admin_pubkey);
+    env.mock_all_auths();
+    register_test_archetypes(&client);
+
+    let period = 202406u64;
+    let archetype = symbol_short!("arch");
+    let data_hash = BytesN::from_array(&env, &[63u8; 32]);
+    let signature = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user,
+        period,
+        &archetype,
+        &data_hash,
+        u32::MAX,
+    );
+
+    client.mint_wrap(&user, &period, &archetype, &data_hash, &signature);
+    assert!(client.has_wrap(&user, &period));
+
+    client.revoke_wrap(&user, &period);
+    assert!(!client.has_wrap(&user, &period));
+}
+
+/// has_wrap() is user-scoped: true for user A, false for user B on same period.
+#[test]
+fn test_has_wrap_is_scoped_to_user() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let signing_key = SigningKey::from_bytes(&[64u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+    let admin = Address::generate(&env);
+    let user_a = Address::generate(&env);
+    let user_b = Address::generate(&env);
+
+    client.initialize(&admin, &admin_pubkey);
+    env.mock_all_auths();
+    register_test_archetypes(&client);
+
+    let period = 202406u64;
+    let archetype = symbol_short!("arch");
+    let data_hash = BytesN::from_array(&env, &[64u8; 32]);
+    let signature = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user_a,
+        period,
+        &archetype,
+        &data_hash,
+        u32::MAX,
+    );
+
+    client.mint_wrap(&user_a, &period, &archetype, &data_hash, &signature);
+
+    assert!(client.has_wrap(&user_a, &period));
+    assert!(!client.has_wrap(&user_b, &period));
+}

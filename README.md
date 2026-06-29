@@ -529,3 +529,63 @@ Every deployment writes `contract-id.txt` as a GitHub Actions artifact and adds 
 
 ### Error Codes
 
+
+
+## Manual Testnet Integration Test
+
+All unit tests use `Env::default()` (mock environment). The script
+`tests/integration_testnet.sh` provides an end-to-end smoke test that deploys
+the contract to a real Stellar testnet node, calls every major entry point, and
+verifies the results.
+
+> **Not run in CI by default.** Run this manually before a mainnet deployment or
+> after significant changes to the contract.
+
+### Prerequisites
+
+- Stellar CLI installed — see [developers.stellar.org](https://developers.stellar.org/docs/tools/stellar-cli)
+- A funded Stellar testnet keypair (`stellar keys generate --network testnet`)
+- Rust with the `wasm32-unknown-unknown` target
+
+### Running the script
+
+```bash
+# Required
+export STELLAR_DEPLOYER_SECRET=SXXXXXXX...       # funded testnet secret key
+export STELLAR_ADMIN_PUBKEY=aabbccdd...          # 64-hex Ed25519 public key
+
+# Optional: provide a real admin Ed25519 signature to test the full mint path
+export STELLAR_MINT_SIGNATURE=<128-hex sig>      # sign the canonical payload
+
+bash tests/integration_testnet.sh
+```
+
+### What it does
+
+| Step | Action | Verified |
+|------|--------|---------|
+| 1 | `cargo build --release --target wasm32-unknown-unknown` | WASM artifact exists |
+| 2 | `stellar contract deploy` | Contract ID returned |
+| 3 | `initialize(admin, admin_pubkey)` | No error |
+| 4 | `add_archetype` + `mint_wrap` (when signature provided) | No error |
+| 5 | `get_wrap(user, period)` | Returns `WrapRecord` |
+| 6 | `has_wrap(user, period)` | Returns `true` |
+| 7 | `balance_of(user)` | Returns `1` |
+| 8 | Cleanup local contract-id file | File removed |
+
+### Environment variables
+
+| Variable | Required | Description |
+|---|---|---|
+| `STELLAR_DEPLOYER_SECRET` | Yes | Secret key for the funded deployer account |
+| `STELLAR_ADMIN_PUBKEY` | Yes | 64-hex Ed25519 public key passed to `initialize()` |
+| `STELLAR_MINT_SIGNATURE` | No | 128-hex Ed25519 signature for the mint step |
+| `STELLAR_NETWORK` | No | Network name; defaults to `testnet` |
+| `SKIP_MINT` | No | Set to `1` to skip the mint + query steps |
+| `KEEP_CONTRACT` | No | Set to `1` to leave the contract on testnet after the run |
+
+### Cleanup note
+
+Soroban does not support on-chain contract deletion. Deployed testnet contracts
+expire naturally via ledger TTL. Set `KEEP_CONTRACT=1` if you want to reuse the
+same contract for follow-up tests.
