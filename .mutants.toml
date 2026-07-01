@@ -1,0 +1,29 @@
+# Mutation testing configuration for cargo-mutants
+#
+# Reference: https://github.com/sourcefrog/cargo-mutants
+
+# Exclude test files from mutation — mutating test code is not useful
+# and would produce false positives.
+exclude_files = [
+    "src/test.rs",
+    "src/security_test.rs",
+]
+
+# Exclude generated code directories
+exclude_dirs = [
+    "target",
+]
+
+# Only mutate source files in src/ (exclude build scripts, CI config, etc.)
+include_paths = ["src/"]
+
+# Test timeout per mutant (seconds)
+# Soroban contract tests can be slow; 120s prevents hangs from infinite loops
+test_timeout = 120
+
+# Run tests in a single thread to avoid flaky failures from shared state
+test_flags = ["--test-threads=1"]
+
+# Do not fail fast — continue testing remaining mutants even if some fail
+# This ensures we get a complete mutation report in a single CI run
+no_fail_fast = true

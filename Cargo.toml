@@ -11,11 +11,21 @@ path = "src/lib.rs"
 soroban-sdk = "21.7.1"
 
 [dev-dependencies]
+# Main Soroban SDK with test utilities (required for Address::generate, mock_auths, etc.)
 soroban-sdk = { version = "21.7.1", features = ["testutils"] }
+
+# Used for signature generation in property tests
 ed25519-dalek = { version = "2.1", features = ["rand_core"] }
+
+# Property-based testing
+proptest = { version = "1", default-features = false, features = ["alloc"] }
 
 [profile.release]
 opt-level = "z"
 lto = true
 panic = "abort"
 codegen-units = 1
+
+# Optional: faster test builds
+[profile.test]
+opt-level = 0

@@ -1,0 +1,124 @@
+name: Deploy Testnet
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      contract_id:
+        description: Existing contract ID to upgrade. Leave empty to deploy a new contract.
+        required: false
+        type: string
+      admin_address:
+        description: Admin address used when initializing a fresh deployment. Defaults to deployer public key.
+        required: false
+        type: string
+      admin_pubkey:
+        description: Ed25519 public key used to verify wrap signatures. Defaults to STELLAR_ADMIN_PUBKEY secret.
+        required: false
+        type: string
+      initialize:
+        description: Initialize newly deployed contracts.
+        required: false
+        default: true
+        type: boolean
+
+jobs:
+  deploy-testnet:
+    runs-on: ubuntu-latest
+    env:
+      STELLAR_NETWORK: testnet
+      WASM_PATH: target/wasm32-unknown-unknown/release/stellar_wrap_contract.wasm
+      INPUT_CONTRACT_ID: ${{ github.event.inputs.contract_id }}
+      INPUT_ADMIN_ADDRESS: ${{ github.event.inputs.admin_address }}
+      INPUT_ADMIN_PUBKEY: ${{ github.event.inputs.admin_pubkey }}
+      INPUT_INITIALIZE: ${{ github.event.inputs.initialize }}
+      CONFIGURED_CONTRACT_ID: ${{ secrets.STELLAR_TESTNET_CONTRACT_ID }}
+      CONFIGURED_ADMIN_PUBKEY: ${{ secrets.STELLAR_ADMIN_PUBKEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install Stellar CLI
+        run: cargo install stellar-cli --locked
+
+      - name: Configure deployer
+        env:
+          STELLAR_DEPLOYER_SECRET: ${{ secrets.STELLAR_DEPLOYER_SECRET }}
+        run: |
+          if [ -z "$STELLAR_DEPLOYER_SECRET" ]; then
+            echo "STELLAR_DEPLOYER_SECRET is required" >&2
+            exit 1
+          fi
+          stellar keys add deployer --secret-key "$STELLAR_DEPLOYER_SECRET"
+          stellar network use "$STELLAR_NETWORK"
+
+      - name: Build WASM
+        run: cargo build --release --target wasm32-unknown-unknown
+
+      - name: Deploy or upgrade
+        id: deploy
+        run: |
+          set -euo pipefail
+
+          CONTRACT_ID="${INPUT_CONTRACT_ID:-$CONFIGURED_CONTRACT_ID}"
+          ADMIN_ADDRESS="${INPUT_ADMIN_ADDRESS:-$(stellar keys address deployer)}"
+          ADMIN_PUBKEY="${INPUT_ADMIN_PUBKEY:-$CONFIGURED_ADMIN_PUBKEY}"
+          SHOULD_INITIALIZE="${INPUT_INITIALIZE:-true}"
+
+          if [ -n "$CONTRACT_ID" ]; then
+            WASM_HASH="$(stellar contract install --wasm "$WASM_PATH" --source deployer --network "$STELLAR_NETWORK")"
+            stellar contract invoke \
+              --id "$CONTRACT_ID" \
+              --source deployer \
+              --network "$STELLAR_NETWORK" \
+              -- upgrade \
+              --wasm_hash "$WASM_HASH"
+            ACTION="upgraded"
+          else
+            CONTRACT_ID="$(stellar contract deploy --wasm "$WASM_PATH" --source deployer --network "$STELLAR_NETWORK")"
+            ACTION="deployed"
+
+            if [ "$SHOULD_INITIALIZE" = "true" ]; then
+              if [ -z "$ADMIN_PUBKEY" ]; then
+                echo "STELLAR_ADMIN_PUBKEY or admin_pubkey input is required for fresh deployments" >&2
+                exit 1
+              fi
+              stellar contract invoke \
+                --id "$CONTRACT_ID" \
+                --source deployer \
+                --network "$STELLAR_NETWORK" \
+                -- initialize \
+                --admin "$ADMIN_ADDRESS" \
+                --admin_pubkey "$ADMIN_PUBKEY"
+            fi
+          fi
+
+          ADMIN="$(stellar contract invoke --id "$CONTRACT_ID" --source deployer --network "$STELLAR_NETWORK" -- get_admin)"
+
+          echo "$CONTRACT_ID" > contract-id.txt
+          {
+            echo "contract_id=$CONTRACT_ID"
+            echo "admin=$ADMIN"
+            echo "action=$ACTION"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload contract ID artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: stellar-testnet-contract-id
+          path: contract-id.txt
+
+      - name: Deployment summary
+        run: |
+          {
+            echo "## Stellar testnet deployment"
+            echo ""
+            echo "- Action: ${{ steps.deploy.outputs.action }}"
+            echo "- Contract ID: \`${{ steps.deploy.outputs.contract_id }}\`"
+            echo "- Admin: \`${{ steps.deploy.outputs.admin }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
