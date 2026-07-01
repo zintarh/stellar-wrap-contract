@@ -2,7 +2,7 @@
 
 use soroban_sdk::{
     contract, contracterror, contractimpl, panic_with_error, symbol_short, xdr::ToXdr, Address,
-    Bytes, BytesN, Env, String, Symbol,
+    Bytes, BytesN, Env, String, Symbol, Vec,
 };
 
 mod merkle;
@@ -102,6 +102,38 @@ impl StellarWrapContract {
         e.events().publish(
             (symbol_short!("admin"), symbol_short!("updated")),
             (current_admin, new_admin),
+        );
+    }
+
+    /// Replace the current admin public key used for Ed25519 signature verification.
+    ///
+    /// After rotation, any signatures produced by the old private key will no longer
+    /// pass verification. The admin must ensure the backend switches to the new key
+    /// before issuing new wrap signatures.
+    ///
+    /// # Parameters
+    /// - `new_pubkey`: The 32-byte Ed25519 public key that will replace the current one.
+    ///
+    /// # Authorization
+    /// Requires authorization from the **current** admin.
+    ///
+    /// # Panics
+    /// - [`ContractError::NotInitialized`] if the contract has not been initialized.
+    pub fn update_admin_pubkey(e: Env, new_pubkey: BytesN<32>) {
+        let current_admin: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
+
+        current_admin.require_auth();
+        e.storage()
+            .instance()
+            .set(&DataKey::AdminPubKey, &new_pubkey);
+
+        e.events().publish(
+            (symbol_short!("admin"), symbol_short!("pubkey")),
+            new_pubkey,
         );
     }
 
@@ -258,6 +290,10 @@ impl StellarWrapContract {
         };
 
         Self::persist_wrap_record(&e, user.clone(), period, record, archetype);
+
+        // Extend instance storage TTL so admin/pubkey/schema keys don't expire
+        let ttl_one_year = 17280 * 365;
+        e.storage().instance().extend_ttl(ttl_one_year, ttl_one_year);
 
         e.storage().temporary().remove(&guard_key);
     }
@@ -552,6 +588,19 @@ impl StellarWrapContract {
             .persistent()
             .extend_ttl(&streak_key, ttl_one_year, ttl_one_year);
 
+        // Track all periods minted for this user
+        let periods_key = DataKey::WrapPeriods(user.clone());
+        let mut periods: Vec<u64> = e
+            .storage()
+            .persistent()
+            .get(&periods_key)
+            .unwrap_or_else(|| Vec::new(e));
+        periods.push_back(period);
+        e.storage().persistent().set(&periods_key, &periods);
+        e.storage()
+            .persistent()
+            .extend_ttl(&periods_key, ttl_one_year, ttl_one_year);
+
         e.events()
             .publish((symbol_short!("mint"), user, period), archetype);
     }
@@ -694,6 +743,26 @@ impl StellarWrapContract {
                 .set(&count_key, &(current_count - 1));
         }
 
+        // Remove the revoked period from the WrapPeriods list
+        let periods_key = DataKey::WrapPeriods(user.clone());
+        if let Some(periods) = e
+            .storage()
+            .persistent()
+            .get::<_, Vec<u64>>(&periods_key)
+        {
+            let ttl_one_year = 17280 * 365;
+            let mut updated = Vec::new(&e);
+            for p in periods.iter() {
+                if p != period {
+                    updated.push_back(p);
+                }
+            }
+            e.storage().persistent().set(&periods_key, &updated);
+            e.storage()
+                .persistent()
+                .extend_ttl(&periods_key, ttl_one_year, ttl_one_year);
+        }
+
         // Streak is not recalculated on revoke to avoid expensive on-chain scans.
         // This means streak may temporarily remain stale after a removal.
         e.events()
@@ -771,8 +840,24 @@ impl StellarWrapContract {
         Self::load_wrap_record(&e, &user, period)
     }
 
-    /// Extend the TTL (time-to-live) for all persistent storage entries belonging to a user.
+    /// Return the ordered list of all periods for which a user has a wrap record.
     ///
+    /// Periods are returned in insertion order (chronological if minted sequentially).
+    /// Revoked periods are removed from this list.
+    ///
+    /// # Parameters
+    /// - `user`: The address to query.
+    ///
+    /// # Returns
+    /// A `Vec<u64>` of period identifiers, empty if the user has no wraps.
+    pub fn get_wrap_periods(e: Env, user: Address) -> Vec<u64> {
+        e.storage()
+            .persistent()
+            .get(&DataKey::WrapPeriods(user))
+            .unwrap_or_else(|| Vec::new(&e))
+    }
+
+    /// Extend the TTL (time-to-live) for all persistent storage entries belonging to a user.    ///
     /// Soroban persistent storage entries expire after their TTL lapses. This function lets
     /// anyone renew a user's wrap records so they remain accessible indefinitely.
     ///
@@ -800,6 +885,13 @@ impl StellarWrapContract {
         let streak_key = DataKey::WrapStreak(user.clone());
         if e.storage().persistent().has(&streak_key) {
             e.storage().persistent().extend_ttl(&streak_key, ttl, ttl);
+        }
+
+        let periods_key = DataKey::WrapPeriods(user.clone());
+        if e.storage().persistent().has(&periods_key) {
+            e.storage()
+                .persistent()
+                .extend_ttl(&periods_key, ttl, ttl);
         }
 
         e.storage().instance().extend_ttl(ttl, ttl);

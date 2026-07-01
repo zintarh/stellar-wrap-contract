@@ -72,6 +72,8 @@ pub enum DataKey {
     MerkleClaimed(Address, u64),
     /// User privacy opt-out flag (persistent)
     UserOptOut(Address),
+    /// Ordered list of all periods minted for a user (Vec<u64>)
+    WrapPeriods(Address),
 }
 
 /// Current schema version written by `initialize()` and advanced by `migrate()`.
