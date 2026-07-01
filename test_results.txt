@@ -11,52 +11,52 @@ test security_test::test_gas_analysis_mint_operation ... =======================
 Cpu limit: 100000000; used: 41983
 Mem limit: 41943040; used: 5930
 =================================================================
-CostType                           cpu_insns      mem_bytes      
-WasmInsnExec                       0              0              
-MemAlloc                           24065          5930           
-MemCpy                             7352           0              
-MemCmp                             3656           0              
-DispatchHostFunction               0              0              
-VisitObject                        3172           0              
-ValSer                             0              0              
-ValDeser                           0              0              
-ComputeSha256Hash                  3738           0              
-ComputeEd25519PubKey               0              0              
-VerifyEd25519Sig                   0              0              
-VmInstantiation                    0              0              
-VmCachedInstantiation              0              0              
-InvokeVmFunction                   0              0              
-ComputeKeccak256Hash               0              0              
-DecodeEcdsaCurve256Sig             0              0              
-RecoverEcdsaSecp256k1Key           0              0              
-Int256AddSub                       0              0              
-Int256Mul                          0              0              
-Int256Div                          0              0              
-Int256Pow                          0              0              
-Int256Shift                        0              0              
-ChaCha20DrawBytes                  0              0              
-ParseWasmInstructions              0              0              
-ParseWasmFunctions                 0              0              
-ParseWasmGlobals                   0              0              
-ParseWasmTableEntries              0              0              
-ParseWasmTypes                     0              0              
-ParseWasmDataSegments              0              0              
-ParseWasmElemSegments              0              0              
-ParseWasmImports                   0              0              
-ParseWasmExports                   0              0              
-ParseWasmDataSegmentBytes          0              0              
-InstantiateWasmInstructions        0              0              
-InstantiateWasmFunctions           0              0              
-InstantiateWasmGlobals             0              0              
-InstantiateWasmTableEntries        0              0              
-InstantiateWasmTypes               0              0              
-InstantiateWasmDataSegments        0              0              
-InstantiateWasmElemSegments        0              0              
-InstantiateWasmImports             0              0              
-InstantiateWasmExports             0              0              
-InstantiateWasmDataSegmentBytes    0              0              
-Sec1DecodePointUncompressed        0              0              
-VerifyEcdsaSecp256r1Sig            0              0              
+CostType                           cpu_insns      mem_bytes
+WasmInsnExec                       0              0
+MemAlloc                           24065          5930
+MemCpy                             7352           0
+MemCmp                             3656           0
+DispatchHostFunction               0              0
+VisitObject                        3172           0
+ValSer                             0              0
+ValDeser                           0              0
+ComputeSha256Hash                  3738           0
+ComputeEd25519PubKey               0              0
+VerifyEd25519Sig                   0              0
+VmInstantiation                    0              0
+VmCachedInstantiation              0              0
+InvokeVmFunction                   0              0
+ComputeKeccak256Hash               0              0
+DecodeEcdsaCurve256Sig             0              0
+RecoverEcdsaSecp256k1Key           0              0
+Int256AddSub                       0              0
+Int256Mul                          0              0
+Int256Div                          0              0
+Int256Pow                          0              0
+Int256Shift                        0              0
+ChaCha20DrawBytes                  0              0
+ParseWasmInstructions              0              0
+ParseWasmFunctions                 0              0
+ParseWasmGlobals                   0              0
+ParseWasmTableEntries              0              0
+ParseWasmTypes                     0              0
+ParseWasmDataSegments              0              0
+ParseWasmElemSegments              0              0
+ParseWasmImports                   0              0
+ParseWasmExports                   0              0
+ParseWasmDataSegmentBytes          0              0
+InstantiateWasmInstructions        0              0
+InstantiateWasmFunctions           0              0
+InstantiateWasmGlobals             0              0
+InstantiateWasmTableEntries        0              0
+InstantiateWasmTypes               0              0
+InstantiateWasmDataSegments        0              0
+InstantiateWasmElemSegments        0              0
+InstantiateWasmImports             0              0
+InstantiateWasmExports             0              0
+InstantiateWasmDataSegmentBytes    0              0
+Sec1DecodePointUncompressed        0              0
+VerifyEcdsaSecp256r1Sig            0              0
 =================================================================
 
 
@@ -66,7 +66,7 @@ test security_test::test_gas_analysis_multiple_mints ... Writing test snapshot f
 ok
 test security_test::test_multiple_periods_for_same_user_success ... Writing test snapshot file for test "security_test::test_multiple_periods_for_same_user_success" to "test_snapshots/security_test/test_multiple_periods_for_same_user_success.1.json".
 ok
-test security_test::test_non_admin_cannot_mint - should panic ... 
+test security_test::test_non_admin_cannot_mint - should panic ...
 thread 'security_test::test_non_admin_cannot_mint' (17272) panicked at /home/jojo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-21.2.1/src/host.rs:768:9:
 HostError: Error(Auth, InvalidAction)
 
@@ -106,7 +106,7 @@ Backtrace (newest first):
 note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 Writing test snapshot file for test "security_test::test_non_admin_cannot_mint" to "test_snapshots/security_test/test_non_admin_cannot_mint.1.json".
 ok
-test security_test::test_replay_attack_different_hash_same_period_fails - should panic ... 
+test security_test::test_replay_attack_different_hash_same_period_fails - should panic ...
 thread 'security_test::test_replay_attack_different_hash_same_period_fails' (17322) panicked at /home/jojo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-21.2.1/src/host.rs:768:9:
 HostError: Error(Contract, #4)
 
@@ -148,7 +148,7 @@ Backtrace (newest first):
 
 Writing test snapshot file for test "security_test::test_replay_attack_different_hash_same_period_fails" to "test_snapshots/security_test/test_replay_attack_different_hash_same_period_fails.1.json".
 ok
-test security_test::test_replay_attack_same_period_fails - should panic ... 
+test security_test::test_replay_attack_same_period_fails - should panic ...
 thread 'security_test::test_replay_attack_same_period_fails' (17323) panicked at /home/jojo/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-21.2.1/src/host.rs:768:9:
 HostError: Error(Contract, #4)
 
@@ -198,4 +198,3 @@ test security_test::test_timestamp_is_from_ledger_not_user ... Writing test snap
 ok
 
 test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 11.31s
-

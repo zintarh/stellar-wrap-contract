@@ -1,19 +1,21 @@
-use soroban_sdk::{xdr::ToXdr, Address, Bytes, BytesN, Env, Symbol, Vec};
+use soroban_sdk::{xdr::ToXdr, Address, Bytes, BytesN, Env, String, Symbol, Vec};
 
 /// Compute a merkle leaf: SHA-256 of Soroban XDR-encoded
-/// `(user ‖ period ‖ archetype ‖ data_hash)`.
+/// `(user ‖ period ‖ archetype ‖ data_hash ‖ metadata)`.
 pub fn compute_merkle_leaf(
     e: &Env,
     user: &Address,
     period: u64,
     archetype: &Symbol,
     data_hash: &BytesN<32>,
+    metadata: &Option<String>,
 ) -> BytesN<32> {
     let mut leaf_data = Bytes::new(e);
     leaf_data.append(&user.clone().to_xdr(e));
     leaf_data.append(&period.to_xdr(e));
     leaf_data.append(&archetype.clone().to_xdr(e));
     leaf_data.append(&data_hash.clone().to_xdr(e));
+    leaf_data.append(&metadata.clone().to_xdr(e));
     let hash = e.crypto().sha256(&leaf_data);
     BytesN::from_array(e, &hash.to_array())
 }

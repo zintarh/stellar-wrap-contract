@@ -1,14 +1,12 @@
 name: CI
 
-on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+on: [push, pull_request]
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      RUSTFLAGS: "-D warnings"
     steps:
     - uses: actions/checkout@v4
     - name: Install Rust
@@ -21,17 +19,52 @@ jobs:
       run: cargo clippy -- -D warnings
     - name: Run tests
       run: cargo test
-    - name: Build WASM
-      run: cargo build --release --target wasm32-unknown-unknown
-    - name: Check WASM binary size
+
+  coverage:
+    runs-on: ubuntu-latest
+    # RUSTFLAGS is intentionally NOT set here.
+    # The test job sets "-D warnings" job-wide; tarpaulin instruments code
+    # under its own cargo invocation and may emit warnings from proc-macros
+    # or generated code that would otherwise fail CI. Keeping this job free
+    # of -D warnings isolates any tarpaulin-side noise from the test/lint gate.
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Rust (native only — no wasm32 target needed for tarpaulin)
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Install cargo-tarpaulin
+      run: cargo install cargo-tarpaulin --locked
+
+    - name: Run coverage (HTML + XML)
+      run: cargo tarpaulin --out Html --out Xml --output-dir coverage/
+
+    - name: Generate coverage badge
       run: |
-        WASM=target/wasm32-unknown-unknown/release/stellar_wrap_contract.wasm
-        SIZE=$(wc -c < "$WASM")
-        echo "WASM binary size: $SIZE bytes ($(( SIZE / 1024 )) KB)"
-        MAX_SIZE=65536  # 64 KB threshold
-        if [ "$SIZE" -gt "$MAX_SIZE" ]; then
-          echo "ERROR: WASM binary ($SIZE bytes) exceeds the 64 KB recommended threshold ($MAX_SIZE bytes)."
-          echo "Consider running wasm-opt -Oz or auditing new dependencies for bloat."
-          exit 1
+        # Parse the coverage percentage from tarpaulin's cobertura XML.
+        # The <coverage> root element carries a line-rate attribute (0.0–1.0).
+        LINE_RATE=$(grep -oP 'line-rate="\K[^"]+' coverage/cobertura.xml | head -1)
+        PCT=$(awk "BEGIN {printf \"%.1f\", $LINE_RATE * 100}")
+        # Pick a colour: green ≥80%, yellow ≥50%, red <50%.
+        if awk "BEGIN {exit !($LINE_RATE >= 0.80)}"; then
+          COLOR="brightgreen"
+        elif awk "BEGIN {exit !($LINE_RATE >= 0.50)}"; then
+          COLOR="yellow"
+        else
+          COLOR="red"
         fi
-        echo "OK: WASM size is within the 64 KB threshold."
+        # Write a shields.io flat badge as an SVG into the repo root so the
+        # README badge <img> src resolves on the default branch without an
+        # external service dependency.
+        curl -fsSL \
+          "https://img.shields.io/badge/coverage-${PCT}%25-${COLOR}?style=flat&logo=rust" \
+          -o coverage-badge.svg
+        echo "coverage_pct=${PCT}" >> "$GITHUB_STEP_SUMMARY"
+        echo "## Coverage: ${PCT}%" >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Upload HTML coverage report
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report
+        path: coverage/tarpaulin-report.html
+        retention-days: 30

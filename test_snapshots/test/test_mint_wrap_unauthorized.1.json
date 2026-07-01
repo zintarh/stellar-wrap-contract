@@ -51,6 +51,31 @@
                         "val": {
                           "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                         }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "AllowedArchetypes"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "vec": [
+                            {
+                              "symbol": "builder"
+                            },
+                            {
+                              "symbol": "architect"
+                            },
+                            {
+                              "symbol": "defi"
+                            },
+                            {
+                              "symbol": "patron"
+                            }
+                          ]
+                        }
                       }
                     ]
                   }
@@ -59,7 +84,7 @@
             },
             "ext": "v0"
           },
-          4095
+          6307200
         ]
       ],
       [
@@ -80,7 +105,7 @@
             },
             "ext": "v0"
           },
-          4095
+          6307200
         ]
       ]
     ]

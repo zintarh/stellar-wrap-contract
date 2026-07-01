@@ -29,6 +29,9 @@ jobs:
           echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
           echo "$SHA  stellar_wrap_contract.wasm" > stellar_wrap_contract.wasm.sha256
 
+      - name: Reminder: update CHANGELOG before tagging
+        run: echo "Reminder: update CHANGELOG.md with this version details before tagging." 
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
