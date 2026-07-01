@@ -223,6 +223,30 @@ The mint reentrancy guard uses Soroban temporary storage, not persistent storage
 - On successful mint, the guard key is removed explicitly.
 - On failure paths (panic), the temporary entry is not persisted forever and is naturally cleaned up by Soroban TTL.
 
+## 📦 WASM Binary Size
+
+The contract is compiled with `opt-level = "z"`, `lto = true`, `panic = "abort"`, and `codegen-units = 1` for maximum size reduction.
+
+| Metric | Value |
+|--------|-------|
+| **Binary size** | **~35 KB** (35,486 bytes) |
+| Soroban transaction size limit | 128 KB |
+| Recommended threshold | 64 KB |
+| Status | ✅ Well within limits |
+
+> Last measured: 2026-07-01 (SDK v21.7.1)
+
+To reproduce:
+```bash
+cargo build --release --target wasm32-unknown-unknown
+ls -lh target/wasm32-unknown-unknown/release/stellar_wrap_contract.wasm
+```
+
+If the binary ever exceeds 64 KB, consider:
+- Running `wasm-opt -Oz` from [binaryen](https://github.com/WebAssembly/binaryen) for additional stripping
+- Auditing new dependencies for WASM bloat
+- Using `cargo bloat --release --target wasm32-unknown-unknown` to identify large contributors
+
 ## 📝 Contract Interface
 
 ### Functions
