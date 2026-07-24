@@ -37,7 +37,7 @@ jobs:
       run: cargo install cargo-tarpaulin --locked
 
     - name: Run coverage (HTML + XML)
-      run: cargo tarpaulin --out Html --out Xml --output-dir coverage/
+      run: cargo tarpaulin --out Html --out Xml --output-dir coverage/ --fail-under 90
 
     - name: Generate coverage badge
       run: |
