@@ -18,7 +18,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "u64": 2024
+                  "u64": 202401
                 },
                 {
                   "symbol": "arch"
@@ -27,7 +27,7 @@
                   "bytes": "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a"
                 },
                 {
-                  "bytes": "07ec49547dba296fef6670e94ac1b474746b3216b740f58f18e6e9b25446e8042d85ae30d9ed5d94cafc6398a7409f0f81b50fd55b2f1b89d326a20af4ec6906"
+                  "bytes": "c0e2450c8c4723d2568f8b928f1a78ea556737c7f3987d193f743e7d66084652df4f02f1c7cde100ee01e80b8123f31f57ee95dbf17a59fc691a6aad35581f02"
                 }
               ]
             }
@@ -55,13 +55,58 @@
             "key": {
               "vec": [
                 {
+                  "symbol": "LatestPeriod"
+                },
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                }
+              ]
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+                "key": {
+                  "vec": [
+                    {
+                      "symbol": "LatestPeriod"
+                    },
+                    {
+                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                    }
+                  ]
+                },
+                "durability": "persistent",
+                "val": {
+                  "u64": 202401
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          6307200
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+            "key": {
+              "vec": [
+                {
                   "symbol": "Wrap"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "u64": 2024
+                  "u64": 202401
                 }
               ]
             },
@@ -84,7 +129,7 @@
                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                     },
                     {
-                      "u64": 2024
+                      "u64": 202401
                     }
                   ]
                 },
@@ -112,7 +157,7 @@
                         "symbol": "period"
                       },
                       "val": {
-                        "u64": 2024
+                        "u64": 202401
                       }
                     },
                     {
@@ -369,7 +414,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "u64": 2024
+                  "u64": 202401
                 },
                 {
                   "symbol": "arch"
@@ -378,7 +423,7 @@
                   "bytes": "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a"
                 },
                 {
-                  "bytes": "07ec49547dba296fef6670e94ac1b474746b3216b740f58f18e6e9b25446e8042d85ae30d9ed5d94cafc6398a7409f0f81b50fd55b2f1b89d326a20af4ec6906"
+                  "bytes": "c0e2450c8c4723d2568f8b928f1a78ea556737c7f3987d193f743e7d66084652df4f02f1c7cde100ee01e80b8123f31f57ee95dbf17a59fc691a6aad35581f02"
                 }
               ]
             }
@@ -402,7 +447,7 @@
                 "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
               },
               {
-                "u64": 2024
+                "u64": 202401
               }
             ],
             "data": {
@@ -458,7 +503,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "u64": 2024
+                  "u64": 202401
                 },
                 {
                   "symbol": "arch"
@@ -467,7 +512,7 @@
                   "bytes": "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a"
                 },
                 {
-                  "bytes": "07ec49547dba296fef6670e94ac1b474746b3216b740f58f18e6e9b25446e8042d85ae30d9ed5d94cafc6398a7409f0f81b50fd55b2f1b89d326a20af4ec6906"
+                  "bytes": "c0e2450c8c4723d2568f8b928f1a78ea556737c7f3987d193f743e7d66084652df4f02f1c7cde100ee01e80b8123f31f57ee95dbf17a59fc691a6aad35581f02"
                 }
               ]
             }
@@ -589,7 +634,7 @@
                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                     },
                     {
-                      "u64": 2024
+                      "u64": 202401
                     },
                     {
                       "symbol": "arch"
@@ -598,7 +643,7 @@
                       "bytes": "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a"
                     },
                     {
-                      "bytes": "07ec49547dba296fef6670e94ac1b474746b3216b740f58f18e6e9b25446e8042d85ae30d9ed5d94cafc6398a7409f0f81b50fd55b2f1b89d326a20af4ec6906"
+                      "bytes": "c0e2450c8c4723d2568f8b928f1a78ea556737c7f3987d193f743e7d66084652df4f02f1c7cde100ee01e80b8123f31f57ee95dbf17a59fc691a6aad35581f02"
                     }
                   ]
                 }

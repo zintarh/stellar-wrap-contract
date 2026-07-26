@@ -1,102 +1,97 @@
-# Stellar Wrap - Smart Contract
+# Stellar Wrap Contract
 
-> **The on-chain Soulbound Token (SBT) registry for Stellar Wrap. This contract stores non-transferable wrap records linked to user addresses, containing data hashes and persona archetypes.**
+Soroban contract for storing non-transferable Stellar Wrap records by wallet and reporting successful wrap mints through events.
 
-This repository contains the **Soroban smart contract** that serves as the on-chain anchor for Stellar Wrap. For the full application (frontend, backend, etc.), see the main Stellar Wrap repository.
+## Contract layout
 
----
+The contract is split into focused modules:
 
-## 📖 What is Stellar Wrap?
+- `src/lib.rs`: contract type and module wiring
+- `src/admin.rs`: initialization and admin updates
+- `src/mint.rs`: period validation, signature verification, wrap minting, event emission
+- `src/queries.rs`: read-only queries and metadata
+- `src/errors.rs`: contract error codes
+- `src/storage_types.rs`: storage keys and persisted record types
 
-Stellar Wrap is a "Spotify Wrapped"-style experience built specifically for the Stellar community.
+## Data model
 
-Block explorers are great for data, but terrible for stories. Stellar Wrap takes your raw, complex on-chain history—transactions, smart contract deployments, NFT buys—and transforms it into a beautiful, personalized visual story that anyone can understand and share.
+### `WrapRecord`
 
-By simply connecting your wallet, you get a dynamic snapshot of your month on Stellar, highlighting your achievements and assigning you a unique on-chain persona based on your activity.
+Each wrap record stores:
 
-**It's more than just stats; it's a tool for builders to prove their contributions and for users to flex their participation in the Stellar ecosystem.**
+- `timestamp: u64`
+- `data_hash: BytesN<32>`
+- `archetype: Symbol`
+- `period: u64`
 
---- 
+`period` is encoded as `YYYYMM` and validated on mint:
 
-## 💡 Why We Need This
+- year must be between `2024` and `2100`
+- month must be between `01` and `12`
 
-In Web3, your on-chain history is your resume, your identity, and your reputation. But right now, that reputation is hidden behind confusing transaction hashes.
+## Storage keys
 
-**Stellar Wrap solves the visibility gap:**
+- `DataKey::Admin`
+- `DataKey::AdminPubKey`
+- `DataKey::Wrap(Address, u64)`
+- `DataKey::WrapCount(Address)`
+- `DataKey::LatestPeriod(Address)`
 
-- **For Builders & Developers:** It's hard to showcase the immense value of deploying open-source Soroban contracts. Stellar Wrap makes their code contributions visible and shareable to non-technical users.
-- **For the Community:** We lack easy, viral loops to share excitement about what's happening on Stellar. This tool gives everyone a reason to post about their on-chain life on social media.
-- **For Users:** It turns isolated transactions into a sense of progress and belonging within the ecosystem.
+## Public interface
 
----
+### Write methods
 
-## 🚀 How the Contract Works
+- `initialize(e: Env, admin: Address, admin_pubkey: BytesN<32>)`
+- `update_admin(e: Env, new_admin: Address)`
+- `mint_wrap(e: Env, user: Address, period: u64, archetype: Symbol, data_hash: BytesN<32>, signature: BytesN<64>)`
 
-This smart contract provides the on-chain registry for Stellar Wrap records:
+### Read methods
 
-1.  **Initialize:** The contract is initialized once with an admin address that has permission to mint wrap records.
-2.  **Mint Wrap:** The admin (backend service) calls `mint_wrap()` to create a soulbound record for a user, storing:
+- `get_wrap(e: Env, user: Address, period: u64) -> Option<WrapRecord>`
+- `balance_of(e: Env, user: Address) -> i128`
+- `verify_data(e: Env, user: Address, period: u64, data: Bytes) -> bool`
+- `get_latest_wrap(e: Env, user: Address) -> Option<WrapRecord>`
+- `get_admin(e: Env) -> Option<Address>`
+- `name(e: Env) -> String`
+- `symbol(e: Env) -> String`
+- `decimals(e: Env) -> u32`
 
-- Timestamp of when the wrap was generated
-- SHA256 hash of the full off-chain JSON data (ensuring integrity)
-- Archetype/persona assigned to the user (e.g., _"soroban_architect"_, _"defi_patron"_, _"diamond_hand"_)
+## Event schema
 
-3.  **Query:** Anyone can call `get_wrap()` to retrieve a user's wrap record, enabling verification and display of on-chain personas.
-4.  **Soulbound:** Records are non-transferable (SBT), permanently linked to the user's Stellar address.
+Successful wrap mints emit one event:
 
----
+- Topic 0: `mint`
+- Topic 1: `user` (`Address`)
+- Topic 2: `period` (`u64`, `YYYYMM`)
+- Data: `archetype` (`Symbol`)
 
-## 🎯 Key Metrics Tracked
+Properties relevant to indexers:
 
-We look beyond simple payments to capture the full spectrum of Stellar's vibrant ecosystem:
+- the event is emitted only after signature verification and storage writes succeed
+- duplicate `(user, period)` mints are rejected, so one event equals one successful new wrap
+- `period` is always a validated `YYYYMM` value
 
-- **🧙‍♂️ Soroban Builder Stats:** Contracts deployed and unique user interactions. (Critical for developer reputation!).
-- **🤝 dApp Interactions:** Which ecosystem projects did you support the most?
-- **🎨 NFT Activity:** New mints collected and top creators supported.
-- **💸 Network Volume:** A summary of your general transaction activity.
-- **🏆 Your Monthly Persona:** A gamified badge that reflects your unique contribution style.
+## Leaderboard decision
 
----
+Issue `#68` is implemented as an off-chain leaderboard strategy.
 
-## Ecosystem Impact
+Reasoning:
 
-This project is designed to support the growth of the Stellar network by:
+- Soroban storage does not support efficient range scans for ranking
+- maintaining an on-chain sorted top-N list would add write amplification and higher gas costs to every mint
+- indexers already need mint events for analytics, so leaderboard aggregation fits the existing data flow
 
-1.  **Incentivizing Building:** Publicly celebrating developers who ship code creates positive reinforcement. A "Soroban Architect" badge is a social flex that encourages more building.
-2.  **Driving Viral Activity:** Every shared Stellar Wrap card is organic marketing for the blockchain, showing the world that Stellar is active and being used.
-3.  **Increasing Retention:** Giving users a personalized summary fosters a sense of ownership and encourages them to come back next month to beat their stats.
+Recommended aggregation rule:
 
----
+1. index every `mint` event
+2. group by topic 1 (`user`)
+3. count events per user
+4. sort descending by count to produce the leaderboard
 
-## 🛠️ Tech Stack
+## Development
 
-- **Language:** Rust
-- **Smart Contract Framework:** Soroban SDK v20.0.0
-- **Build Tool:** Cargo
-- **Target:** WebAssembly (WASM) for Soroban runtime
-- **Testing:** Soroban SDK testutils
+Run the test suite with:
 
----
-
-## 🗺️ Contract Features
-
-- ✅ Admin-controlled initialization
-- ✅ Soulbound token (SBT) minting with authorization checks
-- ✅ Wrap record storage (timestamp, data hash, archetype)
-- ✅ Public query interface for retrieving wrap records
-- ✅ Event emission for minting actions
-- ✅ Prevention of duplicate wraps per user
-
-## 📝 Contract Interface
-
-### Functions
-
-- `initialize(e: Env, admin: Address)` - Initialize contract with admin (callable once)
-- `mint_wrap(e: Env, to: Address, data_hash: BytesN<32>, archetype: Symbol)` - Mint a wrap record (admin only)
-- `get_wrap(e: Env, user: Address) -> Option<WrapRecord>` - Retrieve a user's wrap record
-
-### Storage
-
-- `WrapRecord`: Contains `timestamp`, `data_hash`, and `archetype`
-- `DataKey::Admin`: Stores the admin address
-- `DataKey::Wrap(Address)`: Maps user addresses to their wrap records
+```bash
+cargo test
+```

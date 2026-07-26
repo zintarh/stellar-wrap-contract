@@ -11,7 +11,7 @@ use soroban_sdk::{
     symbol_short,
     testutils::{Address as _, Ledger},
     xdr::ToXdr,
-    Address, Bytes, BytesN, Env,
+    Address, Bytes, BytesN, Env, Symbol,
 };
 
 /// Helper function to sign payloads for testing

@@ -12,13 +12,14 @@ pub struct WrapRecord {
 #[contracttype]
 #[derive(Clone)]
 pub enum DataKey {
-    /// Stores the Address of the admin
+    /// Stores the address of the admin.
     Admin,
-    /// Stores the BytesN<32> public key for Ed25519 verification
+    /// Stores the Ed25519 public key used to validate backend signatures.
     AdminPubKey,
-    /// Stores individual WrapRecords (mapped by User and Period)
-    /// Using u64 for period ensures consistent indexing
+    /// Stores individual wrap records keyed by user and period.
     Wrap(Address, u64),
-    /// Stores the total number of wraps for a specific user (for balance_of)
+    /// Stores the total number of wraps for a specific user.
     WrapCount(Address),
+    /// Stores the latest period minted for a specific user.
+    LatestPeriod(Address),
 }

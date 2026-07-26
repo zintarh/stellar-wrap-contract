@@ -18,7 +18,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "u64": 2024
+                  "u64": 202401
                 },
                 {
                   "symbol": "arch"
@@ -27,7 +27,7 @@
                   "bytes": "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a"
                 },
                 {
-                  "bytes": "f000825e7e0cf992ba232ca434ddee94e472256da645ae86856b99de2111d1ca33fef7e57a49b65bce27b6e52b5647dc6726f62edc39f78213a67c92ed03720e"
+                  "bytes": "0cef1d92b44264ed9fa254c735f9243827cfaf241f6e374a98d75a566f0206a89567518685ec954085df09a604982d2eb61c9103df9a1f0b2415e6514ad73f03"
                 }
               ]
             }
@@ -55,13 +55,58 @@
             "key": {
               "vec": [
                 {
+                  "symbol": "LatestPeriod"
+                },
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                }
+              ]
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+                "key": {
+                  "vec": [
+                    {
+                      "symbol": "LatestPeriod"
+                    },
+                    {
+                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                    }
+                  ]
+                },
+                "durability": "persistent",
+                "val": {
+                  "u64": 202401
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          6307200
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+            "key": {
+              "vec": [
+                {
                   "symbol": "Wrap"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "u64": 2024
+                  "u64": 202401
                 }
               ]
             },
@@ -84,7 +129,7 @@
                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                     },
                     {
-                      "u64": 2024
+                      "u64": 202401
                     }
                   ]
                 },
@@ -112,7 +157,7 @@
                         "symbol": "period"
                       },
                       "val": {
-                        "u64": 2024
+                        "u64": 202401
                       }
                     },
                     {
@@ -369,7 +414,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "u64": 2024
+                  "u64": 202401
                 },
                 {
                   "symbol": "arch"
@@ -378,7 +423,7 @@
                   "bytes": "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a"
                 },
                 {
-                  "bytes": "f000825e7e0cf992ba232ca434ddee94e472256da645ae86856b99de2111d1ca33fef7e57a49b65bce27b6e52b5647dc6726f62edc39f78213a67c92ed03720e"
+                  "bytes": "0cef1d92b44264ed9fa254c735f9243827cfaf241f6e374a98d75a566f0206a89567518685ec954085df09a604982d2eb61c9103df9a1f0b2415e6514ad73f03"
                 }
               ]
             }
@@ -402,7 +447,7 @@
                 "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
               },
               {
-                "u64": 2024
+                "u64": 202401
               }
             ],
             "data": {
@@ -458,7 +503,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "u64": 2024
+                  "u64": 202401
                 }
               ]
             }
@@ -505,7 +550,7 @@
                     "symbol": "period"
                   },
                   "val": {
-                    "u64": 2024
+                    "u64": 202401
                   }
                 },
                 {

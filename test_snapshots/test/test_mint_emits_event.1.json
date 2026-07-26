@@ -18,7 +18,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "u64": 2024
+                  "u64": 202401
                 },
                 {
                   "symbol": "arch"
@@ -27,7 +27,7 @@
                   "bytes": "0101010101010101010101010101010101010101010101010101010101010101"
                 },
                 {
-                  "bytes": "85f5485c1f0ff3d73bddbf9fa855393dd44a68ffe57277fe32d58a538addb6597e18710c13b6dbedb1db7b5fba922d45d3086614c65587e04969621d5eb85702"
+                  "bytes": "3227fb658bc902526833a1c97a266e43965ae831a9ae6a3cb163142047b5ad5a9423aeed71655274c640cee2ef40047fcbb6ffacc3872f62b9a98643acc84807"
                 }
               ]
             }
@@ -54,13 +54,58 @@
             "key": {
               "vec": [
                 {
+                  "symbol": "LatestPeriod"
+                },
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                }
+              ]
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+                "key": {
+                  "vec": [
+                    {
+                      "symbol": "LatestPeriod"
+                    },
+                    {
+                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                    }
+                  ]
+                },
+                "durability": "persistent",
+                "val": {
+                  "u64": 202401
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          6307200
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+            "key": {
+              "vec": [
+                {
                   "symbol": "Wrap"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "u64": 2024
+                  "u64": 202401
                 }
               ]
             },
@@ -83,7 +128,7 @@
                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                     },
                     {
-                      "u64": 2024
+                      "u64": 202401
                     }
                   ]
                 },
@@ -111,7 +156,7 @@
                         "symbol": "period"
                       },
                       "val": {
-                        "u64": 2024
+                        "u64": 202401
                       }
                     },
                     {
@@ -368,7 +413,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "u64": 2024
+                  "u64": 202401
                 },
                 {
                   "symbol": "arch"
@@ -377,7 +422,7 @@
                   "bytes": "0101010101010101010101010101010101010101010101010101010101010101"
                 },
                 {
-                  "bytes": "85f5485c1f0ff3d73bddbf9fa855393dd44a68ffe57277fe32d58a538addb6597e18710c13b6dbedb1db7b5fba922d45d3086614c65587e04969621d5eb85702"
+                  "bytes": "3227fb658bc902526833a1c97a266e43965ae831a9ae6a3cb163142047b5ad5a9423aeed71655274c640cee2ef40047fcbb6ffacc3872f62b9a98643acc84807"
                 }
               ]
             }
@@ -401,7 +446,7 @@
                 "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
               },
               {
-                "u64": 2024
+                "u64": 202401
               }
             ],
             "data": {

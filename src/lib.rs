@@ -1,53 +1,29 @@
 #![no_std]
 
-use soroban_sdk::{
-    contract, contracterror, contractimpl, panic_with_error, symbol_short, xdr::ToXdr, Address,
-    Bytes, BytesN, Env, String, Symbol,
-};
+use soroban_sdk::{contract, contractimpl, Address, Bytes, BytesN, Env, String, Symbol};
 
+mod admin;
+mod errors;
+mod mint;
+mod queries;
 mod storage_types;
-use storage_types::{DataKey, WrapRecord};
 
-#[contracterror]
-#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
-#[repr(u32)]
-pub enum ContractError {
-    AlreadyInitialized = 1,
-    NotInitialized = 2,
-    Unauthorized = 3,
-    WrapAlreadyExists = 4,
-    InvalidSignature = 5,
-}
+pub use errors::ContractError;
+pub use storage_types::{DataKey, WrapRecord};
 
 #[contract]
 pub struct StellarWrapContract;
 
 #[contractimpl]
 impl StellarWrapContract {
-    /// Initialize with admin and the public key used to verify off-chain signatures.
     pub fn initialize(e: Env, admin: Address, admin_pubkey: BytesN<32>) {
-        if e.storage().instance().has(&DataKey::Admin) {
-            panic_with_error!(e, ContractError::AlreadyInitialized);
-        }
-        e.storage().instance().set(&DataKey::Admin, &admin);
-        e.storage()
-            .instance()
-            .set(&DataKey::AdminPubKey, &admin_pubkey);
+        admin::initialize(e, admin, admin_pubkey);
     }
 
-    /// Update the admin address. Only callable by the current admin.
     pub fn update_admin(e: Env, new_admin: Address) {
-        let current_admin: Address = e
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
-
-        current_admin.require_auth();
-        e.storage().instance().set(&DataKey::Admin, &new_admin);
+        admin::update_admin(e, new_admin);
     }
 
-    /// Users claim their wrap using an Admin signature.
     pub fn mint_wrap(
         e: Env,
         user: Address,
@@ -56,94 +32,39 @@ impl StellarWrapContract {
         data_hash: BytesN<32>,
         signature: BytesN<64>,
     ) {
-        // 1. Security: Ensure the user actually signed this transaction
-        user.require_auth();
-
-        // 2. Verify initialization
-        let admin_pubkey: BytesN<32> = e
-            .storage()
-            .instance()
-            .get(&DataKey::AdminPubKey)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
-
-        // 3. Reconstruct Payload
-        let mut payload = Bytes::new(&e);
-        payload.append(&e.current_contract_address().to_xdr(&e));
-        payload.append(&user.clone().to_xdr(&e));
-        payload.append(&period.to_xdr(&e));
-        payload.append(&archetype.clone().to_xdr(&e));
-        payload.append(&data_hash.clone().to_xdr(&e));
-
-        // 4. Verify Admin Signature
-        e.crypto()
-            .ed25519_verify(&admin_pubkey, &payload, &signature);
-
-        // 5. Check Duplicates & Store Record (Switch to Persistent)
-        let wrap_key = DataKey::Wrap(user.clone(), period);
-        if e.storage().persistent().has(&wrap_key) {
-            panic_with_error!(e, ContractError::WrapAlreadyExists);
-        }
-
-        let record = WrapRecord {
-            timestamp: e.ledger().timestamp(),
-            data_hash,
-            archetype: archetype.clone(),
-            period,
-        };
-
-        // Store in persistent and extend TTL to ~1 year
-        let ttl_one_year = 17280 * 365;
-        e.storage().persistent().set(&wrap_key, &record);
-        e.storage()
-            .persistent()
-            .extend_ttl(&wrap_key, ttl_one_year, ttl_one_year);
-
-        // 6. Update Balance (Switch to Persistent)
-        let count_key = DataKey::WrapCount(user.clone());
-        let current_count: u32 = e.storage().persistent().get(&count_key).unwrap_or(0);
-        e.storage()
-            .persistent()
-            .set(&count_key, &(current_count + 1));
-        e.storage()
-            .persistent()
-            .extend_ttl(&count_key, ttl_one_year, ttl_one_year);
-
-        // 7. Emit Event
-        e.events()
-            .publish((symbol_short!("mint"), user, period), archetype);
+        mint::mint_wrap(e, user, period, archetype, data_hash, signature);
     }
-
-    // --- Read Functions ---
 
     pub fn get_wrap(e: Env, user: Address, period: u64) -> Option<WrapRecord> {
-        // Changed .instance() to .persistent() to match mint_wrap
-        e.storage().persistent().get(&DataKey::Wrap(user, period))
+        queries::get_wrap(e, user, period)
     }
 
-    pub fn balance_of(e: Env, id: Address) -> i128 {
-        let count_key = DataKey::WrapCount(id);
-        // Changed .instance() to .persistent() to match mint_wrap
-        e.storage()
-            .persistent()
-            .get::<_, u32>(&count_key)
-            .unwrap_or(0) as i128
+    pub fn balance_of(e: Env, user: Address) -> i128 {
+        queries::balance_of(e, user)
+    }
+
+    pub fn verify_data(e: Env, user: Address, period: u64, data: Bytes) -> bool {
+        queries::verify_data(e, user, period, data)
+    }
+
+    pub fn get_latest_wrap(e: Env, user: Address) -> Option<WrapRecord> {
+        queries::get_latest_wrap(e, user)
     }
 
     pub fn get_admin(e: Env) -> Option<Address> {
-        // This stays .instance() because initialize() uses instance()
-        e.storage().instance().get(&DataKey::Admin)
+        queries::get_admin(e)
     }
 
     pub fn name(e: Env) -> String {
-        String::from_str(&e, "Stellar Wrap Registry")
+        queries::name(e)
     }
 
     pub fn symbol(e: Env) -> String {
-        String::from_str(&e, "WRAP")
+        queries::symbol(e)
     }
 
-    pub fn decimals(_e: Env) -> u32 {
-        0
+    pub fn decimals(e: Env) -> u32 {
+        queries::decimals(e)
     }
 }
 
