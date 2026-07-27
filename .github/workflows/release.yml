@@ -1,0 +1,44 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Build WASM (release)
+        run: cargo build --release --target wasm32-unknown-unknown
+
+      - name: Compute SHA256
+        id: sha256
+        run: |
+          WASM_FILE="target/wasm32-unknown-unknown/release/stellar_wrap_contract.wasm"
+          SHA=$(sha256sum "$WASM_FILE" | awk '{print $1}')
+          echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
+          echo "$SHA  stellar_wrap_contract.wasm" > stellar_wrap_contract.wasm.sha256
+
+      - name: Reminder: update CHANGELOG before tagging
+        run: echo "Reminder: update CHANGELOG.md with this version details before tagging." 
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            target/wasm32-unknown-unknown/release/stellar_wrap_contract.wasm
+            stellar_wrap_contract.wasm.sha256
+          body: |
+            ## Release ${{ github.ref_name }}
+
+            **WASM SHA256:** `${{ steps.sha256.outputs.sha256 }}`

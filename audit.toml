@@ -1,0 +1,14 @@
+# audit.toml — cargo-audit configuration
+# See: https://docs.rs/cargo-audit/latest/cargo_audit/config/
+
+[advisories]
+# Severity threshold: ignore advisories below this level.
+# Valid values: none, low, medium, high, critical
+# ignore = ["RUSTSEC-XXXX-XXXX"]  # add IDs here with a comment explaining why
+
+[deny]
+# Fail CI for any advisory at or above this severity.
+severity = "medium"
+
+[output]
+deny = ["warnings"]
