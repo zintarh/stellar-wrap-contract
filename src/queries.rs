@@ -1,6 +1,5 @@
+use crate::{ContractHealth, DataKey, WrapRecord};
 use soroban_sdk::{Address, Bytes, BytesN, Env, String};
-
-use crate::{DataKey, WrapRecord};
 
 pub(crate) fn get_wrap(e: Env, user: Address, period: u64) -> Option<WrapRecord> {
     e.storage().persistent().get(&DataKey::Wrap(user, period))
@@ -30,6 +29,17 @@ pub(crate) fn get_latest_wrap(e: Env, user: Address) -> Option<WrapRecord> {
     let latest_key = DataKey::LatestPeriod(user.clone());
     let period: u64 = e.storage().persistent().get(&latest_key)?;
     e.storage().persistent().get(&DataKey::Wrap(user, period))
+}
+
+pub(crate) fn health(e: Env) -> ContractHealth {
+    let has_admin = e.storage().instance().has(&DataKey::Admin);
+    let has_signing_key = e.storage().instance().has(&DataKey::AdminPubKey);
+
+    ContractHealth {
+        initialized: has_admin,
+        has_admin,
+        has_signing_key,
+    }
 }
 
 pub(crate) fn get_admin(e: Env) -> Option<Address> {

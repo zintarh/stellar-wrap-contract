@@ -171,6 +171,31 @@ fn test_initialize_twice_fails() {
 }
 
 #[test]
+fn test_health_reflects_initialization_state() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    // Before initialization: nothing configured.
+    let health = client.health();
+    assert_eq!(health.initialized, false);
+    assert_eq!(health.has_admin, false);
+    assert_eq!(health.has_signing_key, false);
+
+    // Initialize the contract.
+    let signing_key = SigningKey::from_bytes(&[1u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &admin_pubkey);
+
+    // After initialization: everything configured.
+    let health = client.health();
+    assert_eq!(health.initialized, true);
+    assert_eq!(health.has_admin, true);
+    assert_eq!(health.has_signing_key, true);
+}
+
+#[test]
 #[should_panic(expected = "Error(Contract, #4)")]
 fn test_duplicate_period_fails() {
     let env = Env::default();

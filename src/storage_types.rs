@@ -1,3 +1,5 @@
+#[cfg(test)]
+extern crate std;
 use soroban_sdk::{contracttype, Address, BytesN, Symbol};
 
 #[contracttype]
@@ -7,6 +9,17 @@ pub struct WrapRecord {
     pub data_hash: BytesN<32>,
     pub archetype: Symbol,
     pub period: u64, // Standardized to u64 for better indexing/sorting
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ContractHealth {
+    /// Whether `initialize()` has been called (admin address is set).
+    pub initialized: bool,
+    /// Whether an admin address is currently configured.
+    pub has_admin: bool,
+    /// Whether an admin signing (public) key is currently configured.
+    pub has_signing_key: bool,
 }
 
 #[contracttype]

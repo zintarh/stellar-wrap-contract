@@ -29,6 +29,14 @@ Each wrap record stores:
 - year must be between `2024` and `2100`
 - month must be between `01` and `12`
 
+### `ContractHealth`
+
+Returned by `health()`, reports:
+
+- `initialized: bool` — whether `initialize()` has been called
+- `has_admin: bool` — whether an admin address is currently configured
+- `has_signing_key: bool` — whether an admin signing key is currently configured
+
 ## Storage keys
 
 - `DataKey::Admin`
@@ -52,6 +60,7 @@ Each wrap record stores:
 - `verify_data(e: Env, user: Address, period: u64, data: Bytes) -> bool`
 - `get_latest_wrap(e: Env, user: Address) -> Option<WrapRecord>`
 - `get_admin(e: Env) -> Option<Address>`
+- `health(e: Env) -> ContractHealth`
 - `name(e: Env) -> String`
 - `symbol(e: Env) -> String`
 - `decimals(e: Env) -> u32`
