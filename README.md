@@ -12,6 +12,7 @@ The contract is split into focused modules:
 - `src/queries.rs`: read-only queries and metadata
 - `src/errors.rs`: contract error codes
 - `src/storage_types.rs`: storage keys and persisted record types
+- `src/test_utils.rs`: shared test-only helpers (e.g. payload signing)
 
 ## Data model
 
@@ -36,6 +37,7 @@ Each wrap record stores:
 - `DataKey::Wrap(Address, u64)`
 - `DataKey::WrapCount(Address)`
 - `DataKey::LatestPeriod(Address)`
+- `DataKey::MigrationVersion`
 
 ## Public interface
 
@@ -44,6 +46,7 @@ Each wrap record stores:
 - `initialize(e: Env, admin: Address, admin_pubkey: BytesN<32>)`
 - `update_admin(e: Env, new_admin: Address)`
 - `mint_wrap(e: Env, user: Address, period: u64, archetype: Symbol, data_hash: BytesN<32>, signature: BytesN<64>)`
+- `migrate(e: Env, version: u32)`
 
 ### Read methods
 
@@ -55,6 +58,7 @@ Each wrap record stores:
 - `name(e: Env) -> String`
 - `symbol(e: Env) -> String`
 - `decimals(e: Env) -> u32`
+- `migration_version(e: Env) -> u32`
 
 ## Event schema
 
@@ -88,10 +92,32 @@ Recommended aggregation rule:
 3. count events per user
 4. sort descending by count to produce the leaderboard
 
+## Upgrade compatibility
+
+An upgrade replaces contract code while keeping storage, so any change to the
+storage layout must ship as a numbered migration:
+
+- `DataKey::MigrationVersion` stores the highest migration version applied (`0` before any migration).
+- `migrate(version)` is admin-only and only accepts a version greater than the stored one, so a
+  migration can never run twice — a replay panics with `MigrationAlreadyApplied` (#7).
+- Additive changes (new `DataKey` variants, new methods) need no migration; changing or removing
+  the shape of an existing key does, and the new code must bump the migration version.
+- Call `migrate` in the same transaction batch as the upgrade, and verify with `migration_version()`.
+
 ## Development
+
+The toolchain is pinned in `rust-toolchain.toml` (Rust 1.94.1 with the
+`wasm32-unknown-unknown` target), so local, Docker, and CI builds match. With
+`rustup` installed, the correct toolchain is selected automatically.
 
 Run the test suite with:
 
 ```bash
 cargo test
+```
+
+Build the WASM artifact with:
+
+```bash
+cargo build --release --target wasm32-unknown-unknown
 ```

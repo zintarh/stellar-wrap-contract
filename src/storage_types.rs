@@ -22,4 +22,6 @@ pub enum DataKey {
     WrapCount(Address),
     /// Stores the latest period minted for a specific user.
     LatestPeriod(Address),
+    /// Stores the highest storage migration version already applied.
+    MigrationVersion,
 }

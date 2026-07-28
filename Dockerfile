@@ -1,4 +1,4 @@
-FROM rust:1.77-slim
+FROM rust:1.94-slim
 
 RUN rustup target add wasm32-unknown-unknown
 

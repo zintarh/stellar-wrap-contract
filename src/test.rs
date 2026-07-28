@@ -3,40 +3,17 @@
 extern crate std;
 
 use super::*;
-use ed25519_dalek::{Signer, SigningKey};
+use crate::test_utils::sign_payload;
+use ed25519_dalek::SigningKey;
 use soroban_sdk::{
     symbol_short,
     testutils::{Address as _, Events},
-    xdr::ToXdr,
     Address, Bytes, BytesN, Env, String, Symbol, TryIntoVal,
 };
 use std::vec::Vec;
 
 const STRESS_USER_COUNT: usize = 128;
 
-fn sign_payload(
-    env: &Env,
-    signer: &SigningKey,
-    contract: &Address,
-    user: &Address,
-    period: u64,
-    archetype: &Symbol,
-    data_hash: &BytesN<32>,
-) -> BytesN<64> {
-    let mut payload = Bytes::new(env);
-    payload.append(&contract.to_xdr(env));
-    payload.append(&user.clone().to_xdr(env));
-    payload.append(&period.to_xdr(env));
-    payload.append(&archetype.clone().to_xdr(env));
-    payload.append(&data_hash.clone().to_xdr(env));
-
-    let mut out = [0u8; 512];
-    let len = payload.len() as usize;
-    payload.copy_into_slice(&mut out[..len]);
-
-    let signature = signer.sign(&out[..len]);
-    BytesN::from_array(env, &signature.to_bytes())
-}
 
 #[test]
 fn test_minting_flow() {
@@ -661,4 +638,53 @@ fn test_get_admin_before_init_returns_none() {
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     assert!(client.get_admin().is_none());
+}
+
+#[test]
+fn test_migrate_applies_once_per_version() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let pubkey = BytesN::from_array(&env, &[1u8; 32]);
+
+    client.initialize(&admin, &pubkey);
+    env.mock_all_auths();
+
+    assert_eq!(client.migration_version(), 0);
+
+    client.migrate(&1);
+    assert_eq!(client.migration_version(), 1);
+
+    client.migrate(&2);
+    assert_eq!(client.migration_version(), 2);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #7)")]
+fn test_migrate_rejects_replay() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let pubkey = BytesN::from_array(&env, &[1u8; 32]);
+
+    client.initialize(&admin, &pubkey);
+    env.mock_all_auths();
+
+    client.migrate(&1);
+    client.migrate(&1);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #2)")]
+fn test_migrate_before_init_fails() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+    env.mock_all_auths();
+
+    client.migrate(&1);
 }
