@@ -1986,3 +1986,44 @@ fn test_get_latest_wrap_multiple_wraps() {
     assert_eq!(client.balance_of(&user), 3);
 }
 
+#[test]
+fn test_verify_data_empty_payload() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let signing_key = SigningKey::from_bytes(&[1u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    client.initialize(&admin, &admin_pubkey);
+    env.mock_all_auths();
+
+    let period = 202401u64;
+    let archetype = symbol_short!("arch");
+
+    // Hash of empty bytes — this is what mint_wrap will store as data_hash.
+    let empty_data = Bytes::new(&env);
+    let empty_hash: BytesN<32> = env.crypto().sha256(&empty_data).into();
+
+    let signature = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user,
+        period,
+        &archetype,
+        &empty_hash,
+    );
+
+    client.mint_wrap(&user, &period, &archetype, &empty_hash, &signature);
+
+    // Empty bytes should verify true against the empty-payload hash.
+    assert!(client.verify_data(&user, &period, &empty_data));
+
+    // Any non-empty payload should verify false against that same record.
+    let mut non_empty = Bytes::new(&env);
+    non_empty.push_back(1u8);
+    assert!(!client.verify_data(&user, &period, &non_empty));
+}
