@@ -11,9 +11,22 @@ pub(crate) fn read_admin(e: &Env) -> Address {
         .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized))
 }
 
+/// Rejects obviously invalid Ed25519 signing public keys that would otherwise
+/// make every signature check trivially forgeable or unusable:
+/// the all-zero key and the identity (neutral) point.
+fn is_invalid_admin_pubkey(pubkey: &BytesN<32>) -> bool {
+    let bytes = pubkey.to_array();
+    let is_all_zero = bytes.iter().all(|b| *b == 0);
+    let is_identity = bytes[0] == 1 && bytes[1..].iter().all(|b| *b == 0);
+    is_all_zero || is_identity
+}
+
 pub(crate) fn initialize(e: Env, admin: Address, admin_pubkey: BytesN<32>) {
     if e.storage().instance().has(&DataKey::Admin) {
         panic_with_error!(e, ContractError::AlreadyInitialized);
+    }
+    if is_invalid_admin_pubkey(&admin_pubkey) {
+        panic_with_error!(e, ContractError::InvalidAdminPubkey);
     }
     e.storage().instance().set(&DataKey::Admin, &admin);
     e.storage()

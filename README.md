@@ -339,6 +339,10 @@ You need:
 - `ADMIN_ADDRESS`: Your admin Stellar address (public)
 - `ADMIN_PUBKEY`: The 32-byte public key of your Ed25519 signing key
 
+> `ADMIN_PUBKEY` must be a valid Ed25519 public key. The contract rejects
+> obviously invalid keys — the all-zero key and the Ed25519 identity point —
+> with `Error(Contract, #48)` (`InvalidAdminPubkey`).
+
 To get your Ed25519 public key from your private signing key:
 
 ```bash
@@ -589,6 +593,7 @@ Mint a new wrap to confirm the upgraded code handles write operations correctly:
 | Symptom | Likely cause | Resolution |
 |---------|-------------|------------|
 | `Error(Contract, #2)` — `NotInitialized` | Contract has not been `initialize()`'d | Call `initialize(admin, admin_pubkey)` first |
+| `Error(Contract, #48)` — `InvalidAdminPubkey` | `admin_pubkey` is the all-zero key or the Ed25519 identity point | Pass a real 32-byte Ed25519 public key to `initialize()` |
 | `Error(Contract, #3)` — `Unauthorized` | `--source` is not the admin address | Use the correct admin secret key |
 | `HostError: ...wasm hash...` | WASM hash does not match any uploaded blob | Re-upload the WASM and verify the hash |
 | `Error(Contract, #7)` — `MigrationAlreadyApplied` | `migrate` called twice with same version | Check `migration_version()` first; this is not a real error |

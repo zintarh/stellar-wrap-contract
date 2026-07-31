@@ -56,5 +56,6 @@ pub enum ContractError {
     // Expiration errors
     WrapNotExpired = 46,
     InvalidExpirationDuration = 47,
+    InvalidAdminPubkey = 48,
 }
 

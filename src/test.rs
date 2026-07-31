@@ -222,6 +222,46 @@ fn test_initialize_twice_fails() {
 }
 
 #[test]
+#[should_panic(expected = "Error(Contract, #48)")]
+fn test_initialize_rejects_zero_admin_pubkey() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let zero_pubkey = BytesN::from_array(&env, &[0u8; 32]);
+
+    client.initialize(&admin, &zero_pubkey);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #48)")]
+fn test_initialize_rejects_identity_admin_pubkey() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let mut identity = [0u8; 32];
+    identity[0] = 1;
+    let identity_pubkey = BytesN::from_array(&env, &identity);
+
+    client.initialize(&admin, &identity_pubkey);
+}
+
+#[test]
+fn test_initialize_accepts_valid_admin_pubkey() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let signing_key = SigningKey::from_bytes(&[1u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+
+    client.initialize(&admin, &admin_pubkey);
+
+    assert!(client.health().initialized);
+}
+
+#[test]
 fn test_health_reflects_initialization_state() {
     let env = Env::default();
     let contract_id = env.register_contract(None, StellarWrapContract);
