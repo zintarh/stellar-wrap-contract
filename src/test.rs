@@ -7,7 +7,7 @@ use crate::test_utils::sign_payload;
 use ed25519_dalek::SigningKey;
 use soroban_sdk::{
     symbol_short,
-    testutils::{Address as _, Events},
+    testutils::{storage::Persistent as _, storage::Temporary as _, Address as _, Events},
     Address, Bytes, BytesN, Env, String, Symbol, TryIntoVal,
 };
 use std::vec::Vec;
@@ -1916,6 +1916,35 @@ fn test_balance_of_before_initialize() {
     // Contract is NOT initialized — no admin, no signing key.
     // balance_of must still return 0 without panicking.
     assert_eq!(client.balance_of(&user), 0);
+}
+
+#[test]
+fn test_verify_data_before_initialize() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let user = Address::generate(&env);
+    let period = 202401u64;
+    let data = Bytes::from_slice(&env, b"arbitrary data payload");
+
+    // Snapshot storage before the call.
+    let persistent_before = env.as_contract(&contract_id, || env.storage().persistent().all());
+    let temporary_before = env.as_contract(&contract_id, || env.storage().temporary().all());
+
+    // Contract is NOT initialized — no wrap records exist, so verify_data
+    // must deterministically return false without panicking.
+    assert!(!client.verify_data(&user, &period, &data));
+
+    // verify_data is a read-only query: it must not write any storage entries.
+    assert_eq!(
+        env.as_contract(&contract_id, || env.storage().persistent().all()),
+        persistent_before
+    );
+    assert_eq!(
+        env.as_contract(&contract_id, || env.storage().temporary().all()),
+        temporary_before
+    );
 }
 
 #[test]

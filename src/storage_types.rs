@@ -169,7 +169,6 @@ pub struct TransferFeeConfig {
     /// Soroban token contract used to collect fees.
     pub token: Address,
 }
-}
 
 #[contracttype]
 #[derive(Clone)]
