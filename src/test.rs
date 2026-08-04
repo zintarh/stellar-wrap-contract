@@ -8,7 +8,7 @@ use ed25519_dalek::SigningKey;
 use soroban_sdk::{
     symbol_short,
     testutils::{Address as _, Events},
-    Address, Bytes, BytesN, Env, String, Symbol, TryIntoVal,
+    Address, Bytes, BytesN, Env, IntoVal, String, Symbol, TryIntoVal,
 };
 use std::vec::Vec;
 
@@ -320,6 +320,43 @@ fn test_update_admin_by_current_admin_succeeds() {
 
     client.update_admin(&new_admin);
     assert_eq!(client.get_admin().unwrap(), new_admin);
+}
+
+#[test]
+fn test_update_admin_emits_event() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+    let pubkey = BytesN::from_array(&env, &[1u8; 32]);
+
+    client.initialize(&admin, &pubkey);
+    env.mock_all_auths();
+
+    client.update_admin(&new_admin);
+
+    // `Events::all` only returns contract events (diagnostic events are
+    // filtered out), and `filter_by_contract` keeps only events emitted by
+    // this contract, so the remaining event must be the admin update event
+    // emitted by this contract.
+    assert_eq!(
+        env.events().all().filter_by_contract(&contract_id),
+        soroban_sdk::vec![
+            &env,
+            (
+                contract_id.clone(),
+                (
+                    symbol_short!("v1"),
+                    symbol_short!("admin"),
+                    symbol_short!("updated")
+                )
+                    .into_val(&env),
+                (admin.clone(), new_admin.clone()).into_val(&env),
+            ),
+        ],
+    );
 }
 
 #[test]
