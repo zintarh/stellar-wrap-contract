@@ -2296,3 +2296,41 @@ fn test_get_latest_wrap_multiple_wraps() {
 
     assert_eq!(client.balance_of(&user), 3);
 }
+
+#[test]
+fn test_get_wrap_hash() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let signing_key = SigningKey::from_bytes(&[5u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    client.initialize(&admin, &admin_pubkey);
+    env.mock_all_auths();
+
+    let dummy_hash = BytesN::from_array(&env, &[42u8; 32]);
+    let archetype = symbol_short!("arch");
+    let period = 202401u64;
+
+    let signature = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user,
+        period,
+        &archetype,
+        &dummy_hash,
+    );
+    client.mint_wrap(&user, &period, &archetype, &dummy_hash, &1u32, &signature);
+
+    // Verify that get_wrap_hash returns the correct hash
+    let hash = client.get_wrap_hash(&user, &period);
+    assert_eq!(hash, Some(dummy_hash));
+
+    // Verify that get_wrap_hash returns None for nonexistent wrap
+    let nonexistent_period = 202402u64;
+    assert_eq!(client.get_wrap_hash(&user, &nonexistent_period), None);
+}

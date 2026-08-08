@@ -168,6 +168,16 @@ pub(crate) fn has_wrap(e: Env, user: Address, period: u64) -> bool {
     e.storage().persistent().has(&DataKey::Wrap(user, period))
 }
 
+/// Return the data hash for a known user-period.
+///
+/// Clients only needing the hash for integrity checks should use this
+/// method to minimize bandwidth and CPU, as it avoids loading the
+/// full `WrapRecord` and its associated string/archetype fields.
+pub(crate) fn get_wrap_hash(e: Env, user: Address, period: u64) -> Option<BytesN<32>> {
+    let wrap: Option<WrapRecord> = e.storage().persistent().get(&DataKey::Wrap(user, period));
+    wrap.map(|r| r.data_hash)
+}
+
 pub(crate) fn total_revoked(e: Env) -> u64 {
     e.storage()
         .temporary()

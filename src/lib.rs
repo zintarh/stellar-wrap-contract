@@ -197,6 +197,14 @@ impl StellarWrapContract {
         queries::get_wrap(e, user, period)
     }
 
+    /// Returns the data hash for a known user-period.
+    ///
+    /// Lightweight clients that only need the hash for integrity checks
+    /// should prefer this over `get_wrap` to minimize resource consumption.
+    pub fn get_wrap_hash(e: Env, user: Address, period: u64) -> Option<BytesN<32>> {
+        queries::get_wrap_hash(e, user, period)
+    }
+
     /// Returns the mint timestamp for a known user-period.
     /// The timestamp reflects ledger time, not wall-clock time.
     /// Returns `None` if no mint has occurred for the given user-period.
