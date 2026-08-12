@@ -2296,3 +2296,258 @@ fn test_get_latest_wrap_multiple_wraps() {
 
     assert_eq!(client.balance_of(&user), 3);
 }
+
+#[test]
+fn test_extend_ttl_idempotent() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let signing_key = SigningKey::from_bytes(&[42u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    client.initialize(&admin, &admin_pubkey);
+    env.mock_all_auths();
+
+    let archetype = symbol_short!("arch");
+    let hash = BytesN::from_array(&env, &[99u8; 32]);
+    let period = 202401u64;
+
+    // Mint a wrap
+    let signature = sign_payload_versioned(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user,
+        period,
+        &archetype,
+        &hash,
+        CURRENT_PAYLOAD_VERSION,
+    );
+    client.mint_wrap(
+        &user,
+        &period,
+        &archetype,
+        &hash,
+        &CURRENT_PAYLOAD_VERSION,
+        &signature,
+    );
+
+    // Get the wrap after minting
+    let wrap_before = client.get_wrap(&user, &period).unwrap();
+    let balance_before = client.balance_of(&user);
+
+    // Call extend_ttl multiple times
+    client.extend_ttl(&user, &period);
+    let wrap_after_first_extend = client.get_wrap(&user, &period).unwrap();
+
+    client.extend_ttl(&user, &period);
+    let wrap_after_second_extend = client.get_wrap(&user, &period).unwrap();
+
+    client.extend_ttl(&user, &period);
+    let wrap_after_third_extend = client.get_wrap(&user, &period).unwrap();
+
+    // Verify that wrap data is unchanged
+    assert_eq!(wrap_before.data_hash, wrap_after_first_extend.data_hash);
+    assert_eq!(wrap_before.data_hash, wrap_after_second_extend.data_hash);
+    assert_eq!(wrap_before.data_hash, wrap_after_third_extend.data_hash);
+
+    // Verify all wrap fields remain the same
+    assert_eq!(wrap_before.timestamp, wrap_after_first_extend.timestamp);
+    assert_eq!(wrap_before.timestamp, wrap_after_second_extend.timestamp);
+    assert_eq!(wrap_before.timestamp, wrap_after_third_extend.timestamp);
+
+    assert_eq!(wrap_before.archetype, wrap_after_first_extend.archetype);
+    assert_eq!(wrap_before.archetype, wrap_after_second_extend.archetype);
+    assert_eq!(wrap_before.archetype, wrap_after_third_extend.archetype);
+
+    assert_eq!(wrap_before.period, wrap_after_first_extend.period);
+    assert_eq!(wrap_before.period, wrap_after_second_extend.period);
+    assert_eq!(wrap_before.period, wrap_after_third_extend.period);
+
+    assert_eq!(wrap_before.fsm.state, wrap_after_first_extend.fsm.state);
+    assert_eq!(wrap_before.fsm.state, wrap_after_second_extend.fsm.state);
+    assert_eq!(wrap_before.fsm.state, wrap_after_third_extend.fsm.state);
+
+    // Verify balance remains the same
+    assert_eq!(balance_before, client.balance_of(&user));
+    assert_eq!(client.balance_of(&user), 1);
+
+    // Verify latest period is unchanged
+    let latest_wrap = client.get_latest_wrap(&user).unwrap();
+    assert_eq!(latest_wrap.period, period);
+    assert_eq!(latest_wrap.data_hash, hash);
+}
+
+#[test]
+fn test_extend_ttl_nonexistent_wrap_does_not_panic() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let signing_key = SigningKey::from_bytes(&[43u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    client.initialize(&admin, &admin_pubkey);
+    env.mock_all_auths();
+
+    let nonexistent_period = 999999u64;
+
+    // Call extend_ttl on a nonexistent wrap should not panic
+    client.extend_ttl(&user, &nonexistent_period);
+
+    // Verify no wrap exists for that period
+    let wrap = client.get_wrap(&user, &nonexistent_period);
+    assert!(wrap.is_none());
+
+    // Verify balance is still 0
+    assert_eq!(client.balance_of(&user), 0);
+}
+
+#[test]
+fn test_extend_ttl_preserves_all_fields() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let signing_key = SigningKey::from_bytes(&[44u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    client.initialize(&admin, &admin_pubkey);
+    env.mock_all_auths();
+
+    let archetype = symbol_short!("test");
+    let hash = BytesN::from_array(&env, &[55u8; 32]);
+    let period = 202405u64;
+
+    // Mint a wrap
+    let signature = sign_payload_versioned(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user,
+        period,
+        &archetype,
+        &hash,
+        CURRENT_PAYLOAD_VERSION,
+    );
+    client.mint_wrap(
+        &user,
+        &period,
+        &archetype,
+        &hash,
+        &CURRENT_PAYLOAD_VERSION,
+        &signature,
+    );
+
+    let wrap_original = client.get_wrap(&user, &period).unwrap();
+
+    // Extend TTL
+    client.extend_ttl(&user, &period);
+
+    let wrap_after_extend = client.get_wrap(&user, &period).unwrap();
+
+    // Comprehensive field comparison
+    assert_eq!(wrap_original.timestamp, wrap_after_extend.timestamp);
+    assert_eq!(wrap_original.data_hash, wrap_after_extend.data_hash);
+    assert_eq!(wrap_original.archetype, wrap_after_extend.archetype);
+    assert_eq!(wrap_original.period, wrap_after_extend.period);
+    assert_eq!(wrap_original.fsm.state, wrap_after_extend.fsm.state);
+    assert_eq!(
+        wrap_original.fsm.updated_at,
+        wrap_after_extend.fsm.updated_at
+    );
+    assert_eq!(wrap_original.description, wrap_after_extend.description);
+    assert_eq!(wrap_original.image_url, wrap_after_extend.image_url);
+}
+
+#[test]
+fn test_extend_ttl_multiple_wraps() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let signing_key = SigningKey::from_bytes(&[45u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    client.initialize(&admin, &admin_pubkey);
+    env.mock_all_auths();
+
+    let archetype = symbol_short!("arch");
+    let hash1 = BytesN::from_array(&env, &[1u8; 32]);
+    let hash2 = BytesN::from_array(&env, &[2u8; 32]);
+    let period1 = 202401u64;
+    let period2 = 202402u64;
+
+    // Mint two wraps
+    let sig1 = sign_payload_versioned(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user,
+        period1,
+        &archetype,
+        &hash1,
+        CURRENT_PAYLOAD_VERSION,
+    );
+    let sig2 = sign_payload_versioned(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user,
+        period2,
+        &archetype,
+        &hash2,
+        CURRENT_PAYLOAD_VERSION,
+    );
+
+    client.mint_wrap(
+        &user,
+        &period1,
+        &archetype,
+        &hash1,
+        &CURRENT_PAYLOAD_VERSION,
+        &sig1,
+    );
+    client.mint_wrap(
+        &user,
+        &period2,
+        &archetype,
+        &hash2,
+        &CURRENT_PAYLOAD_VERSION,
+        &sig2,
+    );
+
+    let wrap1_before = client.get_wrap(&user, &period1).unwrap();
+    let wrap2_before = client.get_wrap(&user, &period2).unwrap();
+
+    // Extend both wraps multiple times
+    client.extend_ttl(&user, &period1);
+    client.extend_ttl(&user, &period2);
+    client.extend_ttl(&user, &period1);
+    client.extend_ttl(&user, &period2);
+
+    let wrap1_after = client.get_wrap(&user, &period1).unwrap();
+    let wrap2_after = client.get_wrap(&user, &period2).unwrap();
+
+    // Verify both wraps remain unchanged
+    assert_eq!(wrap1_before.data_hash, wrap1_after.data_hash);
+    assert_eq!(wrap2_before.data_hash, wrap2_after.data_hash);
+    assert_eq!(wrap1_before.period, wrap1_after.period);
+    assert_eq!(wrap2_before.period, wrap2_after.period);
+
+    // Verify balance remains 2
+    assert_eq!(client.balance_of(&user), 2);
+
+    // Verify latest period is still period2 (the most recent mint)
+    let latest = client.get_latest_wrap(&user).unwrap();
+    assert_eq!(latest.period, period2);
+}
