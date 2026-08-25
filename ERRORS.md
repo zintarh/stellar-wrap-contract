@@ -26,6 +26,7 @@ The codes are defined by the Rust `ContractError` enum in `src/lib.rs`.
 4) Ensure you pass the 64-byte signature bytes (not base64/hex-decoded to the wrong length). |
 | 6 | `InvalidPeriod` | The period value is malformed or out of range | Period does not follow `YYYYMM` format (year 2024–2100, month 01–12) | Ensure `period` uses a valid year (2024–2100) and month (01–12). |
 | 7 | `WrapNotFound` | A wrap record was not found for the `(user, period)` pair | Revoking a wrap that never existed, or period mismatch | 1) Use `get_wrap(user, period)` to confirm existence. 2) Ensure you are passing the exact same `period` value used when the wrap was minted. 3) If the record may have been revoked, mint again or fetch the correct period. |
+| 52 | `InvalidAdminPubKey` | The `admin_pubkey` passed to `initialize()` is invalid (e.g. all-zero) | Passing an all-zero 32-byte key that has no known private key | 1) Generate a real Ed25519 keypair and pass its 32-byte public key. 2) Re-deploy a fresh contract instance and retry `initialize()` with a valid key. |
 
 ---
 
@@ -108,6 +109,7 @@ Some failures can look like “unexpected panics” depending on the tooling:
 - If you see **`Error(Contract, #5)`**, verify your Ed25519 signature and canonical payload encoding.
 - If you see **`Error(Contract, #6)`**, ensure `period` follows `YYYYMM` format (year 2024–2100, month 01–12).
 - If you see **`Error(Contract, #7)`**, the wrap record does not exist. Use `get_wrap(user, period)` to confirm or mint a new wrap.
+- If you see **`Error(Contract, #52)`**, the `admin_pubkey` passed to `initialize()` is invalid (all-zero). Generate a real Ed25519 keypair and retry with its public key.
 
 ---
 

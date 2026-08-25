@@ -67,7 +67,7 @@ Returned by `health()`, reports:
 
 ### Write methods
 
-- `initialize(e: Env, admin: Address, admin_pubkey: BytesN<32>)`
+- `initialize(e: Env, admin: Address, admin_pubkey: BytesN<32>)` — Rejects an all-zero `admin_pubkey` with `Error(Contract, #52)` (`InvalidAdminPubKey`). See [Step 3](#step-3-initialize-the-contract).
 - `update_admin(e: Env, new_admin: Address)`
 - `mint_wrap(e: Env, user: Address, period: u64, archetype: Symbol, data_hash: BytesN<32>, payload_version: u32, signature: BytesN<64>)`
 - `mint_wrap_batch(e: Env, items: Vec<BatchWrapItem>, aggregated_signature: Option<BytesN<64>>)`
@@ -352,6 +352,12 @@ You need:
 - `CONTRACT_ID`: From step 2
 - `ADMIN_ADDRESS`: Your admin Stellar address (public)
 - `ADMIN_PUBKEY`: The 32-byte public key of your Ed25519 signing key
+
+> **Validation:** `initialize` rejects an all-zero `ADMIN_PUBKEY`
+> (`Error(Contract, #52)` — `InvalidAdminPubKey`). An all-zero Ed25519 public
+> key has no known corresponding private key, so accepting it would silently
+> brick every future `mint_wrap` call. Ensure your signing key is a real,
+> generated Ed25519 keypair.
 
 To get your Ed25519 public key from your private signing key:
 
