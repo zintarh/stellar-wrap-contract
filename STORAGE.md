@@ -22,6 +22,7 @@ Soroban has three storage namespaces:
 | `TransferFee` | Instance | `TransferFeeConfig` |
 | `TransferGuard` | Temporary | Transfer reentrancy guard |
 | `MigrationVersion` | Instance | Highest applied storage migration version |
+| `StorageSchemaVersion` | Instance | Storage schema version initialized at deployment |
 | `UserPeriods(Address)` | Persistent | Per-user minted period list |
 | `TotalWrapCount` | Persistent | Global successful mint count |
 | `TotalRevoked` | Temporary | Global revoked count; defaults to `0` when absent |
@@ -93,5 +94,14 @@ For any upgrade that touches storage:
 4. Use `MigrationVersion` for one-time, admin-authorized migrations. Migrations must be monotonic and safe to retry, or must fail before partial state is committed.
 5. Preserve TTL expectations. A migration that rewrites persistent data must renew each rewritten entry; it must not assume that renewing one key renews related keys.
 6. Before deployment, compare the new `DataKey` enum and all namespace calls with this reference, then test reads of representative pre-upgrade data in an upgrade simulation.
+
+`StorageSchemaVersion` is initialized to `CURRENT_STORAGE_SCHEMA_VERSION` (`1`)
+and is exposed through `storage_schema_version()`. An upgrade that preserves the
+existing storage encoding must preserve this value. An upgrade that changes the
+schema must add and execute an explicit, admin-authorized migration before
+publishing the new schema version. Keep `MigrationVersion` for tracking the
+individual migration operations; it is separate from the resulting schema
+version. Deployments from before this key was introduced read as version `0`
+until a deliberate compatibility migration establishes their actual schema.
 
 The canonical serialized representation is produced by Soroban's `#[contracttype]` encoding. Do not hand-roll or depend on a guessed byte layout.

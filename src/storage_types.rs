@@ -2,6 +2,9 @@
 extern crate std;
 use soroban_sdk::{contracttype, Address, Bytes, BytesN, String, Symbol};
 
+/// Storage schema version written during contract initialization.
+pub const CURRENT_STORAGE_SCHEMA_VERSION: u32 = 1;
+
 #[contracttype]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum WrapState {
@@ -265,6 +268,8 @@ pub enum DataKey {
     StakeConfig,
     /// Total amount staked across all users (instance-level).
     TotalStaked,
+    /// Stores the contract-wide storage schema version.
+    StorageSchemaVersion,
 }
 
 #[contracttype]

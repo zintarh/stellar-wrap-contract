@@ -1,7 +1,7 @@
 use soroban_sdk::{panic_with_error, symbol_short, Address, BytesN, Env};
 
 use crate::mint::TTL_TEMP;
-use crate::{ContractError, DataKey, TransferFeeConfig};
+use crate::{ContractError, DataKey, TransferFeeConfig, CURRENT_STORAGE_SCHEMA_VERSION};
 
 /// Reads the stored admin or panics with `NotInitialized`.
 pub(crate) fn read_admin(e: &Env) -> Address {
@@ -33,7 +33,18 @@ pub(crate) fn initialize(e: Env, admin: Address, admin_pubkey: BytesN<32>) {
     e.storage()
         .instance()
         .set(&DataKey::AdminPubKey, &admin_pubkey);
+    e.storage().instance().set(
+        &DataKey::StorageSchemaVersion,
+        &CURRENT_STORAGE_SCHEMA_VERSION,
+    );
     e.events().publish((symbol_short!("init"),), admin);
+}
+
+pub(crate) fn storage_schema_version(e: &Env) -> u32 {
+    e.storage()
+        .instance()
+        .get(&DataKey::StorageSchemaVersion)
+        .unwrap_or(0)
 }
 
 /// Immediate admin replacement.

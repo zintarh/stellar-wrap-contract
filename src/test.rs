@@ -220,6 +220,19 @@ fn test_initialize_twice_fails() {
 }
 
 #[test]
+fn test_initialize_sets_storage_schema_version() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let pubkey = BytesN::from_array(&env, &[1u8; 32]);
+
+    assert_eq!(client.storage_schema_version(), 0);
+    client.initialize(&admin, &pubkey);
+    assert_eq!(client.storage_schema_version(), 1);
+}
+
+#[test]
 #[should_panic(expected = "Error(Contract, #52)")]
 fn test_initialize_rejects_zero_admin_pubkey() {
     let env = Env::default();
