@@ -1,4 +1,4 @@
-.PHONY: build test fuzz fuzz-build fmt fmt-check lint doc clean deploy-testnet wasm-build docker-build docker-build-verify coverage
+.PHONY: build test fuzz fuzz-build fmt fmt-check lint doc clean deploy-testnet wasm-build wasm-optimize wasm-build-optimized docker-build docker-build-verify coverage
 
 # ── Build ────────────────────────────────────────────────────────────────────
 
@@ -12,6 +12,21 @@ wasm-build:
 ## soroban-build: Build via the Stellar CLI (alternative to cargo build --target wasm32)
 soroban-build:
 	stellar contract build
+
+## wasm-optimize: Run the Stellar CLI optimizer (wasm-opt) on the already-built release WASM.
+##   Requires: stellar CLI installed and available on PATH.
+##   Input:  target/wasm32-unknown-unknown/release/stellar_wrap_contract.wasm
+##   Output: target/wasm32-unknown-unknown/release/stellar_wrap_contract.optimized.wasm
+wasm-optimize:
+	stellar contract optimize \
+		--wasm target/wasm32-unknown-unknown/release/stellar_wrap_contract.wasm \
+		--wasm-out target/wasm32-unknown-unknown/release/stellar_wrap_contract.optimized.wasm
+
+## wasm-build-optimized: Compile to WASM (release) then apply the Stellar CLI optimizer in one step.
+##   Produces both the raw and optimized WASM artifacts under
+##   target/wasm32-unknown-unknown/release/.
+##   Requires: stellar CLI installed and available on PATH.
+wasm-build-optimized: wasm-build wasm-optimize
 
 # ── Test ─────────────────────────────────────────────────────────────────────
 
