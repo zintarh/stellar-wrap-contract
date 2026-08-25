@@ -62,6 +62,7 @@ Returned by `health()`, reports:
 - `DataKey::WrapCount(Address)`
 - `DataKey::LatestPeriod(Address)`
 - `DataKey::MigrationVersion`
+- `DataKey::StorageSchemaVersion`
 
 ## Public interface
 
@@ -111,6 +112,7 @@ TypeScript signer example.
 - `symbol(e: Env) -> String`
 - `decimals(e: Env) -> u32`
 - `migration_version(e: Env) -> u32`
+- `storage_schema_version(e: Env) -> u32`
 
 ## Oracle hash verification
 

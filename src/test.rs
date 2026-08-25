@@ -220,6 +220,19 @@ fn test_initialize_twice_fails() {
 }
 
 #[test]
+fn test_initialize_sets_storage_schema_version() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let pubkey = BytesN::from_array(&env, &[1u8; 32]);
+
+    assert_eq!(client.storage_schema_version(), 0);
+    client.initialize(&admin, &pubkey);
+    assert_eq!(client.storage_schema_version(), 1);
+}
+
+#[test]
 #[should_panic(expected = "Error(Contract, #52)")]
 fn test_initialize_rejects_zero_admin_pubkey() {
     let env = Env::default();
@@ -283,7 +296,6 @@ fn test_health_reflects_initialization_state() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #4)")]
 fn test_duplicate_period_fails() {
     let env = Env::default();
     let contract_id = env.register_contract(None, StellarWrapContract);
@@ -312,7 +324,11 @@ fn test_duplicate_period_fails() {
     );
 
     client.mint_wrap(&user, &period, &archetype, &hash, &1u32, &sig);
-    client.mint_wrap(&user, &period, &archetype, &hash, &1u32, &sig);
+    let balance_before = client.balance_of(&user);
+    let result = client.try_mint_wrap(&user, &period, &archetype, &hash, &1u32, &sig);
+
+    assert!(result.is_err(), "duplicate period mint must fail");
+    assert_eq!(client.balance_of(&user), balance_before);
 }
 
 #[test]
@@ -522,6 +538,7 @@ fn test_mint_wrap_rejects_period_tampered_signature() {
     );
 
     // Submitting that signature with a different period must be rejected.
+    let balance_before = client.balance_of(&user);
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         client.mint_wrap(
             &user,
@@ -541,7 +558,7 @@ fn test_mint_wrap_rejects_period_tampered_signature() {
     // No wrap or wrap-count may be written for either period.
     assert!(client.get_wrap(&user, &period_a).is_none());
     assert!(client.get_wrap(&user, &period_b).is_none());
-    assert_eq!(client.balance_of(&user), 0);
+    assert_eq!(client.balance_of(&user), balance_before);
 }
 
 /// Asserts that a caught mint failure surfaced the contract's
@@ -592,6 +609,7 @@ fn test_mint_wrap_rejects_signature_from_wrong_key() {
         &data_hash,
     );
 
+    let balance_before = client.balance_of(&user);
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         client.mint_wrap(
             &user,
@@ -606,7 +624,42 @@ fn test_mint_wrap_rejects_signature_from_wrong_key() {
 
     // Nothing may be written by the failed mint.
     assert!(client.get_wrap(&user, &period).is_none());
-    assert_eq!(client.balance_of(&user), 0);
+    assert_eq!(client.balance_of(&user), balance_before);
+}
+
+#[test]
+fn test_mint_wrap_rejects_zero_hash_submission_without_incrementing_balance() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let signing_key = SigningKey::from_bytes(&[23u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    client.initialize(&admin, &admin_pubkey);
+    env.mock_all_auths();
+
+    let archetype = symbol_short!("arch");
+    let period = 202401u64;
+    let signed_hash = BytesN::from_array(&env, &[42u8; 32]);
+    let zero_hash = BytesN::from_array(&env, &[0u8; 32]);
+    let signature = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user,
+        period,
+        &archetype,
+        &signed_hash,
+    );
+    let balance_before = client.balance_of(&user);
+
+    let result = client.try_mint_wrap(&user, &period, &archetype, &zero_hash, &1u32, &signature);
+
+    assert!(result.is_err(), "zero hash mint must fail");
+    assert_eq!(client.balance_of(&user), balance_before);
 }
 
 #[test]

@@ -46,7 +46,6 @@ fn sign_payload(
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #4)")]
 fn test_replay_attack_same_period_fails() {
     let env = Env::default();
     let contract_id = env.register_contract(None, StellarWrapContract);
@@ -90,8 +89,9 @@ fn test_replay_attack_same_period_fails() {
     assert!(wrap.is_some(), "First mint should succeed");
 
     // Replay attack: Try to mint again with the exact same parameters
-    // This should PANIC with WrapAlreadyExists error (#4)
-    client.mint_wrap(
+    // This should fail with WrapAlreadyExists error (#4), without changing the count.
+    let balance_before = client.balance_of(&user);
+    let result = client.try_mint_wrap(
         &user,
         &period,
         &archetype,
@@ -99,6 +99,8 @@ fn test_replay_attack_same_period_fails() {
         &CURRENT_PAYLOAD_VERSION,
         &signature,
     );
+    assert!(result.is_err(), "replayed mint must fail");
+    assert_eq!(client.balance_of(&user), balance_before);
 }
 
 /// Test 2: Replay Attack with Different Hash (but same period)

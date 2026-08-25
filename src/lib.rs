@@ -54,7 +54,7 @@ pub use oracle::DataHashOracle;
 pub use storage_types::{
     AdminProposal, ContractHealth, DataKey, InboundBridgeRecord, OutboundBridgeRequest,
     ProposalStatus, StakeConfig, StakeRecord, TimelockAction, TimelockOperation, TransferFeeConfig,
-    WrapLifecycleFSM, WrapRecord, WrapState,
+    WrapLifecycleFSM, WrapRecord, WrapState, CURRENT_STORAGE_SCHEMA_VERSION,
 };
 pub use token::TokenInterface;
 
@@ -100,6 +100,14 @@ impl StellarWrapContract {
 
     pub fn migration_version(e: Env) -> u32 {
         admin::migration_version(&e)
+    }
+
+    /// Returns the on-chain storage schema version.
+    ///
+    /// Returns `0` for deployments created before schema version tracking was
+    /// introduced.
+    pub fn storage_schema_version(e: Env) -> u32 {
+        admin::storage_schema_version(&e)
     }
 
     pub fn upgrade(e: Env, new_wasm_hash: BytesN<32>) {
