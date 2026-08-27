@@ -363,3 +363,17 @@ So:
 - Temporary guard: `src/lib.rs` (`mint_wrap`)
 
 - Because Soroban does not expose raw ledger storage size to contracts, this approach uses contract-side accounting and conservative estimates. To bootstrap existing deployments, use an admin migration that recomputes storage_bytes by scanning known indexes in bounded chunks (not provided here).
+
+---
+
+## 9) User State Invariants
+
+The contract maintains a set of correlated storage entries for each user. To ensure storage consistency, the following invariants are defined and can be verified via the `check_user_invariants` entrypoint:
+
+1. **WrapCount == UserPeriods.len()**: The total number of minted wraps must equal the number of periods tracked in `UserPeriods`.
+2. **WrapCount == WrapPeriods.len()**: The total number of minted wraps must equal the number of periods tracked in `WrapPeriods`.
+3. **LatestPeriod == max(UserPeriods)**: When a user has wraps, `LatestPeriod` must exactly match the maximum period in `UserPeriods`. If `UserPeriods` is empty, `LatestPeriod` must be absent.
+4. **All periods live**: Every period recorded in `UserPeriods` must correspond to a live `Wrap` entry in persistent storage.
+5. **balance_of == WrapCount**: The user's token balance (returned by `balance_of`) must exactly equal `WrapCount`.
+
+These invariants must hold after any state transition, including minting, revoking, burning, or bridging wraps.

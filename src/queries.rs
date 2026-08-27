@@ -1,5 +1,7 @@
-use crate::{ContractHealth, DataKey, TransferFeeConfig, WrapRecord};
+use crate::{ContractHealth, DataKey, InvariantReport, TransferFeeConfig, WrapRecord};
 use soroban_sdk::{Address, Bytes, BytesN, Env, String};
+
+pub const MAX_QUERY_RESULTS: u32 = 100;
 
 pub(crate) fn get_wrap(e: Env, user: Address, period: u64) -> Option<WrapRecord> {
     e.storage().persistent().get(&DataKey::Wrap(user, period))
@@ -198,4 +200,62 @@ pub(crate) fn contract_version(e: Env) -> u32 {
         .instance()
         .get(&DataKey::ContractVersion)
         .unwrap_or(0)
+}
+
+pub(crate) fn check_user_invariants(e: Env, user: Address) -> InvariantReport {
+    let wrap_count_key = DataKey::WrapCount(user.clone());
+    let observed_wrap_count = e.storage().persistent().get::<_, u32>(&wrap_count_key).unwrap_or(0);
+
+    let user_periods_key = DataKey::UserPeriods(user.clone());
+    let user_periods = e.storage().persistent().get::<_, soroban_sdk::Vec<u64>>(&user_periods_key);
+    let observed_user_periods_len = user_periods.as_ref().map(|p| p.len()).unwrap_or(0);
+
+    let wrap_periods_key = DataKey::WrapPeriods(user.clone());
+    let wrap_periods = e.storage().persistent().get::<_, soroban_sdk::Vec<u64>>(&wrap_periods_key);
+    let observed_wrap_periods_len = wrap_periods.as_ref().map(|p| p.len()).unwrap_or(0);
+
+    let latest_period_key = DataKey::LatestPeriod(user.clone());
+    let observed_latest_period = e.storage().persistent().get::<_, u64>(&latest_period_key);
+
+    let observed_max_user_period = user_periods.as_ref().and_then(|p| {
+        let mut max = None;
+        for i in 0..p.len() {
+            if let Some(period) = p.get(i) {
+                if max.is_none() || period > max.unwrap() {
+                    max = Some(period);
+                }
+            }
+        }
+        max
+    });
+
+    let observed_balance = balance_of(e.clone(), user.clone());
+
+    let mut user_periods_all_live = true;
+    if let Some(p) = &user_periods {
+        let len = core::cmp::min(p.len(), MAX_QUERY_RESULTS);
+        for i in 0..len {
+            if let Some(period) = p.get(i) {
+                if !has_wrap(e.clone(), user.clone(), period) {
+                    user_periods_all_live = false;
+                    break;
+                }
+            }
+        }
+    }
+
+    InvariantReport {
+        wrap_count_matches_user_periods: observed_wrap_count == observed_user_periods_len,
+        wrap_count_matches_wrap_periods: observed_wrap_count == observed_wrap_periods_len,
+        latest_period_is_max_user_period: observed_latest_period == observed_max_user_period,
+        user_periods_all_live,
+        balance_matches_wrap_count: observed_balance == (observed_wrap_count as i128),
+        
+        observed_wrap_count,
+        observed_user_periods_len,
+        observed_wrap_periods_len,
+        observed_latest_period,
+        observed_max_user_period,
+        observed_balance,
+    }
 }

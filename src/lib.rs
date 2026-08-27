@@ -52,7 +52,7 @@ pub use errors::ContractError;
 pub use mint::CURRENT_PAYLOAD_VERSION;
 pub use oracle::DataHashOracle;
 pub use storage_types::{
-    AdminProposal, ContractHealth, DataKey, InboundBridgeRecord, OutboundBridgeRequest,
+    AdminProposal, ContractHealth, DataKey, InboundBridgeRecord, InvariantReport, OutboundBridgeRequest,
     ProposalStatus, StakeConfig, StakeRecord, TimelockAction, TimelockOperation, TransferFeeConfig,
     WrapLifecycleFSM, WrapRecord, WrapState,
 };
@@ -464,6 +464,11 @@ impl StellarWrapContract {
         storage_accounting::get_fee_params(&e)
     }
 
+    /// Read-only check for user storage invariants.
+    pub fn check_user_invariants(e: Env, user: Address) -> InvariantReport {
+        queries::check_user_invariants(e, user)
+    }
+
     // ---------------------------------------------------------------------
     // Off-chain whitelisting (merkle)
     // ---------------------------------------------------------------------
@@ -793,3 +798,5 @@ mod test_utils;
 mod test_vectors;
 #[cfg(test)]
 mod transfer_test;
+#[cfg(test)]
+mod invariant_test;

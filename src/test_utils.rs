@@ -80,3 +80,42 @@ pub(crate) fn decode_events(env: &Env) -> std::vec::Vec<(std::vec::Vec<Val>, Val
 pub(crate) fn scval_to_val(env: &Env, scval: &ScVal) -> Val {
     scval.try_into_val(env).unwrap()
 }
+
+pub(crate) fn assert_user_invariants(
+    env: &Env,
+    contract_id: &Address,
+    user: &Address,
+) {
+    use crate::StellarWrapContractClient;
+    let client = StellarWrapContractClient::new(env, contract_id);
+    let report = client.check_user_invariants(user);
+
+    assert!(
+        report.wrap_count_matches_user_periods,
+        "Invariant violation: WrapCount != UserPeriods.len() (observed {} != {})",
+        report.observed_wrap_count,
+        report.observed_user_periods_len
+    );
+    assert!(
+        report.wrap_count_matches_wrap_periods,
+        "Invariant violation: WrapCount != WrapPeriods.len() (observed {} != {})",
+        report.observed_wrap_count,
+        report.observed_wrap_periods_len
+    );
+    assert!(
+        report.latest_period_is_max_user_period,
+        "Invariant violation: LatestPeriod != max(UserPeriods) (observed {:?} != {:?})",
+        report.observed_latest_period,
+        report.observed_max_user_period
+    );
+    assert!(
+        report.user_periods_all_live,
+        "Invariant violation: Not every period in UserPeriods has a live Wrap entry"
+    );
+    assert!(
+        report.balance_matches_wrap_count,
+        "Invariant violation: balance_of != WrapCount (observed {} != {})",
+        report.observed_balance,
+        report.observed_wrap_count
+    );
+}
