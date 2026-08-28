@@ -145,6 +145,9 @@ pub(crate) fn bridge_wrap_in(
         .unwrap_or_else(|| panic_with_error!(e, ContractError::BridgeNotInitialized));
     relayer.require_auth();
 
+    // Reject creating a wrap for a recipient who has opted out.
+    crate::optout::require_not_opted_out(&e, &recipient);
+
     if !is_chain_supported(&e, source_chain) {
         panic_with_error!(e, ContractError::ChainDisabled);
     }

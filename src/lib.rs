@@ -25,7 +25,7 @@
 extern crate std;
 
 use soroban_sdk::{
-    contract, contractimpl, panic_with_error, Address, Bytes, BytesN, Env, String, Symbol, Vec,
+    contract, contractimpl, Address, Bytes, BytesN, Env, String, Symbol, Vec,
 };
 
 mod admin;
@@ -37,6 +37,7 @@ mod events;
 mod governance;
 mod merkle;
 mod mint;
+mod optout;
 mod oracle;
 mod queries;
 mod revoke;
@@ -47,6 +48,7 @@ mod storage_types;
 mod timelock;
 mod token;
 mod transfer;
+mod ttl;
 
 pub use errors::ContractError;
 pub use mint::CURRENT_PAYLOAD_VERSION;
@@ -281,24 +283,7 @@ impl StellarWrapContract {
     /// - `user`: The address whose storage entries will be extended.
     /// - `period`: The specific wrap period whose record TTL will be extended.
     pub fn extend_ttl(e: Env, user: Address, period: u64) {
-        let wrap_key = DataKey::Wrap(user.clone(), period);
-        let ttl = 17280 * 365; // ~1 year in ledgers
-
-        if e.storage().persistent().has(&wrap_key) {
-            e.storage().persistent().extend_ttl(&wrap_key, ttl, ttl);
-        }
-
-        let count_key = DataKey::WrapCount(user.clone());
-        if e.storage().persistent().has(&count_key) {
-            e.storage().persistent().extend_ttl(&count_key, ttl, ttl);
-        }
-
-        let latest_key = DataKey::LatestPeriod(user);
-        if e.storage().persistent().has(&latest_key) {
-            e.storage().persistent().extend_ttl(&latest_key, ttl, ttl);
-        }
-
-        e.storage().instance().extend_ttl(ttl, ttl);
+        ttl::extend_ttl(e, user, period);
     }
 
     /// Admin-only function to extend TTL for all metadata keys associated with a user.
@@ -324,26 +309,7 @@ impl StellarWrapContract {
     /// # Panics
     /// - [`ContractError::NotInitialized`] if the contract has not been initialized.
     pub fn renew_all_ttls(e: Env, user: Address) {
-        let admin: Address = e
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
-        admin.require_auth();
-
-        let ttl = 17280 * 365; // ~1 year in ledgers
-
-        let count_key = DataKey::WrapCount(user.clone());
-        if e.storage().persistent().has(&count_key) {
-            e.storage().persistent().extend_ttl(&count_key, ttl, ttl);
-        }
-
-        let latest_key = DataKey::LatestPeriod(user);
-        if e.storage().persistent().has(&latest_key) {
-            e.storage().persistent().extend_ttl(&latest_key, ttl, ttl);
-        }
-
-        e.storage().instance().extend_ttl(ttl, ttl);
+        ttl::renew_all_ttls(e, user);
     }
 
     /// Return the current admin address, or `None` if the contract is not yet initialized.
@@ -401,26 +367,18 @@ impl StellarWrapContract {
     /// Set the caller's opt-out flag, preventing any future wraps from being
     /// minted for them. Only the user themselves can call this.
     pub fn opt_out(e: Env, user: Address) {
-        user.require_auth();
-        let key = crate::storage_types::DataKey::OptOut(user);
-        let ttl = 17280 * 365; // ~1 year in ledgers
-        e.storage().persistent().set(&key, &true);
-        e.storage().persistent().extend_ttl(&key, ttl, ttl);
+        optout::opt_out(e, user);
     }
 
     /// Clear the caller's opt-out flag, allowing future wraps to be minted for
     /// them again. Only the user themselves can call this.
     pub fn opt_in(e: Env, user: Address) {
-        user.require_auth();
-        let key = crate::storage_types::DataKey::OptOut(user);
-        e.storage().persistent().remove(&key);
+        optout::opt_in(e, user);
     }
 
     /// Returns `true` if the user has opted out of future mints.
     pub fn is_opted_out(e: Env, user: Address) -> bool {
-        e.storage()
-            .persistent()
-            .has(&crate::storage_types::DataKey::OptOut(user))
+        optout::is_opted_out(&e, &user)
     }
 
     /// Return the current contract version number.

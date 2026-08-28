@@ -70,9 +70,7 @@ pub(crate) fn mint_wrap(
     user.require_auth();
 
     // Reject minting for users who have explicitly opted out.
-    if e.storage().persistent().has(&DataKey::OptOut(user.clone())) {
-        panic_with_error!(e, ContractError::UserOptedOut);
-    }
+    crate::optout::require_not_opted_out(&e, &user);
 
     validate_period(&e, period);
     validate_payload_version(&e, payload_version);
@@ -234,6 +232,7 @@ pub(crate) fn mint_wrap_batch(
             validate_period(&e, item.period);
             validate_payload_version(&e, item.payload_version);
             item.user.require_auth();
+            crate::optout::require_not_opted_out(&e, &item.user);
         }
         let payload_version = items.get(0).unwrap().payload_version;
         if let Err(err) = crate::signature::verify_batch_aggregated_signature(
@@ -252,6 +251,7 @@ pub(crate) fn mint_wrap_batch(
             validate_period(&e, item.period);
             validate_payload_version(&e, item.payload_version);
             item.user.require_auth();
+            crate::optout::require_not_opted_out(&e, &item.user);
 
             if let Err(err) = verify_mint_signature(
                 &e,
