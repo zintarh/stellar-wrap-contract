@@ -52,6 +52,12 @@ pub fn construct_mint_payload(
     payload
 }
 
+/// Maximum allowed payload size for Ed25519 signature verification.
+/// This limit ensures that payloads can be processed without unreasonable
+/// memory usage while supporting the maximum expected batch size.
+/// 16KB allows for batches well beyond MAX_BATCH_SIZE with room to grow.
+pub const MAX_SIGNATURE_PAYLOAD_SIZE: usize = 16384; // 16KB
+
 /// Verifies an Ed25519 signature in-guest, mapping every failure mode to
 /// [`ContractError::InvalidSignature`].
 ///
@@ -71,12 +77,26 @@ fn verify_ed25519(
         .map_err(|_| ContractError::InvalidSignature)?;
     let sig = Signature::from_bytes(&signature.to_array());
 
-    let mut msg = [0u8; 512];
     let len = message.len() as usize;
-    message.copy_into_slice(&mut msg[..len]);
+    
+    // Reject oversized payloads to prevent excessive memory usage and ensure
+    // reasonable resource consumption. This returns a proper ContractError
+    // instead of causing a VM trap from buffer overrun.
+    if len > MAX_SIGNATURE_PAYLOAD_SIZE {
+        return Err(ContractError::InvalidSignature);
+    }
+
+    // Allocate a buffer sized to the actual message length to avoid
+    // fixed-size buffer limitations
+    extern crate alloc;
+    use alloc::vec::Vec;
+    
+    let mut msg_bytes = Vec::with_capacity(len);
+    msg_bytes.resize(len, 0u8);
+    message.copy_into_slice(&mut msg_bytes);
 
     verifying_key
-        .verify_strict(&msg[..len], &sig)
+        .verify_strict(&msg_bytes, &sig)
         .map_err(|_| ContractError::InvalidSignature)
 }
 
@@ -185,11 +205,15 @@ mod tests {
             payload_version,
         );
 
-        let mut out = [0u8; 512];
+        extern crate alloc;
+        use alloc::vec::Vec;
+        
         let len = payload.len() as usize;
-        payload.copy_into_slice(&mut out[..len]);
+        let mut out = Vec::with_capacity(len);
+        out.resize(len, 0u8);
+        payload.copy_into_slice(&mut out);
 
-        let signature = signer.sign(&out[..len]);
+        let signature = signer.sign(&out);
         BytesN::from_array(env, &signature.to_bytes())
     }
 
@@ -391,11 +415,16 @@ mod tests {
         let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
 
         let payload = construct_batch_mint_payload(&env, &contract_id, &items, 1);
-        let mut out = [0u8; 512];
+        
+        extern crate alloc;
+        use alloc::vec::Vec;
+        
         let len = payload.len() as usize;
-        payload.copy_into_slice(&mut out[..len]);
+        let mut out = Vec::with_capacity(len);
+        out.resize(len, 0u8);
+        payload.copy_into_slice(&mut out);
 
-        let agg_sig_bytes = signing_key.sign(&out[..len]);
+        let agg_sig_bytes = signing_key.sign(&out);
         let agg_sig = BytesN::from_array(&env, &agg_sig_bytes.to_bytes());
 
         assert!(verify_batch_aggregated_signature(
@@ -407,5 +436,138 @@ mod tests {
             &agg_sig,
         )
         .is_ok());
+    }
+
+    #[test]
+    fn test_verify_ed25519_rejects_oversized_payload() {
+        let env = Env::default();
+        let signing_key = SigningKey::from_bytes(&[1u8; 32]);
+        let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+        
+        // Create a payload larger than MAX_SIGNATURE_PAYLOAD_SIZE (16384 bytes)
+        let oversized_data = [0u8; super::MAX_SIGNATURE_PAYLOAD_SIZE + 1];
+        let oversized_payload = Bytes::from_array(&env, &oversized_data);
+        let signature = BytesN::from_array(&env, &[0u8; 64]);
+        
+        let result = super::verify_ed25519(&admin_pubkey, &oversized_payload, &signature);
+        assert_eq!(result, Err(ContractError::InvalidSignature));
+    }
+
+    #[test]
+    fn test_batch_mint_with_max_size() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, StellarWrapContract);
+        let client = StellarWrapContractClient::new(&env, &contract_id);
+
+        let signing_key = SigningKey::from_bytes(&[50u8; 32]);
+        let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+        let admin = Address::generate(&env);
+
+        client.initialize(&admin, &admin_pubkey);
+        env.mock_all_auths();
+
+        // Create a batch with MAX_BATCH_SIZE (100) items
+        let mut items = soroban_sdk::Vec::new(&env);
+        for i in 0..crate::mint::MAX_BATCH_SIZE {
+            let user = Address::generate(&env);
+            let item = crate::storage_types::BatchWrapItem {
+                user,
+                period: 202601u64 + (i as u64),
+                archetype: symbol_short!("test"),
+                data_hash: BytesN::from_array(&env, &[i as u8; 32]),
+                payload_version: 1,
+                signature: BytesN::from_array(&env, &[0u8; 64]),
+            };
+            items.push_back(item);
+        }
+
+        // Create aggregated signature
+        let payload = construct_batch_mint_payload(&env, &contract_id, &items, 1);
+        
+        extern crate alloc;
+        use alloc::vec::Vec;
+        
+        let len = payload.len() as usize;
+        let mut out = Vec::with_capacity(len);
+        out.resize(len, 0u8);
+        payload.copy_into_slice(&mut out);
+
+        let agg_sig_bytes = signing_key.sign(&out);
+        let agg_sig = BytesN::from_array(&env, &agg_sig_bytes.to_bytes());
+
+        // This should succeed without panicking
+        client.mint_wrap_batch(&items, &Some(agg_sig));
+        
+        // Verify all items were minted
+        for item in items.iter() {
+            assert!(client.has_wrap(&item.user, &item.period));
+        }
+    }
+
+    #[test]
+    fn test_single_mint_with_maximum_archetype_symbol() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, StellarWrapContract);
+        let client = StellarWrapContractClient::new(&env, &contract_id);
+
+        let signing_key = SigningKey::from_bytes(&[75u8; 32]);
+        let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+        let admin = Address::generate(&env);
+        let user = Address::generate(&env);
+
+        client.initialize(&admin, &admin_pubkey);
+        env.mock_all_auths();
+
+        // Create a maximum-length archetype symbol (32 characters)
+        let max_archetype = Symbol::new(&env, "abcdefghijklmnopqrstuvwxyz123456");
+        let data_hash = BytesN::from_array(&env, &[42u8; 32]);
+        let period = 202601u64;
+
+        let signature = sign_payload(
+            &env,
+            &signing_key,
+            &contract_id,
+            &user,
+            period,
+            &max_archetype,
+            &data_hash,
+            1,
+        );
+
+        // This should succeed without panicking
+        client.mint_wrap(&user, &period, &max_archetype, &data_hash, &1u32, &signature);
+        
+        // Verify the wrap was created
+        assert!(client.has_wrap(&user, &period));
+    }
+
+    #[test]
+    fn test_batch_payload_size_within_limits() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, StellarWrapContract);
+
+        // Create a batch with MAX_BATCH_SIZE items to verify payload size
+        let mut items = soroban_sdk::Vec::new(&env);
+        for i in 0..crate::mint::MAX_BATCH_SIZE {
+            let user = Address::generate(&env);
+            // Use maximum-length archetype to test worst case
+            let max_archetype = Symbol::new(&env, "abcdefghijklmnopqrstuvwxyz123456");
+            let item = crate::storage_types::BatchWrapItem {
+                user,
+                period: 202601u64 + (i as u64),
+                archetype: max_archetype,
+                data_hash: BytesN::from_array(&env, &[(i % 256) as u8; 32]),
+                payload_version: 1,
+                signature: BytesN::from_array(&env, &[0u8; 64]),
+            };
+            items.push_back(item);
+        }
+
+        let payload = construct_batch_mint_payload(&env, &contract_id, &items, 1);
+        let payload_size = payload.len() as usize;
+        
+        // Verify the payload size is within our declared limits
+        assert!(payload_size <= crate::mint::MAX_BATCH_PAYLOAD_SIZE);
+        assert!(payload_size <= MAX_SIGNATURE_PAYLOAD_SIZE);
     }
 }

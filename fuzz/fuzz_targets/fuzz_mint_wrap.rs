@@ -46,10 +46,14 @@ fn sign_payload(
         env, contract, user, period, archetype, data_hash, 1,
     );
 
-    let mut out = [0u8; 512];
+    extern crate alloc;
+    use alloc::vec::Vec;
+    
     let len = payload.len() as usize;
-    payload.copy_into_slice(&mut out[..len]);
-    let signature = signer.sign(&out[..len]);
+    let mut out = Vec::with_capacity(len);
+    out.resize(len, 0u8);
+    payload.copy_into_slice(&mut out);
+    let signature = signer.sign(&out);
     BytesN::from_array(env, &signature.to_bytes())
 }
 

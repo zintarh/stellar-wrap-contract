@@ -14,6 +14,16 @@ pub const CURRENT_PAYLOAD_VERSION: u32 = 1;
 const DEFAULT_EXPIRATION_SECONDS: u64 = 7 * 24 * 60 * 60;
 pub const MAX_PERIOD_YEAR: u64 = 2100;
 
+/// Validates that a user has not opted out of wrap minting.
+/// 
+/// # Panics
+/// - [`ContractError::UserOptedOut`] if the user has opted out.
+fn require_user_not_opted_out(e: &Env, user: &Address) {
+    if e.storage().persistent().has(&DataKey::OptOut(user.clone())) {
+        panic_with_error!(e, ContractError::UserOptedOut);
+    }
+}
+
 fn validate_period(e: &Env, period: u64) {
     let year = period / 100;
     let month = period % 100;
@@ -70,9 +80,7 @@ pub(crate) fn mint_wrap(
     user.require_auth();
 
     // Reject minting for users who have explicitly opted out.
-    if e.storage().persistent().has(&DataKey::OptOut(user.clone())) {
-        panic_with_error!(e, ContractError::UserOptedOut);
-    }
+    require_user_not_opted_out(&e, &user);
 
     validate_period(&e, period);
     validate_payload_version(&e, payload_version);
@@ -212,6 +220,13 @@ pub(crate) fn mint_wrap(
 
 pub const MAX_BATCH_SIZE: u32 = 100;
 
+/// Maximum expected size for a batch mint payload in bytes.
+/// This represents the upper bound for batch aggregated signature verification.
+/// Calculated as: domain separator (21) + payload version (8) + contract address (~44) + 
+/// item count (8) + (MAX_BATCH_SIZE * ~120 bytes per item) ≈ 12KB + safety margin = 16KB
+/// This must not exceed MAX_SIGNATURE_PAYLOAD_SIZE in signature.rs.
+pub const MAX_BATCH_PAYLOAD_SIZE: usize = 16384;
+
 pub(crate) fn mint_wrap_batch(
     e: Env,
     items: soroban_sdk::Vec<crate::storage_types::BatchWrapItem>,
@@ -229,10 +244,11 @@ pub(crate) fn mint_wrap_batch(
     let contract_id = e.current_contract_address();
 
     if let Some(agg_sig) = aggregated_signature {
-        // Validate payload version of items
+        // Validate payload version of items and check opt-out status
         for item in items.iter() {
             validate_period(&e, item.period);
             validate_payload_version(&e, item.payload_version);
+            require_user_not_opted_out(&e, &item.user);
             item.user.require_auth();
         }
         let payload_version = items.get(0).unwrap().payload_version;
@@ -251,6 +267,7 @@ pub(crate) fn mint_wrap_batch(
         for item in items.iter() {
             validate_period(&e, item.period);
             validate_payload_version(&e, item.payload_version);
+            require_user_not_opted_out(&e, &item.user);
             item.user.require_auth();
 
             if let Err(err) = verify_mint_signature(

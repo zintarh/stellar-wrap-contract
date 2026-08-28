@@ -1157,3 +1157,344 @@ fn test_new_admin_can_propose_further_transfers() {
     assert_eq!(client.get_admin().unwrap(), admin_3);
     assert!(client.get_pending_admin().is_none());
 }
+
+#[test]
+#[should_panic(expected = "Error(Contract, #32)")]
+fn test_mint_wrap_rejects_opted_out_user() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let signing_key = SigningKey::from_bytes(&[1u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    client.initialize(&admin, &admin_pubkey);
+    env.mock_all_auths();
+
+    // User opts out
+    client.opt_out(&user);
+    assert!(client.is_opted_out(&user));
+
+    let data_hash = BytesN::from_array(&env, &[42u8; 32]);
+    let archetype = symbol_short!("test");
+    let period = 202512u64;
+
+    let signature = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user,
+        period,
+        &archetype,
+        &data_hash,
+        CURRENT_PAYLOAD_VERSION,
+    );
+
+    // This should panic with UserOptedOut error (#32)
+    client.mint_wrap(
+        &user,
+        &period,
+        &archetype,
+        &data_hash,
+        &CURRENT_PAYLOAD_VERSION,
+        &signature,
+    );
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #32)")]
+fn test_mint_wrap_batch_rejects_opted_out_user_aggregated_signature() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let signing_key = SigningKey::from_bytes(&[1u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+    let admin = Address::generate(&env);
+    let user_a = Address::generate(&env);
+    let user_b = Address::generate(&env);
+
+    client.initialize(&admin, &admin_pubkey);
+    env.mock_all_auths();
+
+    // User A opts out
+    client.opt_out(&user_a);
+    assert!(client.is_opted_out(&user_a));
+
+    let data_hash_a = BytesN::from_array(&env, &[42u8; 32]);
+    let data_hash_b = BytesN::from_array(&env, &[99u8; 32]);
+    let archetype = symbol_short!("test");
+    let period_a = 202601u64;
+    let period_b = 202602u64;
+
+    // Create batch items with opted-out user A and normal user B
+    let item_a = crate::storage_types::BatchWrapItem {
+        user: user_a.clone(),
+        period: period_a,
+        archetype: archetype.clone(),
+        data_hash: data_hash_a,
+        payload_version: CURRENT_PAYLOAD_VERSION,
+        signature: BytesN::from_array(&env, &[0u8; 64]), // Dummy signature for aggregated path
+    };
+    let item_b = crate::storage_types::BatchWrapItem {
+        user: user_b.clone(),
+        period: period_b,
+        archetype: archetype.clone(),
+        data_hash: data_hash_b,
+        payload_version: CURRENT_PAYLOAD_VERSION,
+        signature: BytesN::from_array(&env, &[0u8; 64]), // Dummy signature for aggregated path
+    };
+
+    let mut items = soroban_sdk::Vec::new(&env);
+    items.push_back(item_a);
+    items.push_back(item_b);
+
+    // Create aggregated signature
+    let payload = stellar_wrap_contract::signature::construct_batch_mint_payload(
+        &env, &contract_id, &items, CURRENT_PAYLOAD_VERSION
+    );
+    
+    extern crate alloc;
+    use alloc::vec::Vec;
+    
+    let len = payload.len() as usize;
+    let mut out = Vec::with_capacity(len);
+    out.resize(len, 0u8);
+    payload.copy_into_slice(&mut out);
+
+    let agg_sig_bytes = signing_key.sign(&out);
+    let agg_sig = BytesN::from_array(&env, &agg_sig_bytes.to_bytes());
+
+    // This should panic with UserOptedOut error (#32) during validation,
+    // before any state is written
+    client.mint_wrap_batch(&items, &Some(agg_sig));
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #32)")]
+fn test_mint_wrap_batch_rejects_opted_out_user_individual_signatures() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let signing_key = SigningKey::from_bytes(&[1u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+    let admin = Address::generate(&env);
+    let user_a = Address::generate(&env);
+    let user_b = Address::generate(&env);
+
+    client.initialize(&admin, &admin_pubkey);
+    env.mock_all_auths();
+
+    // User A opts out
+    client.opt_out(&user_a);
+    assert!(client.is_opted_out(&user_a));
+
+    let data_hash_a = BytesN::from_array(&env, &[42u8; 32]);
+    let data_hash_b = BytesN::from_array(&env, &[99u8; 32]);
+    let archetype = symbol_short!("test");
+    let period_a = 202601u64;
+    let period_b = 202602u64;
+
+    // Create individual signatures
+    let signature_a = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user_a,
+        period_a,
+        &archetype,
+        &data_hash_a,
+        CURRENT_PAYLOAD_VERSION,
+    );
+    let signature_b = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user_b,
+        period_b,
+        &archetype,
+        &data_hash_b,
+        CURRENT_PAYLOAD_VERSION,
+    );
+
+    // Create batch items with individual signatures
+    let item_a = crate::storage_types::BatchWrapItem {
+        user: user_a.clone(),
+        period: period_a,
+        archetype: archetype.clone(),
+        data_hash: data_hash_a,
+        payload_version: CURRENT_PAYLOAD_VERSION,
+        signature: signature_a,
+    };
+    let item_b = crate::storage_types::BatchWrapItem {
+        user: user_b.clone(),
+        period: period_b,
+        archetype: archetype.clone(),
+        data_hash: data_hash_b,
+        payload_version: CURRENT_PAYLOAD_VERSION,
+        signature: signature_b,
+    };
+
+    let mut items = soroban_sdk::Vec::new(&env);
+    items.push_back(item_a);
+    items.push_back(item_b);
+
+    // This should panic with UserOptedOut error (#32) during validation,
+    // before any state is written
+    client.mint_wrap_batch(&items, &None);
+}
+
+#[test]
+fn test_mint_wrap_batch_partial_failure_no_state_written() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let signing_key = SigningKey::from_bytes(&[1u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+    let admin = Address::generate(&env);
+    let user_a = Address::generate(&env);
+    let user_b = Address::generate(&env);
+
+    client.initialize(&admin, &admin_pubkey);
+    env.mock_all_auths();
+
+    // User A opts out after some setup
+    client.opt_out(&user_a);
+    assert!(client.is_opted_out(&user_a));
+
+    let data_hash_a = BytesN::from_array(&env, &[42u8; 32]);
+    let data_hash_b = BytesN::from_array(&env, &[99u8; 32]);
+    let archetype = symbol_short!("test");
+    let period_a = 202601u64;
+    let period_b = 202602u64;
+
+    // Create individual signatures
+    let signature_a = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user_a,
+        period_a,
+        &archetype,
+        &data_hash_a,
+        CURRENT_PAYLOAD_VERSION,
+    );
+    let signature_b = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user_b,
+        period_b,
+        &archetype,
+        &data_hash_b,
+        CURRENT_PAYLOAD_VERSION,
+    );
+
+    // Create batch items
+    let item_a = crate::storage_types::BatchWrapItem {
+        user: user_a.clone(),
+        period: period_a,
+        archetype: archetype.clone(),
+        data_hash: data_hash_a,
+        payload_version: CURRENT_PAYLOAD_VERSION,
+        signature: signature_a,
+    };
+    let item_b = crate::storage_types::BatchWrapItem {
+        user: user_b.clone(),
+        period: period_b,
+        archetype: archetype.clone(),
+        data_hash: data_hash_b,
+        payload_version: CURRENT_PAYLOAD_VERSION,
+        signature: signature_b,
+    };
+
+    let mut items = soroban_sdk::Vec::new(&env);
+    items.push_back(item_a);
+    items.push_back(item_b);
+
+    // Verify user B has no wrap initially
+    assert!(!client.has_wrap(&user_b, &period_b));
+
+    // Try to mint batch - should fail due to user A being opted out
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        client.mint_wrap_batch(&items, &None);
+    }));
+
+    // Should have panicked
+    assert!(result.is_err());
+
+    // Verify no state was written for either user - user B should still have no wrap
+    assert!(!client.has_wrap(&user_a, &period_a));
+    assert!(!client.has_wrap(&user_b, &period_b));
+}
+
+#[test]
+fn test_opt_out_opt_in_cycle() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let signing_key = SigningKey::from_bytes(&[1u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    client.initialize(&admin, &admin_pubkey);
+    env.mock_all_auths();
+
+    // Initially not opted out
+    assert!(!client.is_opted_out(&user));
+
+    // User opts out
+    client.opt_out(&user);
+    assert!(client.is_opted_out(&user));
+
+    let data_hash = BytesN::from_array(&env, &[42u8; 32]);
+    let archetype = symbol_short!("test");
+    let period = 202601u64;
+
+    let signature = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user,
+        period,
+        &archetype,
+        &data_hash,
+        CURRENT_PAYLOAD_VERSION,
+    );
+
+    // Minting should fail while opted out
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        client.mint_wrap(
+            &user,
+            &period,
+            &archetype,
+            &data_hash,
+            &CURRENT_PAYLOAD_VERSION,
+            &signature,
+        );
+    }));
+    assert!(result.is_err());
+
+    // User opts back in
+    client.opt_in(&user);
+    assert!(!client.is_opted_out(&user));
+
+    // Now minting should succeed
+    client.mint_wrap(
+        &user,
+        &period,
+        &archetype,
+        &data_hash,
+        &CURRENT_PAYLOAD_VERSION,
+        &signature,
+    );
+
+    // Verify the wrap was created
+    assert!(client.has_wrap(&user, &period));
+}
