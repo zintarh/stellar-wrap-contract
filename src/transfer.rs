@@ -24,7 +24,7 @@ fn read_periods(e: &Env, owner: &Address, expected_count: u32) -> Vec<u64> {
     periods
 }
 
-fn contains_period(periods: &Vec<u64>, period: u64) -> bool {
+pub(crate) fn contains_period(periods: &Vec<u64>, period: u64) -> bool {
     for stored_period in periods.iter() {
         if stored_period == period {
             return true;
@@ -33,7 +33,7 @@ fn contains_period(periods: &Vec<u64>, period: u64) -> bool {
     false
 }
 
-fn remove_period(e: &Env, periods: &Vec<u64>, period: u64) -> Vec<u64> {
+pub(crate) fn remove_period(e: &Env, periods: &Vec<u64>, period: u64) -> Vec<u64> {
     let mut remaining = Vec::new(e);
     for stored_period in periods.iter() {
         if stored_period != period {
@@ -43,7 +43,7 @@ fn remove_period(e: &Env, periods: &Vec<u64>, period: u64) -> Vec<u64> {
     remaining
 }
 
-fn latest_period(periods: &Vec<u64>) -> Option<u64> {
+pub(crate) fn latest_period(periods: &Vec<u64>) -> Option<u64> {
     let mut latest = None;
     for period in periods.iter() {
         if latest.map(|current| period > current).unwrap_or(true) {
@@ -53,7 +53,7 @@ fn latest_period(periods: &Vec<u64>) -> Option<u64> {
     latest
 }
 
-fn write_owner_state(e: &Env, owner: &Address, periods: &Vec<u64>) {
+pub(crate) fn write_owner_state(e: &Env, owner: &Address, periods: &Vec<u64>) {
     let count_key = DataKey::WrapCount(owner.clone());
     let latest_key = DataKey::LatestPeriod(owner.clone());
     let periods_key = DataKey::WrapPeriods(owner.clone());

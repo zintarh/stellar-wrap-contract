@@ -47,6 +47,7 @@ mod storage_types;
 mod timelock;
 mod token;
 mod transfer;
+mod wrap_record;
 
 pub use errors::ContractError;
 pub use mint::CURRENT_PAYLOAD_VERSION;

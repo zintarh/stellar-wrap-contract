@@ -2296,3 +2296,113 @@ fn test_get_latest_wrap_multiple_wraps() {
 
     assert_eq!(client.balance_of(&user), 3);
 }
+
+// ============================================================================
+// Byte-identical state test (issue #720)
+// ============================================================================
+// Asserts that mint-then-revoke and mint-then-burn produce identical observable
+// contract state for the affected user.  The two operations must leave the same
+// keys absent and the same accounting values after the removal path.
+
+#[test]
+fn test_revoke_and_burn_leave_identical_state() {
+    use crate::storage_accounting;
+
+    // ── Helper: build a fresh env, register contract, mint one wrap ──────
+    let build = |seed: u8, period: u64| {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, StellarWrapContract);
+        let client = StellarWrapContractClient::new(&env, &contract_id);
+
+        let signing_key = SigningKey::from_bytes(&[seed; 32]);
+        let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+        let admin = Address::generate(&env);
+        let user = Address::generate(&env);
+
+        client.initialize(&admin, &admin_pubkey);
+        env.mock_all_auths();
+
+        let hash = BytesN::from_array(&env, &[seed; 32]);
+        let archetype = symbol_short!("arch");
+
+        let sig = sign_payload(
+            &env,
+            &signing_key,
+            &contract_id,
+            &user,
+            period,
+            &archetype,
+            &hash,
+        );
+        client.mint_wrap(&user, &period, &archetype, &hash, &1u32, &sig);
+
+        // Capture storage bytes immediately after mint (identical in both envs).
+        let bytes_after_mint =
+            env.as_contract(&contract_id, || storage_accounting::get_storage_bytes(&env));
+
+        (env, contract_id, client, user, bytes_after_mint)
+    };
+
+    let period = 202406u64;
+    let (env_r, cid_r, client_r, user_r, bytes_mint_r) = build(0xAA, period);
+    let (env_b, cid_b, client_b, user_b, bytes_mint_b) = build(0xBB, period);
+
+    // Sanity: same storage accounting after identical mint.
+    assert_eq!(
+        bytes_mint_r, bytes_mint_b,
+        "storage bytes should be identical after mint"
+    );
+
+    // ── Apply the two removal paths ──────────────────────────────────────
+    client_r.revoke_wrap(&user_r, &period, &BytesN::from_array(&env_r, &[0u8; 32]));
+    client_b.burn_wrap(&user_b, &period);
+
+    // ── Assert identical observable state ────────────────────────────────
+
+    // 1. Wrap record gone.
+    assert!(
+        client_r.get_wrap(&user_r, &period).is_none(),
+        "revoke: wrap record should be absent"
+    );
+    assert!(
+        client_b.get_wrap(&user_b, &period).is_none(),
+        "burn: wrap record should be absent"
+    );
+
+    // 2. Balance is zero.
+    assert_eq!(
+        client_r.balance_of(&user_r),
+        0,
+        "revoke: balance should be 0"
+    );
+    assert_eq!(
+        client_b.balance_of(&user_b),
+        0,
+        "burn: balance should be 0"
+    );
+
+    // 3. No latest wrap.
+    assert!(
+        client_r.get_latest_wrap(&user_r).is_none(),
+        "revoke: latest wrap should be absent"
+    );
+    assert!(
+        client_b.get_latest_wrap(&user_b).is_none(),
+        "burn: latest wrap should be absent"
+    );
+
+    // 4. Storage accounting: both paths must subtract the same bytes.
+    //    revoke subtracts via sub_storage_bytes; burn now does too via the
+    //    shared helper.  TotalRevoked (instance key) is revoke-only and tiny,
+    //    so we compare the wrap-removal portion by checking that bytes after
+    //    removal are equal in both envs.
+    let bytes_after_revoke =
+        env_r.as_contract(&cid_r, || storage_accounting::get_storage_bytes(&env_r));
+    let bytes_after_burn =
+        env_b.as_contract(&cid_b, || storage_accounting::get_storage_bytes(&env_b));
+
+    assert_eq!(
+        bytes_after_revoke, bytes_after_burn,
+        "storage bytes after removal must be identical for revoke and burn"
+    );
+}
