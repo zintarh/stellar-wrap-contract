@@ -7,7 +7,7 @@ use crate::test_utils::sign_payload;
 use ed25519_dalek::SigningKey;
 use soroban_sdk::{
     symbol_short,
-    testutils::{Address as _, AuthorizedFunction, AuthorizedInvocation, Events},
+    testutils::{Address as _, AuthorizedFunction, AuthorizedInvocation},
     token::{Client as TokenClient, StellarAssetClient},
     vec, Address, BytesN, Env, IntoVal, Symbol, TryIntoVal,
 };
@@ -457,18 +457,23 @@ fn setting_transfer_fee_requires_admin_authorization() {
 }
 
 #[test]
-fn zzz_probe_raw() {
+#[should_panic(expected = "Error(Contract, #12)")]
+fn test_transfer_wrap_when_paused_fails() {
     let fixture = fixture(Some(10), 100);
     let client = StellarWrapContractClient::new(&fixture.env, &fixture.contract_id);
     mint(&fixture, &fixture.from, 202401, 1);
-    let n1 = fixture.env.events().all().events().len();
-    let _b = client.balance_of(&fixture.from);
-    let n2 = fixture.env.events().all().events().len();
-    let n3 = fixture.env.host().get_events().unwrap().0.len();
-    std::eprintln!(
-        "RAWPROBE mint={} after_balance_of={} host_total={}",
-        n1,
-        n2,
-        n3
-    );
+
+    client.pause();
+    client.transfer_wrap(&fixture.from, &fixture.to, &202401);
 }
+
+#[test]
+#[should_panic(expected = "Error(Contract, #12)")]
+fn test_backfill_wrap_periods_when_paused_fails() {
+    let fixture = fixture(Some(10), 100);
+    let client = StellarWrapContractClient::new(&fixture.env, &fixture.contract_id);
+
+    client.pause();
+    client.backfill_wrap_periods(&fixture.from, &vec![&fixture.env, 202401]);
+}
+

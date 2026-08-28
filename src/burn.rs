@@ -55,30 +55,25 @@ pub(crate) fn burn_wrap(e: Env, user: Address, period: u64) {
         e.storage().persistent().remove(&latest_key);
     }
 
-    // 6. Remove period from user's period list
-    let user_periods_key = DataKey::UserPeriods(user.clone());
-    let mut periods: soroban_sdk::Vec<u64> = e
-        .storage()
-        .persistent()
-        .get(&user_periods_key)
-        .unwrap_or(soroban_sdk::Vec::new(&e));
+    // 6. Remove period from user's period lists (UserPeriods and WrapPeriods)
+    for key in [DataKey::UserPeriods(user.clone()), DataKey::WrapPeriods(user.clone())] {
+        if let Some(mut periods) = e.storage().persistent().get::<_, soroban_sdk::Vec<u64>>(&key) {
+            let mut found_index: Option<u32> = None;
+            for (i, p) in periods.iter().enumerate() {
+                if p == period {
+                    found_index = Some(i as u32);
+                    break;
+                }
+            }
 
-    // Find and remove the period from the list
-    let mut found_index: Option<u32> = None;
-    for (i, p) in periods.iter().enumerate() {
-        if p == period {
-            found_index = Some(i as u32);
-            break;
-        }
-    }
-
-    if let Some(idx) = found_index {
-        periods.remove(idx);
-        if !periods.is_empty() {
-            e.storage().persistent().set(&user_periods_key, &periods);
-        } else {
-            // If no periods remain, remove the key entirely
-            e.storage().persistent().remove(&user_periods_key);
+            if let Some(idx) = found_index {
+                periods.remove(idx);
+                if !periods.is_empty() {
+                    e.storage().persistent().set(&key, &periods);
+                } else {
+                    e.storage().persistent().remove(&key);
+                }
+            }
         }
     }
 

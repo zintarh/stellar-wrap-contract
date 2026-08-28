@@ -1,11 +1,10 @@
 #![cfg(test)]
 extern crate std;
 
-use crate::{StellarWrapContract, StellarWrapContractClient, WrapState, InboundBridgeRecord, OutboundBridgeRequest, DataHashOracle};
-use soroban_sdk::{testutils::Address as _, Address, BytesN, Env, Symbol, String, Bytes};
+use crate::{StellarWrapContract, StellarWrapContractClient};
+use soroban_sdk::{testutils::Address as _, Address, BytesN, Env, Symbol};
 use crate::test_utils::{assert_user_invariants, sign_payload_versioned};
 use ed25519_dalek::SigningKey;
-use rand::rngs::OsRng;
 use crate::mint::CURRENT_PAYLOAD_VERSION;
 
 fn setup() -> (Env, StellarWrapContractClient<'static>, Address, SigningKey) {
@@ -15,8 +14,7 @@ fn setup() -> (Env, StellarWrapContractClient<'static>, Address, SigningKey) {
     let contract_id = env.register_contract(None, StellarWrapContract);
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
-    let mut csprng = OsRng;
-    let admin_signing_key = SigningKey::generate(&mut csprng);
+    let admin_signing_key = SigningKey::from_bytes(&[1u8; 32]);
     let admin_pubkey_bytes = admin_signing_key.verifying_key().to_bytes();
     let admin_pubkey = BytesN::from_array(&env, &admin_pubkey_bytes);
     
@@ -53,7 +51,6 @@ fn mint_test_wrap(
         &CURRENT_PAYLOAD_VERSION,
         &signature,
     );
-    client.transition_wrap_state(user, &period, &WrapState::Active);
 }
 
 #[test]
@@ -146,8 +143,11 @@ fn test_many_periods_bound() {
     let user = Address::generate(&env);
 
     // Mint 101 wraps to exceed MAX_QUERY_RESULTS (100)
-    for i in 1..=101 {
-        mint_test_wrap(&env, &client, &admin_key, &user, 202400 + i);
+    for i in 0..101 {
+        let year = 2024 + (i / 12);
+        let month = (i % 12) + 1;
+        let period = year * 100 + month;
+        mint_test_wrap(&env, &client, &admin_key, &user, period);
     }
     
     // Check invariants, this should bound the loop and not panic from budget

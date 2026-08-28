@@ -1157,3 +1157,91 @@ fn test_new_admin_can_propose_further_transfers() {
     assert_eq!(client.get_admin().unwrap(), admin_3);
     assert!(client.get_pending_admin().is_none());
 }
+
+/// Test 23: Audit and assert pause coverage across all state-mutating entrypoints.
+/// When paused, all state-mutating entrypoints must error with ContractError::Paused (#12).
+#[test]
+fn test_all_state_mutating_entrypoints_honor_pause() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let admin_signing_key = SigningKey::from_bytes(&[1u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &admin_signing_key.verifying_key().to_bytes());
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+    let user2 = Address::generate(&env);
+
+    client.initialize(&admin, &admin_pubkey);
+    env.mock_all_auths();
+
+    let archetype = symbol_short!("arch");
+    let data_hash = BytesN::from_array(&env, &[77u8; 32]);
+    let period = 202512u64;
+    let signature = sign_payload(
+        &env,
+        &admin_signing_key,
+        &contract_id,
+        &user,
+        period,
+        &archetype,
+        &data_hash,
+        CURRENT_PAYLOAD_VERSION,
+    );
+
+    // Pause contract
+    client.pause();
+    assert!(client.is_paused(), "Contract should be paused");
+
+    // 1. mint_wrap
+    let res_mint = client.try_mint_wrap(
+        &user,
+        &period,
+        &archetype,
+        &data_hash,
+        &CURRENT_PAYLOAD_VERSION,
+        &signature,
+    );
+    assert!(res_mint.is_err(), "mint_wrap must fail when paused");
+
+    // 2. mint_wrap_batch
+    let res_mint_batch = client.try_mint_wrap_batch(&soroban_sdk::Vec::new(&env), &None);
+    assert!(res_mint_batch.is_err(), "mint_wrap_batch must fail when paused");
+
+    // 3. transfer_wrap
+    let res_transfer = client.try_transfer_wrap(&user, &user2, &period);
+    assert!(res_transfer.is_err(), "transfer_wrap must fail when paused");
+
+    // 4. backfill_wrap_periods
+    let res_backfill = client.try_backfill_wrap_periods(&user, &soroban_sdk::Vec::new(&env));
+    assert!(res_backfill.is_err(), "backfill_wrap_periods must fail when paused");
+
+    // 5. transition_wrap_state
+    let res_transition = client.try_transition_wrap_state(&user, &period, &WrapState::Active);
+    assert!(res_transition.is_err(), "transition_wrap_state must fail when paused");
+
+    // 6. expire_wrap
+    let res_expire = client.try_expire_wrap(&user, &period);
+    assert!(res_expire.is_err(), "expire_wrap must fail when paused");
+
+    // 7. stake
+    let res_stake = client.try_stake(&user, &1000);
+    assert!(res_stake.is_err(), "stake must fail when paused");
+
+    // 8. unstake
+    let res_unstake = client.try_unstake(&user);
+    assert!(res_unstake.is_err(), "unstake must fail when paused");
+
+    // 9. withdraw_stake
+    let res_withdraw_stake = client.try_withdraw_stake(&user);
+    assert!(res_withdraw_stake.is_err(), "withdraw_stake must fail when paused");
+
+    // 10. bridge_wrap_out
+    let recipient_bytes = soroban_sdk::Bytes::from_array(&env, &[1u8; 20]);
+    let res_bridge_out = client.try_bridge_wrap_out(&user, &1u32, &recipient_bytes, &period);
+    assert!(res_bridge_out.is_err(), "bridge_wrap_out must fail when paused");
+
+    // 11. bridge_wrap_in
+    let res_bridge_in = client.try_bridge_wrap_in(&1u32, &1u64, &user, &period, &archetype, &data_hash);
+    assert!(res_bridge_in.is_err(), "bridge_wrap_in must fail when paused");
+}

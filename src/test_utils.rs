@@ -91,19 +91,19 @@ pub(crate) fn assert_user_invariants(
     let report = client.check_user_invariants(user);
 
     assert!(
-        report.wrap_count_matches_user_periods,
+        report.count_matches_user_periods,
         "Invariant violation: WrapCount != UserPeriods.len() (observed {} != {})",
         report.observed_wrap_count,
         report.observed_user_periods_len
     );
     assert!(
-        report.wrap_count_matches_wrap_periods,
+        report.count_matches_wrap_periods,
         "Invariant violation: WrapCount != WrapPeriods.len() (observed {} != {})",
         report.observed_wrap_count,
         report.observed_wrap_periods_len
     );
     assert!(
-        report.latest_period_is_max_user_period,
+        report.latest_is_max_user_period,
         "Invariant violation: LatestPeriod != max(UserPeriods) (observed {:?} != {:?})",
         report.observed_latest_period,
         report.observed_max_user_period

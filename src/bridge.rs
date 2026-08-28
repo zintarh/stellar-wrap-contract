@@ -196,6 +196,48 @@ pub(crate) fn bridge_wrap_in(
             .persistent()
             .extend_ttl(&count_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
 
+        let user_periods_key = DataKey::UserPeriods(recipient.clone());
+        let mut periods: soroban_sdk::Vec<u64> = e
+            .storage()
+            .persistent()
+            .get(&user_periods_key)
+            .unwrap_or(soroban_sdk::Vec::new(&e));
+
+        if !periods.contains(period) {
+            periods.push_back(period);
+            e.storage().persistent().set(&user_periods_key, &periods);
+            e.storage()
+                .persistent()
+                .extend_ttl(&user_periods_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
+        }
+
+        let wrap_periods_key = DataKey::WrapPeriods(recipient.clone());
+        if !e.storage().persistent().has(&wrap_periods_key) && current_count > 0 {
+            panic_with_error!(&e, ContractError::StorageInvariantViolation);
+        }
+        let mut wrap_periods: soroban_sdk::Vec<u64> = e
+            .storage()
+            .persistent()
+            .get(&wrap_periods_key)
+            .unwrap_or(soroban_sdk::Vec::new(&e));
+
+        if !wrap_periods.contains(period) {
+            wrap_periods.push_back(period);
+            e.storage().persistent().set(&wrap_periods_key, &wrap_periods);
+            e.storage()
+                .persistent()
+                .extend_ttl(&wrap_periods_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
+        }
+
+        let latest_key = DataKey::LatestPeriod(recipient.clone());
+        let current_latest: u64 = e.storage().persistent().get(&latest_key).unwrap_or(0);
+        if period > current_latest {
+            e.storage().persistent().set(&latest_key, &period);
+            e.storage()
+                .persistent()
+                .extend_ttl(&latest_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
+        }
+
         let total_key = DataKey::TotalWrapCount;
         let current_total: u32 = e.storage().persistent().get(&total_key).unwrap_or(0);
         let next_total = current_total + 1;

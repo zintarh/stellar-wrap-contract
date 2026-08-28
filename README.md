@@ -192,7 +192,30 @@ soroban contract invoke \
   --data <DATA_HEX>
 ```
 
-Returns `true` if `sha256(data)` matches the stored `data_hash`, otherwise `false`.
+## Emergency Pause Model
+
+The contract includes an emergency pause mechanism (`pause()` / `unpause()`) managed by the admin address. When the contract is paused, state-mutating wrap and token/staking operations are immediately blocked to halt state mutations during security incident investigations.
+
+### Entrypoint Pause Audit Table
+
+| Entrypoint | Category | Blocked When Paused? | Rationale |
+|---|---|---|---|
+| `mint_wrap` | State Mutating | **Yes** | Block new wrap minting during incidents |
+| `mint_wrap_batch` | State Mutating | **Yes** | Block batch wrap minting during incidents |
+| `transfer_wrap` | State Mutating | **Yes** | Block wrap ownership transfer during incidents |
+| `backfill_wrap_periods` | State Mutating | **Yes** | Block wrap period index modifications during incidents |
+| `transition_wrap_state` | State Mutating | **Yes** | Block wrap lifecycle state transitions during incidents |
+| `expire_wrap` | State Mutating | **Yes** | Block wrap state expiration mutations during incidents |
+| `stake` | State Mutating | **Yes** | Block new token staking operations during incidents |
+| `unstake` | State Mutating | **Yes** | Block unstake operations during incidents |
+| `withdraw_stake` | State Mutating | **Yes** | Block stake withdrawals during incidents |
+| `bridge_wrap_out` | State Mutating | **Yes** | Block outbound cross-chain wrap bridges during incidents |
+| `bridge_wrap_in` | State Mutating | **Yes** | Block inbound cross-chain wrap bridge fulfillments during incidents |
+| `unpause` | Admin Control | **No** | Must remain callable by Admin to restore normal operation |
+| Admin / Governance (`pause`, `update_admin`, `propose_admin`, `accept_admin`, `cancel_proposed_admin`, `set_transfer_fee`, `migrate`, `upgrade`, `set_name`, `set_symbol`, `set_expiration_duration`, `set_fee_params`, `set_whitelist_root`, `clear_whitelist_root`, `enable_timelock`, `timelock_*`, `set_bridge_relayer`, `set_chain_status`, `create_admin_proposal`, `vote_admin_proposal`, `execute_admin_proposal`, `cancel_admin_proposal`, `set_stake_config`) | Admin / Governance | **No** | Emergency administration, governance voting, and operational controls must remain available to allow incident response and governance resolution while user wrap mutations are frozen |
+| `burn_wrap`, `revoke_wrap`, `opt_out`, `opt_in`, `set_alias_hash` | User / Admin Operations | **No** | User identity, opt-out preferences, and administrative revocations |
+| `extend_ttl`, `renew_all_ttls` | Maintenance | **No** | Pure storage TTL maintenance; extends storage lifetime without mutating wrap ownership or token balances |
+| Read-only views (`is_paused`, `get_wrap`, `get_mint_timestamp`, `get_last_updated`, `total_wrap_count`, `verify_data`, `verify_with_oracle`, `get_latest_wrap`, `get_wraps`, `get_all_wraps_for_user`, `get_admin`, `get_admin_pubkey`, `version`, `has_wrap`, `get_transfer_fee`, `health`, etc.) | Read-Only Views | **No** | View methods are non-mutating queries and remain safe to call while paused |
 
 ## Security model
 

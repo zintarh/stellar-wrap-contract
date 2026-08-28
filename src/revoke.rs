@@ -65,6 +65,28 @@ pub(crate) fn revoke_wrap(e: Env, user: Address, period: u64, reason_hash: Bytes
         e.storage().persistent().remove(&latest_key);
     }
 
+    // Remove period from user's period lists (UserPeriods and WrapPeriods)
+    for key in [DataKey::UserPeriods(user.clone()), DataKey::WrapPeriods(user.clone())] {
+        if let Some(mut periods) = e.storage().persistent().get::<_, soroban_sdk::Vec<u64>>(&key) {
+            let mut found_index: Option<u32> = None;
+            for (i, p) in periods.iter().enumerate() {
+                if p == period {
+                    found_index = Some(i as u32);
+                    break;
+                }
+            }
+
+            if let Some(idx) = found_index {
+                periods.remove(idx);
+                if !periods.is_empty() {
+                    e.storage().persistent().set(&key, &periods);
+                } else {
+                    e.storage().persistent().remove(&key);
+                }
+            }
+        }
+    }
+
     let total_revoked_key = DataKey::TotalRevoked;
     let current_total: u64 = e.storage().temporary().get(&total_revoked_key).unwrap_or(0);
     let next_total = current_total + 1;

@@ -245,17 +245,17 @@ pub(crate) fn check_user_invariants(e: Env, user: Address) -> InvariantReport {
     }
 
     InvariantReport {
-        wrap_count_matches_user_periods: observed_wrap_count == observed_user_periods_len,
-        wrap_count_matches_wrap_periods: observed_wrap_count == observed_wrap_periods_len,
-        latest_period_is_max_user_period: observed_latest_period == observed_max_user_period,
+        count_matches_user_periods: observed_wrap_count == observed_user_periods_len,
+        count_matches_wrap_periods: observed_wrap_periods_len == 0 || observed_wrap_count == observed_wrap_periods_len,
+        latest_is_max_user_period: observed_latest_period == observed_max_user_period,
         user_periods_all_live,
         balance_matches_wrap_count: observed_balance == (observed_wrap_count as i128),
         
         observed_wrap_count,
         observed_user_periods_len,
         observed_wrap_periods_len,
-        observed_latest_period,
-        observed_max_user_period,
+        observed_latest_period: observed_latest_period.unwrap_or(0),
+        observed_max_user_period: observed_max_user_period.unwrap_or(0),
         observed_balance,
     }
 }

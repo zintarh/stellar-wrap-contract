@@ -318,16 +318,16 @@ pub struct StakeRecord {
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InvariantReport {
-    pub wrap_count_matches_user_periods: bool,
-    pub wrap_count_matches_wrap_periods: bool,
-    pub latest_period_is_max_user_period: bool,
+    pub count_matches_user_periods: bool,
+    pub count_matches_wrap_periods: bool,
+    pub latest_is_max_user_period: bool,
     pub user_periods_all_live: bool,
     pub balance_matches_wrap_count: bool,
 
     pub observed_wrap_count: u32,
     pub observed_user_periods_len: u32,
     pub observed_wrap_periods_len: u32,
-    pub observed_latest_period: Option<u64>,
-    pub observed_max_user_period: Option<u64>,
+    pub observed_latest_period: u64,
+    pub observed_max_user_period: u64,
     pub observed_balance: i128,
 }

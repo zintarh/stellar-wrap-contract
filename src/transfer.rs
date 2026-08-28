@@ -84,6 +84,7 @@ fn write_owner_state(e: &Env, owner: &Address, periods: &Vec<u64>) {
 }
 
 pub(crate) fn backfill_wrap_periods(e: Env, user: Address, periods: Vec<u64>) {
+    admin::require_not_paused(&e);
     admin::read_admin(&e).require_auth();
 
     let periods_key = DataKey::WrapPeriods(user.clone());
@@ -122,6 +123,7 @@ pub(crate) fn backfill_wrap_periods(e: Env, user: Address, periods: Vec<u64>) {
 }
 
 pub(crate) fn transfer_wrap(e: Env, from: Address, to: Address, period: u64) {
+    admin::require_not_paused(&e);
     from.require_auth();
 
     if from == to {
