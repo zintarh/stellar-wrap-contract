@@ -137,6 +137,7 @@ impl StellarWrapContract {
         archetype: Symbol,
         data_hash: BytesN<32>,
         payload_version: u32,
+        valid_until: u64,
         signature: BytesN<64>,
     ) {
         mint::mint_wrap(
@@ -146,6 +147,7 @@ impl StellarWrapContract {
             archetype,
             data_hash,
             payload_version,
+            valid_until,
             signature,
         );
     }

@@ -9,7 +9,7 @@ const TTL_ONE_YEAR: u32 = 17_280 * 365;
 /// TTL for temporary storage entries (~1 day in ledgers at 5s/ledger).
 /// Used for non-critical data migrated from Instance to Temporary storage.
 pub(crate) const TTL_TEMP: u32 = 17_280;
-pub const CURRENT_PAYLOAD_VERSION: u32 = 1;
+pub const CURRENT_PAYLOAD_VERSION: u32 = 2;
 /// Default expiration duration for unverified wraps: 7 days in seconds.
 const DEFAULT_EXPIRATION_SECONDS: u64 = 7 * 24 * 60 * 60;
 pub const MAX_PERIOD_YEAR: u64 = 2100;
@@ -64,6 +64,7 @@ pub(crate) fn mint_wrap(
     archetype: Symbol,
     data_hash: BytesN<32>,
     payload_version: u32,
+    valid_until: u64,
     signature: BytesN<64>,
 ) {
     crate::admin::require_not_paused(&e);
@@ -76,6 +77,9 @@ pub(crate) fn mint_wrap(
 
     validate_period(&e, period);
     validate_payload_version(&e, payload_version);
+    if e.ledger().timestamp() > valid_until {
+        panic_with_error!(e, ContractError::SignatureExpired);
+    }
 
     let admin_pubkey = get_admin_pubkey(&e);
     if let Err(err) = verify_mint_signature(
@@ -87,6 +91,7 @@ pub(crate) fn mint_wrap(
         &archetype,
         &data_hash,
         payload_version,
+        valid_until,
         &signature,
     ) {
         panic_with_error!(e, err);

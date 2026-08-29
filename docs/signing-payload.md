@@ -25,6 +25,7 @@ payload = MINT_DOMAIN_SEPARATOR            (raw bytes, NOT XDR-encoded)
         ‖ XDR(contract_id)
         ‖ XDR(user_address)
         ‖ XDR(period)
+        ‖ XDR(valid_until)
         ‖ XDR(archetype)
         ‖ XDR(data_hash)
 
@@ -42,12 +43,17 @@ specific contract/scheme so the same admin key can't be replayed against a
 different Soroban contract or a future, incompatible payload format.
 
 `payload_version` is a `u32` that must equal `CURRENT_PAYLOAD_VERSION` in
-[`src/mint.rs`](../src/mint.rs) (currently `1`). `mint_wrap` checks this
+[`src/mint.rs`](../src/mint.rs) (currently `2`). `mint_wrap` checks this
 *before* verifying the signature and panics with `Error(Contract, #5)` if it
 doesn't match. If the signing scheme ever changes, the contract will bump
 `CURRENT_PAYLOAD_VERSION` and reject signatures built against the old layout,
 so treat a sudden wave of `InvalidSignature` errors as a cue to check whether
 the version constant moved before assuming key compromise or a client bug.
+
+The signed payload also includes `valid_until`, a ledger timestamp deadline.
+The contract rejects any mint whose current ledger timestamp is greater than
+`valid_until` with `Error(Contract, #53)` (`SignatureExpired`). This keeps an
+otherwise valid signature from being reused forever if it goes unused.
 
 ---
 
@@ -60,8 +66,9 @@ the version constant moved before assuming key compromise or a client bug.
 | 3 | `contract_id` | `Address` (contract) | `ToXdr` on the `Env`-resolved current contract address |
 | 4 | `user_address` | `Address` (account) | `ToXdr` on the caller address |
 | 5 | `period` | `u64` | `ToXdr` — XDR-encoded unsigned 64-bit integer |
-| 6 | `archetype` | `Symbol` | `ToXdr` — XDR-encoded Soroban symbol (short ASCII identifier, up to 32 chars) |
-| 7 | `data_hash` | `BytesN<32>` | `ToXdr` — XDR-encoded 32-byte value |
+| 6 | `valid_until` | `u64` | `ToXdr` — ledger timestamp deadline for this signature |
+| 7 | `archetype` | `Symbol` | `ToXdr` — XDR-encoded Soroban symbol (short ASCII identifier, up to 32 chars) |
+| 8 | `data_hash` | `BytesN<32>` | `ToXdr` — XDR-encoded 32-byte value |
 
 ### Period encoding
 
@@ -100,6 +107,7 @@ pub fn construct_mint_payload(
     archetype: &Symbol,
     data_hash: &BytesN<32>,
     payload_version: u32,
+    valid_until: u64,
 ) -> Bytes {
     let mut payload = Bytes::new(e);
     payload.append(&Bytes::from_array(e, MINT_DOMAIN_SEPARATOR));
@@ -107,6 +115,7 @@ pub fn construct_mint_payload(
     payload.append(&contract_id.to_xdr(e));
     payload.append(&user.clone().to_xdr(e));
     payload.append(&period.to_xdr(e));
+    payload.append(&valid_until.to_xdr(e));
     payload.append(&archetype.clone().to_xdr(e));
     payload.append(&data_hash.clone().to_xdr(e));
     payload
@@ -121,9 +130,19 @@ pub fn verify_mint_signature(
     archetype: &Symbol,
     data_hash: &BytesN<32>,
     payload_version: u32,
+    valid_until: u64,
     signature: &BytesN<64>,
 ) -> Result<(), ContractError> {
-    let payload = construct_mint_payload(e, contract_id, user, period, archetype, data_hash, payload_version);
+    let payload = construct_mint_payload(
+        e,
+        contract_id,
+        user,
+        period,
+        archetype,
+        data_hash,
+        payload_version,
+        valid_until,
+    );
     // In-guest Ed25519 verification (ed25519-dalek, same 3.0.0 pin the host
     // uses) so any failure surfaces as Error(Contract, #5) instead of the
     // host's uncatchable Error(Crypto, InvalidInput) trap.
@@ -182,12 +201,13 @@ import { Address, Keypair, nativeToScVal } from "@stellar/stellar-sdk";
 const MINT_DOMAIN_SEPARATOR = Buffer.from("stellar-wrap-v1", "ascii");
 
 // Must equal CURRENT_PAYLOAD_VERSION in src/mint.rs. Bump both together.
-const CURRENT_PAYLOAD_VERSION = 1;
+const CURRENT_PAYLOAD_VERSION = 2;
 
 interface MintClaim {
   contractId: string; // "C..." Soroban contract address
   user: string; // "G..." Stellar account address
   period: number; // YYYYMM, e.g. 202508
+  validUntil: bigint; // ledger timestamp deadline
   archetype: string; // Soroban Symbol, <= 32 chars
   dataHash: Buffer; // 32 bytes
 }
@@ -200,6 +220,7 @@ function buildMintPayload(claim: MintClaim): Buffer {
     Address.fromString(claim.contractId).toScVal().toXDR(),
     Address.fromString(claim.user).toScVal().toXDR(),
     nativeToScVal(BigInt(claim.period), { type: "u64" }).toXDR(),
+    nativeToScVal(claim.validUntil, { type: "u64" }).toXDR(),
     nativeToScVal(claim.archetype, { type: "symbol" }).toXDR(),
     nativeToScVal(claim.dataHash, { type: "bytes" }).toXDR(),
   ]);
@@ -216,8 +237,9 @@ function signMintClaim(adminKeypair: Keypair, claim: MintClaim): Buffer {
 ```
 
 Call `mint_wrap(user, period, archetype, data_hash, payload_version,
-signature)` on the contract with the same `period`, `archetype`, `data_hash`,
-and `payload_version` used to build the payload above, plus the resulting
+valid_until, signature)` on the contract with the same `period`, `valid_until`,
+`archetype`, `data_hash`, and `payload_version` used to build the payload above,
+plus the resulting
 64-byte signature. Any mismatch between what was signed and what is submitted
 produces `Error(Contract, #5)`.
 

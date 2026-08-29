@@ -18,6 +18,7 @@ pub struct MintPayload {
     pub contract_id: Address,
     pub data_hash: BytesN<32>,
     pub payload_version: u32,
+    pub valid_until: u64,
     pub period: u64,
     pub user: Address,
 }
@@ -35,6 +36,7 @@ pub fn construct_mint_payload(
     archetype: &Symbol,
     data_hash: &BytesN<32>,
     payload_version: u32,
+    valid_until: u64,
 ) -> Bytes {
     let mut payload = Bytes::new(e);
     payload.append(&Bytes::from_array(e, MINT_DOMAIN_SEPARATOR));
@@ -44,6 +46,7 @@ pub fn construct_mint_payload(
         contract_id: contract_id.clone(),
         data_hash: data_hash.clone(),
         payload_version,
+        valid_until,
         period,
         user: user.clone(),
     };
@@ -98,6 +101,7 @@ pub fn verify_mint_signature(
     archetype: &Symbol,
     data_hash: &BytesN<32>,
     payload_version: u32,
+    valid_until: u64,
     signature: &BytesN<64>,
 ) -> Result<(), ContractError> {
     let payload = construct_mint_payload(
@@ -108,6 +112,7 @@ pub fn verify_mint_signature(
         archetype,
         data_hash,
         payload_version,
+        valid_until,
     );
     verify_ed25519(admin_pubkey, &payload, signature)
 }
