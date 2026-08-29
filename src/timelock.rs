@@ -18,6 +18,9 @@ pub const MIN_DELAY: u64 = 3_600;
 /// Largest delay the timelock accepts (30 days). Prevents bricking the contract
 /// with an effectively infinite delay.
 pub const MAX_DELAY: u64 = 30 * 24 * 3_600;
+/// Expiration grace period (14 days). An operation that is not executed within
+/// `eta + GRACE_PERIOD` expires and can no longer be executed.
+pub const GRACE_PERIOD: u64 = 14 * 24 * 3_600;
 
 /// Persistent TTL for scheduled operations (~1 year in ledgers), matching the
 /// TTL used for wrap records elsewhere in the contract.
@@ -219,8 +222,12 @@ pub(crate) fn execute(e: Env, id: BytesN<32>) {
         .get(&DataKey::TimelockOp(id.clone()))
         .unwrap_or_else(|| panic_with_error!(e, ContractError::TimelockOperationNotFound));
 
-    if e.ledger().timestamp() < op.eta {
+    let now = e.ledger().timestamp();
+    if now < op.eta {
         panic_with_error!(e, ContractError::TimelockNotReady);
+    }
+    if now > op.eta.saturating_add(GRACE_PERIOD) {
+        panic_with_error!(e, ContractError::TimelockOperationExpired);
     }
 
     remove_op(&e, &id);
@@ -256,6 +263,30 @@ pub(crate) fn execute(e: Env, id: BytesN<32>) {
 
     e.events()
         .publish((symbol_short!("timelock"), symbol_short!("exec")), id);
+}
+
+/// Remove an expired timelock operation from storage and the pending list.
+///
+/// Callable by anyone once `ledger.timestamp > op.eta + GRACE_PERIOD`.
+///
+/// # Panics
+/// - [`ContractError::TimelockOperationNotFound`] if `id` is not queued.
+/// - [`ContractError::TimelockOperationNotExpired`] if the grace period has not elapsed.
+pub(crate) fn sweep_expired(e: Env, id: BytesN<32>) {
+    let op: TimelockOperation = e
+        .storage()
+        .persistent()
+        .get(&DataKey::TimelockOp(id.clone()))
+        .unwrap_or_else(|| panic_with_error!(e, ContractError::TimelockOperationNotFound));
+
+    let now = e.ledger().timestamp();
+    if now <= op.eta.saturating_add(GRACE_PERIOD) {
+        panic_with_error!(e, ContractError::TimelockOperationNotExpired);
+    }
+
+    remove_op(&e, &id);
+    e.events()
+        .publish((symbol_short!("timelock"), symbol_short!("sweep")), id);
 }
 
 /// Return a scheduled operation by id, or `None` if it is not queued.

@@ -16,8 +16,9 @@ timelock_schedule(action) ──► TimelockOp(id) { action, eta, scheduled_at }
         │                              │
         │ eta = now + delay            │  observable on-chain + event
         ▼                              ▼
-timelock_execute(id)  ◄── only when ledger timestamp >= eta
+timelock_execute(id)  ◄── when eta <= ledger timestamp <= eta + GRACE_PERIOD
 timelock_cancel(id)   ◄── admin may drop it at any point before execution
+timelock_sweep_expired(id) ◄── anyone can sweep once timestamp > eta + GRACE_PERIOD
 ```
 
 Two pieces of state, both introduced in `DataKey`:
@@ -55,9 +56,16 @@ The delay is bounded to `MIN_DELAY` (1 hour) … `MAX_DELAY` (30 days).
 so an out-of-range value can never sit in the queue waiting to brick the
 controller.
 
+### Grace Period and Expiration
+
+Scheduled operations carry a mandatory grace period of **14 days** (`GRACE_PERIOD = 1,209,600` seconds).
+- **Valid execution window:** `op.eta <= ledger.timestamp <= op.eta + GRACE_PERIOD`.
+- **Expired operations:** If `ledger.timestamp > op.eta + GRACE_PERIOD`, calling `timelock_execute` will panic with `TimelockOperationExpired` (66).
+- **Sweeping expired operations:** Anyone can call `timelock_sweep_expired(id)` once an operation is expired. This removes the operation from storage and `TimelockOps` list so `timelock_pending` stays truthful.
+
 ## What the timelock closes off
 
-Once enabled, the direct paths panic with `TimelockRequired` (21):
+Once enabled, the direct paths panic with `TimelockRequired` (44):
 
 - `update_admin`
 - `propose_admin` and `accept_admin` — the two-step handover is also blocked,
@@ -98,20 +106,25 @@ timelock_schedule --action '{"SetAdmin":"G..."}'
 timelock_pending
 timelock_operation --id <id>     # -> { action, eta, scheduled_at }
 
-# 4. After eta, apply it.
+# 4. After eta (and within eta + 14 days), apply it.
 timelock_execute --id <id>
 
 # Abort instead, at any time before step 4:
 timelock_cancel --id <id>
+
+# Sweep an expired operation (> eta + 14 days):
+timelock_sweep_expired --id <id>
 ```
 
 ## Errors
 
 | Code | Error | Meaning |
 | --- | --- | --- |
-| 17 | `TimelockNotReady` | ETA not reached. |
-| 18 | `TimelockOperationNotFound` | Unknown or already-executed id. |
-| 19 | `TimelockOperationExists` | Identical action already queued. |
-| 20 | `InvalidTimelockDelay` | Delay out of bounds, or timelock not enabled. |
-| 21 | `TimelockRequired` | Direct admin call attempted while enabled. |
-| 22 | `TimelockAlreadyEnabled` | `enable_timelock` called twice. |
+| 40 | `TimelockNotReady` | ETA not reached. |
+| 41 | `TimelockOperationNotFound` | Unknown or already-executed id. |
+| 42 | `TimelockOperationExists` | Identical action already queued. |
+| 43 | `InvalidTimelockDelay` | Delay out of bounds, or timelock not enabled. |
+| 44 | `TimelockRequired` | Direct admin call attempted while enabled. |
+| 45 | `TimelockAlreadyEnabled` | `enable_timelock` called twice. |
+| 66 | `TimelockOperationExpired` | Attempted to execute past `eta + GRACE_PERIOD`. |
+| 67 | `TimelockOperationNotExpired` | Attempted to sweep before `eta + GRACE_PERIOD`. |

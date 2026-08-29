@@ -553,6 +553,12 @@ impl StellarWrapContract {
         timelock::operation_id(&e, &action)
     }
 
+    /// Remove an expired timelock operation from storage and the pending list.
+    /// Callable by anyone once `now > eta + GRACE_PERIOD`.
+    pub fn timelock_sweep_expired(e: Env, id: BytesN<32>) {
+        timelock::sweep_expired(e, id);
+    }
+
     /// Admin: Set the cross-chain token bridge relayer address.
     pub fn set_bridge_relayer(e: Env, relayer: Address) {
         bridge::set_bridge_relayer(&e, relayer);
@@ -791,5 +797,7 @@ mod test;
 mod test_utils;
 #[cfg(test)]
 mod test_vectors;
+#[cfg(test)]
+mod timelock_test;
 #[cfg(test)]
 mod transfer_test;

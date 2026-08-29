@@ -63,4 +63,8 @@ pub enum ContractError {
     StorageInvariantViolation = 51,
     /// The admin signing key provided to `initialize` is invalid (e.g. all-zero).
     InvalidAdminPubKey = 52,
+    /// Timelock operation has passed its grace period and can no longer be executed.
+    TimelockOperationExpired = 66,
+    /// Timelock operation is not yet expired and cannot be swept.
+    TimelockOperationNotExpired = 67,
 }
