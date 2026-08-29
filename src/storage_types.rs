@@ -11,6 +11,7 @@ pub enum WrapState {
     Archived = 4,
     Cancelled = 5,
     Expired = 6,
+    Bridged = 7,
 }
 
 #[contracttype]
@@ -46,6 +47,16 @@ impl WrapLifecycleFSM {
     pub fn transition_to(&mut self, next: WrapState, now: u64) -> bool {
         if self.can_transition_to(&next) {
             self.state = next;
+            self.updated_at = now;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub(crate) fn restore_from_bridge(&mut self, now: u64) -> bool {
+        if self.state == WrapState::Bridged {
+            self.state = WrapState::Active;
             self.updated_at = now;
             true
         } else {

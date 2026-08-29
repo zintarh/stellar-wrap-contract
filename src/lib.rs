@@ -13,13 +13,6 @@
 //! compromised. The admin address controls the public-key rotation.
 
 #![no_std]
-// The codebase is mid-migration from Soroban SDK 25 to 27. The SDK 27 release
-// renamed `register_contract` -> `register`, `Env::budget` -> cost-estimate
-// accessors, and deprecates `Events::publish` in favor of the `#[contractevent]`
-// macro. Suppress those deprecation lints until the migration is complete so
-// CI's `-D warnings` gate passes. TODO(#migration): adopt the `#[contractevent]`
-// macro and the new test registration/budget APIs.
-#![allow(deprecated)]
 
 #[cfg(any(test, feature = "testutils"))]
 extern crate std;
@@ -49,7 +42,7 @@ mod token;
 mod transfer;
 
 pub use errors::ContractError;
-pub use mint::CURRENT_PAYLOAD_VERSION;
+pub use mint::{validate_period, CURRENT_PAYLOAD_VERSION, MAX_PERIOD_YEAR, MIN_PERIOD_YEAR};
 pub use oracle::DataHashOracle;
 pub use storage_types::{
     AdminProposal, ContractHealth, DataKey, InboundBridgeRecord, OutboundBridgeRequest,
@@ -78,6 +71,12 @@ impl StellarWrapContract {
     /// recipient.
     pub fn set_transfer_fee(e: Env, token: Address, recipient: Address, amount: i128) {
         admin::set_transfer_fee(e, token, recipient, amount);
+    }
+
+    /// Admin-only: remove the configured transfer fee, returning the contract
+    /// to the unconfigured state where transfers are free by default.
+    pub fn clear_transfer_fee(e: Env) {
+        admin::clear_transfer_fee(e);
     }
 
     pub fn pause(e: Env) {
@@ -588,6 +587,12 @@ impl StellarWrapContract {
         period: u64,
     ) -> u64 {
         bridge::bridge_wrap_out(e, user, destination_chain, recipient_address, period)
+    }
+
+    /// Relayer-authorized refund for an outbound bridge request rejected by
+    /// the destination chain. Restores the locked wrap to `Active`.
+    pub fn bridge_wrap_refund(e: Env, outbound_nonce: u64) {
+        bridge::bridge_wrap_refund(e, outbound_nonce);
     }
 
     /// Fulfill an inbound cross-chain wrap bridge transfer from external chain.
