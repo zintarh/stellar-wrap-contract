@@ -4,11 +4,8 @@ use crate::{admin, storage_types::WrapState, ContractError, DataKey, TransferFee
 
 const TTL_ONE_YEAR: u32 = 17_280 * 365;
 
-fn read_fee(e: &Env) -> TransferFeeConfig {
-    e.storage()
-        .instance()
-        .get(&DataKey::TransferFee)
-        .unwrap_or_else(|| panic_with_error!(e, ContractError::TransferFeeNotConfigured))
+fn read_fee(e: &Env) -> Option<TransferFeeConfig> {
+    e.storage().instance().get(&DataKey::TransferFee)
 }
 
 fn read_periods(e: &Env, owner: &Address, expected_count: u32) -> Vec<u64> {
@@ -83,6 +80,7 @@ fn write_owner_state(e: &Env, owner: &Address, periods: &Vec<u64>) {
         .extend_ttl(&latest_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
 }
 
+#[allow(deprecated)] // TODO(#718): migrate to #[contractevent]
 pub(crate) fn backfill_wrap_periods(e: Env, user: Address, periods: Vec<u64>) {
     admin::read_admin(&e).require_auth();
 
@@ -96,12 +94,14 @@ pub(crate) fn backfill_wrap_periods(e: Env, user: Address, periods: Vec<u64>) {
         .persistent()
         .get(&DataKey::WrapCount(user.clone()))
         .unwrap_or(0);
+
     if periods.len() != expected_count {
         panic_with_error!(e, ContractError::StorageInvariantViolation);
     }
 
     for index in 0..periods.len() {
         let period = periods.get(index).unwrap();
+
         if !e
             .storage()
             .persistent()
@@ -109,6 +109,7 @@ pub(crate) fn backfill_wrap_periods(e: Env, user: Address, periods: Vec<u64>) {
         {
             panic_with_error!(e, ContractError::StorageInvariantViolation);
         }
+
         for previous in 0..index {
             if periods.get(previous).unwrap() == period {
                 panic_with_error!(e, ContractError::StorageInvariantViolation);
@@ -117,10 +118,12 @@ pub(crate) fn backfill_wrap_periods(e: Env, user: Address, periods: Vec<u64>) {
     }
 
     write_owner_state(&e, &user, &periods);
+
     e.events()
         .publish((symbol_short!("backfill"), user), periods.len());
 }
 
+#[allow(deprecated)] // TODO(#718): migrate to #[contractevent]
 pub(crate) fn transfer_wrap(e: Env, from: Address, to: Address, period: u64) {
     from.require_auth();
 
@@ -128,9 +131,9 @@ pub(crate) fn transfer_wrap(e: Env, from: Address, to: Address, period: u64) {
         panic_with_error!(e, ContractError::InvalidTransfer);
     }
 
-    let fee = read_fee(&e);
     let source_key = DataKey::Wrap(from.clone(), period);
     let destination_key = DataKey::Wrap(to.clone(), period);
+
     let record: WrapRecord = e
         .storage()
         .persistent()
@@ -141,9 +144,12 @@ pub(crate) fn transfer_wrap(e: Env, from: Address, to: Address, period: u64) {
         panic_with_error!(e, ContractError::InvalidStateTransition);
     }
 
+    let fee = read_fee(&e);
+
     if e.storage().persistent().has(&destination_key) {
         panic_with_error!(e, ContractError::WrapAlreadyExists);
     }
+
     if e.storage().temporary().has(&DataKey::TransferGuard) {
         panic_with_error!(e, ContractError::TransferInProgress);
     }
@@ -153,7 +159,9 @@ pub(crate) fn transfer_wrap(e: Env, from: Address, to: Address, period: u64) {
         .persistent()
         .get(&DataKey::WrapCount(from.clone()))
         .unwrap_or(0);
+
     let source_periods = read_periods(&e, &from, source_count);
+
     if !contains_period(&source_periods, period) {
         panic_with_error!(e, ContractError::StorageInvariantViolation);
     }
@@ -163,31 +171,64 @@ pub(crate) fn transfer_wrap(e: Env, from: Address, to: Address, period: u64) {
         .persistent()
         .get(&DataKey::WrapCount(to.clone()))
         .unwrap_or(0);
-    let mut destination_periods = read_periods(&e, &to, destination_count);
+
+    let mut destination_periods =
+        read_periods(&e, &to, destination_count);
+
     if contains_period(&destination_periods, period) {
         panic_with_error!(e, ContractError::StorageInvariantViolation);
     }
 
-    e.storage().temporary().set(&DataKey::TransferGuard, &true);
+    e.storage()
+        .temporary()
+        .set(&DataKey::TransferGuard, &true);
 
-    if fee.amount > 0 {
-        token::Client::new(&e, &fee.token).transfer(&from, &fee.recipient, &fee.amount);
+    if let Some(ref fee) = fee {
+        if fee.amount > 0 {
+            token::Client::new(&e, &fee.token)
+                .transfer(&from, &fee.recipient, &fee.amount);
+        }
     }
 
     e.storage().persistent().remove(&source_key);
-    e.storage().persistent().set(&destination_key, &record);
+
     e.storage()
         .persistent()
-        .extend_ttl(&destination_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
+        .set(&destination_key, &record);
 
-    let source_periods = remove_period(&e, &source_periods, period);
+    e.storage()
+        .persistent()
+        .extend_ttl(
+            &destination_key,
+            TTL_ONE_YEAR,
+            TTL_ONE_YEAR,
+        );
+
+    let source_periods =
+        remove_period(&e, &source_periods, period);
+
     destination_periods.push_back(period);
+
     write_owner_state(&e, &from, &source_periods);
     write_owner_state(&e, &to, &destination_periods);
 
-    e.storage().temporary().remove(&DataKey::TransferGuard);
-    e.events().publish(
-        (symbol_short!("transfer"), from, to, period),
-        (fee.token, fee.recipient, fee.amount),
-    );
+    e.storage()
+        .temporary()
+        .remove(&DataKey::TransferGuard);
+
+    if let Some(ref fee) = fee {
+        e.events().publish(
+            (symbol_short!("transfer"), from, to, period),
+            (
+                fee.token.clone(),
+                fee.recipient.clone(),
+                fee.amount,
+            ),
+        );
+    } else {
+        e.events().publish(
+            (symbol_short!("transfer"), from, to, period),
+            (),
+        );
+    }
 }

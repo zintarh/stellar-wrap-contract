@@ -49,7 +49,7 @@ fn sign_payload(
 #[should_panic(expected = "Error(Contract, #4)")]
 fn test_replay_attack_same_period_fails() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let signing_key = SigningKey::from_bytes(&[1u8; 32]);
@@ -107,7 +107,7 @@ fn test_replay_attack_same_period_fails() {
 #[should_panic(expected = "Error(Contract, #4)")]
 fn test_replay_attack_different_hash_same_period_fails() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let signing_key = SigningKey::from_bytes(&[1u8; 32]);
@@ -172,7 +172,7 @@ fn test_replay_attack_different_hash_same_period_fails() {
 #[test]
 fn test_multiple_periods_for_same_user_success() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let signing_key = SigningKey::from_bytes(&[1u8; 32]);
@@ -264,7 +264,7 @@ fn test_multiple_periods_for_same_user_success() {
 #[test]
 fn test_signature_cannot_be_stolen_by_another_user() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let signing_key = SigningKey::from_bytes(&[1u8; 32]);
@@ -352,8 +352,8 @@ fn test_cross_contract_replay_protection() {
     let env = Env::default();
 
     // Deploy two separate contract instances (V1 and V2)
-    let contract_v1 = env.register_contract(None, StellarWrapContract);
-    let contract_v2 = env.register_contract(None, StellarWrapContract);
+    let contract_v1 = env.register(StellarWrapContract, ());
+    let contract_v2 = env.register(StellarWrapContract, ());
 
     let client_v1 = StellarWrapContractClient::new(&env, &contract_v1);
     let client_v2 = StellarWrapContractClient::new(&env, &contract_v2);
@@ -477,9 +477,9 @@ fn test_cross_contract_replay_protection() {
 #[test]
 fn test_gas_analysis_mint_operation() {
     let env = Env::default();
-    env.budget().reset_unlimited();
+    env.cost_estimate().budget().reset_unlimited();
 
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let signing_key = SigningKey::from_bytes(&[1u8; 32]);
@@ -506,7 +506,7 @@ fn test_gas_analysis_mint_operation() {
     );
 
     // Reset budget before the mint operation
-    env.budget().reset_default();
+    env.cost_estimate().budget().reset_default();
 
     // Perform the mint operation
     client.mint_wrap(
@@ -519,15 +519,15 @@ fn test_gas_analysis_mint_operation() {
     );
 
     // Get budget consumption
-    env.budget().print();
+    env.cost_estimate().budget().print();
     // Get budget consumption (only when gas reporting is explicitly enabled)
     if std::env::var("SOROBAN_GAS_REPORT").is_ok() {
-        env.budget().print();
+        env.cost_estimate().budget().print();
     }
 
     // Get actual CPU instructions used
-    let cpu_insns = env.budget().cpu_instruction_cost();
-    let mem_bytes = env.budget().memory_bytes_cost();
+    let cpu_insns = env.cost_estimate().budget().cpu_instruction_cost();
+    let mem_bytes = env.cost_estimate().budget().memory_bytes_cost();
 
     // Assert reasonable upper bounds (these values should be tuned based on actual needs)
     // For mainnet deployment, you want these to be as low as possible
@@ -549,9 +549,9 @@ fn test_gas_analysis_mint_operation() {
 #[test]
 fn test_gas_analysis_multiple_mints() {
     let env = Env::default();
-    env.budget().reset_unlimited();
+    env.cost_estimate().budget().reset_unlimited();
 
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let signing_key = SigningKey::from_bytes(&[1u8; 32]);
@@ -562,7 +562,7 @@ fn test_gas_analysis_multiple_mints() {
     client.initialize(&admin, &admin_pubkey);
     env.mock_all_auths();
 
-    env.budget().reset_default();
+    env.cost_estimate().budget().reset_default();
 
     // Perform 5 mints for different periods
     for i in 1..6 {
@@ -599,8 +599,8 @@ fn test_gas_analysis_multiple_mints() {
         );
     }
 
-    let cpu_insns = env.budget().cpu_instruction_cost();
-    let mem_bytes = env.budget().memory_bytes_cost();
+    let cpu_insns = env.cost_estimate().budget().cpu_instruction_cost();
+    let mem_bytes = env.cost_estimate().budget().memory_bytes_cost();
 
     // Gas analysis for 5 mints - results tracked in budget
     // Verify resource usage is within reasonable bounds for batch operations
@@ -613,7 +613,7 @@ fn test_gas_analysis_multiple_mints() {
 #[test]
 fn test_timestamp_is_from_ledger_not_user() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let signing_key = SigningKey::from_bytes(&[1u8; 32]);
@@ -696,7 +696,7 @@ fn test_timestamp_is_from_ledger_not_user() {
 #[test]
 fn test_edge_case_long_symbols() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let signing_key = SigningKey::from_bytes(&[1u8; 32]);
@@ -743,7 +743,7 @@ fn test_edge_case_long_symbols() {
 #[should_panic]
 fn test_non_admin_cannot_mint() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let signing_key = SigningKey::from_bytes(&[1u8; 32]);
@@ -788,7 +788,7 @@ fn test_non_admin_cannot_mint() {
 #[should_panic]
 fn test_non_admin_cannot_revoke() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let signing_key = SigningKey::from_bytes(&[1u8; 32]);
@@ -812,7 +812,7 @@ fn test_non_admin_cannot_revoke() {
 #[test]
 fn test_two_step_admin_transfer_success() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -844,7 +844,7 @@ fn test_two_step_admin_transfer_success() {
 #[test]
 fn test_admin_cancel_proposed_admin() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -873,7 +873,7 @@ fn test_admin_cancel_proposed_admin() {
 #[should_panic]
 fn test_unauthorized_acceptance_fails() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -916,7 +916,7 @@ fn test_unauthorized_acceptance_fails() {
 #[should_panic(expected = "Error(Contract, #10)")]
 fn test_accept_admin_no_proposal_fails() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -935,7 +935,7 @@ fn test_accept_admin_no_proposal_fails() {
 #[should_panic(expected = "Error(Contract, #11)")]
 fn test_propose_admin_when_proposal_exists_fails() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -960,7 +960,7 @@ fn test_propose_admin_when_proposal_exists_fails() {
 #[should_panic(expected = "Error(Contract, #10)")]
 fn test_cancel_no_proposal_fails() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -979,7 +979,7 @@ fn test_cancel_no_proposal_fails() {
 #[should_panic]
 fn test_non_admin_cannot_propose_admin() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -1008,7 +1008,7 @@ fn test_non_admin_cannot_propose_admin() {
 #[should_panic]
 fn test_non_admin_cannot_cancel_proposal() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -1050,7 +1050,7 @@ fn test_non_admin_cannot_cancel_proposal() {
 #[test]
 fn test_update_admin_clears_pending_proposal() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -1080,7 +1080,7 @@ fn test_update_admin_clears_pending_proposal() {
 #[test]
 fn test_get_pending_admin_none() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -1097,7 +1097,7 @@ fn test_get_pending_admin_none() {
 #[test]
 fn test_propose_cancel_repropose() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -1132,7 +1132,7 @@ fn test_propose_cancel_repropose() {
 #[test]
 fn test_new_admin_can_propose_further_transfers() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let admin_1 = Address::generate(&env);

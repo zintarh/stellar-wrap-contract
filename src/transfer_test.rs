@@ -24,7 +24,7 @@ struct Fixture {
 
 fn fixture(fee_amount: Option<i128>, sender_token_balance: i128) -> Fixture {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let signing_key = SigningKey::from_bytes(&[21u8; 32]);
@@ -221,16 +221,19 @@ fn zero_fee_allows_transfer_without_a_token_balance() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #48)")]
-fn transfer_rejects_missing_fee_configuration() {
-    let fixture = fixture(None, 100);
+fn transfer_succeeds_without_fee_configuration() {
+    let fixture = fixture(None, 0);
     mint(&fixture, &fixture.from, 202401, 1);
 
-    StellarWrapContractClient::new(&fixture.env, &fixture.contract_id).transfer_wrap(
-        &fixture.from,
-        &fixture.to,
-        &202401,
-    );
+    let client = StellarWrapContractClient::new(&fixture.env, &fixture.contract_id);
+    assert_eq!(client.get_transfer_fee(), None);
+
+    client.transfer_wrap(&fixture.from, &fixture.to, &202401);
+
+    assert!(client.get_wrap(&fixture.from, &202401).is_none());
+    assert!(client.get_wrap(&fixture.to, &202401).is_some());
+    assert_eq!(client.balance_of(&fixture.from), 0);
+    assert_eq!(client.balance_of(&fixture.to), 1);
 }
 
 #[test]
@@ -453,6 +456,56 @@ fn setting_transfer_fee_requires_admin_authorization() {
         &fixture.token_id,
         &fixture.fee_recipient,
         &10,
+    );
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #14)")]
+fn setting_transfer_fee_rejects_identical_token_and_recipient() {
+    let fixture = fixture(None, 100);
+    let client = StellarWrapContractClient::new(&fixture.env, &fixture.contract_id);
+    client.set_transfer_fee(&fixture.token_id, &fixture.token_id, &10);
+}
+
+#[test]
+#[should_panic]
+fn clear_transfer_fee_requires_admin_authorization() {
+    let fixture = fixture(Some(10), 100);
+    fixture.env.set_auths(&[]);
+    StellarWrapContractClient::new(&fixture.env, &fixture.contract_id).clear_transfer_fee();
+}
+
+#[test]
+fn clear_transfer_fee_emits_event_and_clears_configuration() {
+    let fixture = fixture(Some(10), 100);
+    let client = StellarWrapContractClient::new(&fixture.env, &fixture.contract_id);
+
+    assert!(client.get_transfer_fee().is_some());
+
+    client.clear_transfer_fee();
+
+    let events = crate::test_utils::decode_events(&fixture.env);
+    let (topics, _data) = events.last().expect("fee_clr event was not emitted");
+    let event_name: Symbol = topics[0].try_into_val(&fixture.env).unwrap();
+    assert_eq!(event_name, symbol_short!("fee_clr"));
+
+    assert_eq!(client.get_transfer_fee(), None);
+
+    // Verify transfer succeeds with 0 token charges after clearing
+    mint(&fixture, &fixture.from, 202401, 1);
+    client.transfer_wrap(&fixture.from, &fixture.to, &202401);
+    assert_eq!(client.balance_of(&fixture.from), 0);
+    assert_eq!(client.balance_of(&fixture.to), 1);
+
+    // Verify fee can be re-set after clearing
+    client.set_transfer_fee(&fixture.token_id, &fixture.fee_recipient, &25);
+    assert_eq!(
+        client.get_transfer_fee(),
+        Some(TransferFeeConfig {
+            amount: 25,
+            recipient: fixture.fee_recipient.clone(),
+            token: fixture.token_id.clone(),
+        })
     );
 }
 

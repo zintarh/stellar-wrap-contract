@@ -1,6 +1,6 @@
 use soroban_sdk::{panic_with_error, symbol_short, Address, Env};
 
-use crate::{storage_types::{WrapRecord, WrapState}, ContractError, DataKey};
+use crate::{ContractError, DataKey, WrapRecord, WrapState};
 
 /// Burns (permanently deletes) a wrap record owned by the caller.
 ///
@@ -15,7 +15,7 @@ use crate::{storage_types::{WrapRecord, WrapState}, ContractError, DataKey};
 /// # Errors
 /// * `WrapNotFound` if the wrap_id (user, period pair) does not exist in storage
 /// * `Unauthorized` if caller is not the wrap owner
-/// * `InvalidStateTransition` if the wrap is not in Active state (e.g. Pending)
+/// * `InvalidStateTransition` if the wrap is not in Active state (e.g. Pending or Bridged)
 ///
 /// # Side Effects
 /// 1. Removes the wrap record from persistent storage
@@ -27,6 +27,7 @@ use crate::{storage_types::{WrapRecord, WrapState}, ContractError, DataKey};
 /// # Notes
 /// Once burned, the wrap_id is freed and the record cannot be recovered.
 /// The user can later mint a new wrap for the same period if desired.
+#[allow(deprecated)] // TODO(#718): migrate to #[contractevent]
 pub(crate) fn burn_wrap(e: Env, user: Address, period: u64) {
     // 1. Require auth FIRST — verify caller is the owner
     user.require_auth();
@@ -49,6 +50,7 @@ pub(crate) fn burn_wrap(e: Env, user: Address, period: u64) {
     // 4. Decrement the user's wrap count
     let count_key = DataKey::WrapCount(user.clone());
     let current_count: u32 = e.storage().persistent().get(&count_key).unwrap_or(0);
+
     if current_count > 0 {
         e.storage()
             .persistent()
@@ -58,12 +60,14 @@ pub(crate) fn burn_wrap(e: Env, user: Address, period: u64) {
     // 5. Clear latest period if we just burned it
     let latest_key = DataKey::LatestPeriod(user.clone());
     let current_latest: Option<u64> = e.storage().persistent().get(&latest_key);
+
     if current_latest == Some(period) {
         e.storage().persistent().remove(&latest_key);
     }
 
     // 6. Remove period from user's period list
     let user_periods_key = DataKey::UserPeriods(user.clone());
+
     let mut periods: soroban_sdk::Vec<u64> = e
         .storage()
         .persistent()
@@ -72,6 +76,7 @@ pub(crate) fn burn_wrap(e: Env, user: Address, period: u64) {
 
     // Find and remove the period from the list
     let mut found_index: Option<u32> = None;
+
     for (i, p) in periods.iter().enumerate() {
         if p == period {
             found_index = Some(i as u32);
@@ -81,11 +86,16 @@ pub(crate) fn burn_wrap(e: Env, user: Address, period: u64) {
 
     if let Some(idx) = found_index {
         periods.remove(idx);
+
         if !periods.is_empty() {
-            e.storage().persistent().set(&user_periods_key, &periods);
+            e.storage()
+                .persistent()
+                .set(&user_periods_key, &periods);
         } else {
             // If no periods remain, remove the key entirely
-            e.storage().persistent().remove(&user_periods_key);
+            e.storage()
+                .persistent()
+                .remove(&user_periods_key);
         }
     }
 
