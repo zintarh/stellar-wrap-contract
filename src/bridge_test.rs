@@ -297,3 +297,216 @@ fn test_bridge_paused_blocks_operations() {
     }));
     assert!(in_result.is_err());
 }
+
+#[test]
+fn test_bridged_out_record_transfer_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _admin, _relayer, signing_key) = setup_test_env(&env);
+
+    let user = Address::generate(&env);
+    let recipient_user = Address::generate(&env);
+    let period = 202607u64;
+    let archetype = symbol_short!("arch");
+    let data_hash = BytesN::from_array(&env, &[42u8; 32]);
+
+    let sig = sign_mint_payload(
+        &env,
+        &signing_key,
+        &client.address,
+        &user,
+        period,
+        &archetype,
+        &data_hash,
+    );
+
+    client.mint_wrap(&user, &period, &archetype, &data_hash, &1, &sig);
+
+    let dest_chain = 137u32;
+    client.set_chain_status(&dest_chain, &true);
+    let recipient_bytes = Bytes::from_array(&env, b"0x1234567890abcdef1234567890abcdef12345678");
+
+    client.bridge_wrap_out(&user, &dest_chain, &recipient_bytes, &period);
+
+    let res = catch_unwind(AssertUnwindSafe(|| {
+        client.transfer_wrap(&user, &recipient_user, &period);
+    }));
+    assert!(res.is_err());
+}
+
+#[test]
+fn test_bridged_out_record_burn_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _admin, _relayer, signing_key) = setup_test_env(&env);
+
+    let user = Address::generate(&env);
+    let period = 202607u64;
+    let archetype = symbol_short!("arch");
+    let data_hash = BytesN::from_array(&env, &[42u8; 32]);
+
+    let sig = sign_mint_payload(
+        &env,
+        &signing_key,
+        &client.address,
+        &user,
+        period,
+        &archetype,
+        &data_hash,
+    );
+
+    client.mint_wrap(&user, &period, &archetype, &data_hash, &1, &sig);
+
+    let dest_chain = 137u32;
+    client.set_chain_status(&dest_chain, &true);
+    let recipient_bytes = Bytes::from_array(&env, b"0x1234567890abcdef1234567890abcdef12345678");
+
+    client.bridge_wrap_out(&user, &dest_chain, &recipient_bytes, &period);
+
+    let res = catch_unwind(AssertUnwindSafe(|| {
+        client.burn_wrap(&user, &period);
+    }));
+    assert!(res.is_err());
+}
+
+#[test]
+fn test_bridged_out_record_second_bridge_out_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _admin, _relayer, signing_key) = setup_test_env(&env);
+
+    let user = Address::generate(&env);
+    let period = 202607u64;
+    let archetype = symbol_short!("arch");
+    let data_hash = BytesN::from_array(&env, &[42u8; 32]);
+
+    let sig = sign_mint_payload(
+        &env,
+        &signing_key,
+        &client.address,
+        &user,
+        period,
+        &archetype,
+        &data_hash,
+    );
+
+    client.mint_wrap(&user, &period, &archetype, &data_hash, &1, &sig);
+
+    let dest_chain = 137u32;
+    client.set_chain_status(&dest_chain, &true);
+    let recipient_bytes = Bytes::from_array(&env, b"0x1234567890abcdef1234567890abcdef12345678");
+
+    client.bridge_wrap_out(&user, &dest_chain, &recipient_bytes, &period);
+
+    let res = catch_unwind(AssertUnwindSafe(|| {
+        client.bridge_wrap_out(&user, &dest_chain, &recipient_bytes, &period);
+    }));
+    assert!(res.is_err());
+}
+
+#[test]
+fn test_bridged_out_record_transition_to_active_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _admin, _relayer, signing_key) = setup_test_env(&env);
+
+    let user = Address::generate(&env);
+    let period = 202607u64;
+    let archetype = symbol_short!("arch");
+    let data_hash = BytesN::from_array(&env, &[42u8; 32]);
+
+    let sig = sign_mint_payload(
+        &env,
+        &signing_key,
+        &client.address,
+        &user,
+        period,
+        &archetype,
+        &data_hash,
+    );
+
+    client.mint_wrap(&user, &period, &archetype, &data_hash, &1, &sig);
+
+    let dest_chain = 137u32;
+    client.set_chain_status(&dest_chain, &true);
+    let recipient_bytes = Bytes::from_array(&env, b"0x1234567890abcdef1234567890abcdef12345678");
+
+    client.bridge_wrap_out(&user, &dest_chain, &recipient_bytes, &period);
+
+    let res = catch_unwind(AssertUnwindSafe(|| {
+        client.transition_wrap_state(&user, &period, &WrapState::Active);
+    }));
+    assert!(res.is_err());
+}
+
+#[test]
+fn test_bridged_out_record_all_acceptance_criteria() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _admin, _relayer, signing_key) = setup_test_env(&env);
+
+    let user = Address::generate(&env);
+    let to_user = Address::generate(&env);
+    let period = 202607u64;
+    let archetype = symbol_short!("arch");
+    let data_hash = BytesN::from_array(&env, &[42u8; 32]);
+
+    let sig = sign_mint_payload(
+        &env,
+        &signing_key,
+        &client.address,
+        &user,
+        period,
+        &archetype,
+        &data_hash,
+    );
+
+    client.mint_wrap(&user, &period, &archetype, &data_hash, &1, &sig);
+
+    let dest_chain = 137u32;
+    client.set_chain_status(&dest_chain, &true);
+    let recipient_bytes = Bytes::from_array(&env, b"0x1234567890abcdef1234567890abcdef12345678");
+
+    let nonce = client.bridge_wrap_out(&user, &dest_chain, &recipient_bytes, &period);
+
+    // 1. get_outbound_bridge_request(nonce) returns expected fields
+    let req = client
+        .get_outbound_bridge_request(&nonce)
+        .expect("request exists");
+    assert_eq!(req.nonce, nonce);
+    assert_eq!(req.sender, user);
+    assert_eq!(req.destination_chain, dest_chain);
+    assert_eq!(req.recipient_address, recipient_bytes);
+    assert_eq!(req.period, period);
+    assert_eq!(req.archetype, archetype);
+    assert_eq!(req.data_hash, data_hash);
+
+    // 2. transfer_wrap of the same period is rejected
+    assert!(catch_unwind(AssertUnwindSafe(|| {
+        client.transfer_wrap(&user, &to_user, &period);
+    }))
+    .is_err());
+
+    // 3. burn_wrap of the same period is rejected
+    assert!(catch_unwind(AssertUnwindSafe(|| {
+        client.burn_wrap(&user, &period);
+    }))
+    .is_err());
+
+    // 4. A second bridge_wrap_out for the same period is rejected
+    assert!(catch_unwind(AssertUnwindSafe(|| {
+        client.bridge_wrap_out(&user, &dest_chain, &recipient_bytes, &period);
+    }))
+    .is_err());
+
+    // 5. transition_wrap_state(user, period, Active) by the owner is rejected
+    assert!(catch_unwind(AssertUnwindSafe(|| {
+        client.transition_wrap_state(&user, &period, &WrapState::Active);
+    }))
+    .is_err());
+}

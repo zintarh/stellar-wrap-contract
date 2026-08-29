@@ -34,7 +34,6 @@ impl WrapLifecycleFSM {
             (WrapState::Draft, WrapState::Pending)
                 | (WrapState::Draft, WrapState::Cancelled)
                 | (WrapState::Draft, WrapState::Expired)
-                | (WrapState::Pending, WrapState::Active)
                 | (WrapState::Pending, WrapState::Cancelled)
                 | (WrapState::Pending, WrapState::Expired)
                 | (WrapState::Active, WrapState::Pending)

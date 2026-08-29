@@ -1,6 +1,6 @@
 use soroban_sdk::{panic_with_error, symbol_short, token, Address, Env, Vec};
 
-use crate::{admin, ContractError, DataKey, TransferFeeConfig, WrapRecord};
+use crate::{admin, storage_types::WrapState, ContractError, DataKey, TransferFeeConfig, WrapRecord};
 
 const TTL_ONE_YEAR: u32 = 17_280 * 365;
 
@@ -136,6 +136,10 @@ pub(crate) fn transfer_wrap(e: Env, from: Address, to: Address, period: u64) {
         .persistent()
         .get(&source_key)
         .unwrap_or_else(|| panic_with_error!(e, ContractError::WrapNotFound));
+
+    if record.fsm.state != WrapState::Active {
+        panic_with_error!(e, ContractError::InvalidStateTransition);
+    }
 
     if e.storage().persistent().has(&destination_key) {
         panic_with_error!(e, ContractError::WrapAlreadyExists);
