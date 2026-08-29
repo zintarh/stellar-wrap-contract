@@ -57,6 +57,33 @@ pub(crate) fn update_last_updated(e: &Env, user: &Address) {
     }
 }
 
+/// Updates the latest period recorded for a user if `period` is greater than
+/// any previously recorded period, or if no period has been recorded yet.
+///
+/// Storage bytes are accounted once, when the entry is first created; updates
+/// only overwrite the existing value and renew its TTL.
+pub(crate) fn update_latest_period(e: &Env, user: &Address, period: u64) {
+    let latest_key = DataKey::LatestPeriod(user.clone());
+    let current_latest: Option<u64> = e.storage().persistent().get(&latest_key);
+    let should_update = match current_latest {
+        Some(latest) => period > latest,
+        None => true,
+    };
+    if should_update {
+        let was_missing = current_latest.is_none();
+        e.storage().persistent().set(&latest_key, &period);
+        e.storage()
+            .persistent()
+            .extend_ttl(&latest_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
+        if was_missing {
+            storage_accounting::add_storage_bytes(
+                e,
+                storage_accounting::estimate_latest_bytes_new(),
+            );
+        }
+    }
+}
+
 pub(crate) fn mint_wrap(
     e: Env,
     user: Address,
@@ -141,22 +168,7 @@ pub(crate) fn mint_wrap(
     }
 
     // LatestPeriod: if newly inserted, account for bytes
-    let latest_key = DataKey::LatestPeriod(user.clone());
-    let current_latest: u64 = e.storage().persistent().get(&latest_key).unwrap_or(0);
-    if period > current_latest {
-        // If latest did not exist before (==0) we'll consider it a new entry when current_latest == 0
-        let was_missing = current_latest == 0;
-        e.storage().persistent().set(&latest_key, &period);
-        e.storage()
-            .persistent()
-            .extend_ttl(&latest_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
-        if was_missing {
-            storage_accounting::add_storage_bytes(
-                &e,
-                storage_accounting::estimate_latest_bytes_new(),
-            );
-        }
-    }
+    update_latest_period(&e, &user, period);
 
     // UserPeriods: if we push a new period value, account for it
     let user_periods_key = DataKey::UserPeriods(user.clone());
@@ -317,21 +329,7 @@ pub(crate) fn mint_wrap_batch(
             );
         }
 
-        let latest_key = DataKey::LatestPeriod(item.user.clone());
-        let current_latest: u64 = e.storage().persistent().get(&latest_key).unwrap_or(0);
-        if item.period > current_latest {
-            let was_missing = current_latest == 0;
-            e.storage().persistent().set(&latest_key, &item.period);
-            e.storage()
-                .persistent()
-                .extend_ttl(&latest_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
-            if was_missing {
-                storage_accounting::add_storage_bytes(
-                    &e,
-                    storage_accounting::estimate_latest_bytes_new(),
-                );
-            }
-        }
+        update_latest_period(&e, &item.user, item.period);
 
         let user_periods_key = DataKey::UserPeriods(item.user.clone());
         let mut periods: soroban_sdk::Vec<u64> = e

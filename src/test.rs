@@ -2296,3 +2296,90 @@ fn test_get_latest_wrap_multiple_wraps() {
 
     assert_eq!(client.balance_of(&user), 3);
 }
+
+#[test]
+fn test_update_latest_period_option_matching_and_period_zero() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let user = Address::generate(&env);
+
+    env.as_contract(&contract_id, || {
+        // Initial storage bytes
+        let initial_bytes = crate::storage_accounting::get_storage_bytes(&env);
+
+        // Update with period 0 when key is absent (Option::None)
+        crate::mint::update_latest_period(&env, &user, 0);
+
+        let bytes_after_first = crate::storage_accounting::get_storage_bytes(&env);
+        let expected_delta = crate::storage_accounting::estimate_latest_bytes_new();
+        assert_eq!(
+            bytes_after_first - initial_bytes,
+            expected_delta,
+            "first update with period 0 must trigger storage accounting"
+        );
+
+        // Verify key was set to 0 in persistent storage
+        let latest_key = DataKey::LatestPeriod(user.clone());
+        let stored_period: Option<u64> = env.storage().persistent().get(&latest_key);
+        assert_eq!(stored_period, Some(0));
+
+        // Calling update again with period 0 (Option::Some(0)) must NOT add storage bytes again
+        crate::mint::update_latest_period(&env, &user, 0);
+        let bytes_after_second = crate::storage_accounting::get_storage_bytes(&env);
+        assert_eq!(
+            bytes_after_second, bytes_after_first,
+            "second update with period 0 must not trigger storage accounting again"
+        );
+
+        // Updating with a higher period (Option::Some(0) -> 202401) updates stored value but does NOT add storage bytes again
+        crate::mint::update_latest_period(&env, &user, 202401);
+        let stored_period_updated: Option<u64> = env.storage().persistent().get(&latest_key);
+        assert_eq!(stored_period_updated, Some(202401));
+        let bytes_after_third = crate::storage_accounting::get_storage_bytes(&env);
+        assert_eq!(
+            bytes_after_third, bytes_after_first,
+            "updating existing period entry must not re-account storage bytes"
+        );
+    });
+}
+
+#[test]
+fn test_storage_accounting_lowest_valid_period() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let signing_key = SigningKey::from_bytes(&[99u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    client.initialize(&admin, &admin_pubkey);
+    env.mock_all_auths();
+
+    let archetype = symbol_short!("arch");
+    let hash = BytesN::from_array(&env, &[123u8; 32]);
+    let lowest_period = 202401u64;
+
+    let initial_bytes = client.storage_bytes();
+
+    let sig = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user,
+        lowest_period,
+        &archetype,
+        &hash,
+    );
+    client.mint_wrap(&user, &lowest_period, &archetype, &hash, &1u32, &sig);
+
+    let bytes_after_mint = client.storage_bytes();
+    assert!(
+        bytes_after_mint > initial_bytes,
+        "minting lowest valid period must increase storage bytes"
+    );
+
+    let latest = client.get_latest_wrap(&user).unwrap();
+    assert_eq!(latest.period, lowest_period);
+}

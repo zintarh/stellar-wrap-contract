@@ -211,21 +211,7 @@ pub(crate) fn bridge_wrap_in(
             );
         }
 
-        let latest_key = DataKey::LatestPeriod(recipient.clone());
-        let current_latest: u64 = e.storage().persistent().get(&latest_key).unwrap_or(0);
-        if period > current_latest {
-            let was_missing = current_latest == 0;
-            e.storage().persistent().set(&latest_key, &period);
-            e.storage()
-                .persistent()
-                .extend_ttl(&latest_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
-            if was_missing {
-                storage_accounting::add_storage_bytes(
-                    &e,
-                    storage_accounting::estimate_latest_bytes_new(),
-                );
-            }
-        }
+        crate::mint::update_latest_period(&e, &recipient, period);
 
         let user_periods_key = DataKey::UserPeriods(recipient.clone());
         let mut periods: soroban_sdk::Vec<u64> = e
