@@ -62,8 +62,8 @@ mod missing_method_oracle {
 #[test]
 fn oracle_accepts_recognized_hash() {
     let env = Env::default();
-    let wrap_id = env.register_contract(None, StellarWrapContract);
-    let oracle_id = env.register_contract(None, mock_oracle::MockOracle);
+    let wrap_id = env.register(StellarWrapContract, ());
+    let oracle_id = env.register(mock_oracle::MockOracle, ());
     let wrap = StellarWrapContractClient::new(&env, &wrap_id);
     let data_hash = BytesN::from_array(&env, &APPROVED_HASH);
 
@@ -73,8 +73,8 @@ fn oracle_accepts_recognized_hash() {
 #[test]
 fn oracle_rejection_is_returned() {
     let env = Env::default();
-    let wrap_id = env.register_contract(None, StellarWrapContract);
-    let oracle_id = env.register_contract(None, mock_oracle::MockOracle);
+    let wrap_id = env.register(StellarWrapContract, ());
+    let oracle_id = env.register(mock_oracle::MockOracle, ());
     let wrap = StellarWrapContractClient::new(&env, &wrap_id);
     let unknown_hash = BytesN::from_array(&env, &[8; 32]);
 
@@ -84,8 +84,8 @@ fn oracle_rejection_is_returned() {
 #[test]
 fn oracle_failure_is_not_treated_as_rejection() {
     let env = Env::default();
-    let wrap_id = env.register_contract(None, StellarWrapContract);
-    let oracle_id = env.register_contract(None, failing_oracle::FailingOracle);
+    let wrap_id = env.register(StellarWrapContract, ());
+    let oracle_id = env.register(failing_oracle::FailingOracle, ());
     let wrap = StellarWrapContractClient::new(&env, &wrap_id);
     let data_hash = BytesN::from_array(&env, &APPROVED_HASH);
 
@@ -95,7 +95,7 @@ fn oracle_failure_is_not_treated_as_rejection() {
 #[test]
 fn non_contract_oracle_address_fails() {
     let env = Env::default();
-    let wrap_id = env.register_contract(None, StellarWrapContract);
+    let wrap_id = env.register(StellarWrapContract, ());
     let non_contract = Address::generate(&env);
     let wrap = StellarWrapContractClient::new(&env, &wrap_id);
     let data_hash = BytesN::from_array(&env, &APPROVED_HASH);
@@ -108,8 +108,8 @@ fn non_contract_oracle_address_fails() {
 #[test]
 fn incompatible_oracle_return_type_fails() {
     let env = Env::default();
-    let wrap_id = env.register_contract(None, StellarWrapContract);
-    let oracle_id = env.register_contract(None, wrong_abi_oracle::WrongAbiOracle);
+    let wrap_id = env.register(StellarWrapContract, ());
+    let oracle_id = env.register(wrong_abi_oracle::WrongAbiOracle, ());
     let wrap = StellarWrapContractClient::new(&env, &wrap_id);
     let data_hash = BytesN::from_array(&env, &APPROVED_HASH);
 
@@ -119,8 +119,8 @@ fn incompatible_oracle_return_type_fails() {
 #[test]
 fn missing_oracle_method_fails() {
     let env = Env::default();
-    let wrap_id = env.register_contract(None, StellarWrapContract);
-    let oracle_id = env.register_contract(None, missing_method_oracle::MissingMethodOracle);
+    let wrap_id = env.register(StellarWrapContract, ());
+    let oracle_id = env.register(missing_method_oracle::MissingMethodOracle, ());
     let wrap = StellarWrapContractClient::new(&env, &wrap_id);
     let data_hash = BytesN::from_array(&env, &APPROVED_HASH);
 

@@ -1,4 +1,4 @@
-.PHONY: build test fuzz fuzz-build fmt fmt-check lint doc clean deploy-testnet wasm-build docker-build docker-build-verify coverage
+.PHONY: build test fuzz fuzz-build fmt fmt-check lint doc clean deploy-testnet wasm-build wasm-size docker-build docker-build-verify coverage
 
 # ── Build ────────────────────────────────────────────────────────────────────
 
@@ -8,6 +8,17 @@ build: wasm-build
 ## wasm-build: Explicit WASM release build (output: target/wasm32-unknown-unknown/release/*.wasm)
 wasm-build:
 	cargo build --release --target wasm32-unknown-unknown
+
+## wasm-size: Build release WASM and fail if it exceeds the size limit in .github/wasm-size-limit
+wasm-size: wasm-build
+	@limit=$$(cat .github/wasm-size-limit); \
+	wasm_file=$$(ls target/wasm32-unknown-unknown/release/*.wasm | head -n1); \
+	size=$$(wc -c < "$$wasm_file"); \
+	echo "WASM size: $$size bytes (limit: $$limit bytes)"; \
+	if [ "$$size" -gt "$$limit" ]; then \
+		echo "Error: WASM size exceeds limit by $$((size - limit)) bytes" >&2; \
+		exit 1; \
+	fi
 
 ## soroban-build: Build via the Stellar CLI (alternative to cargo build --target wasm32)
 soroban-build:
