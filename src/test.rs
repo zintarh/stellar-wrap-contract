@@ -9,7 +9,7 @@ use soroban_sdk::{
     symbol_short,
     testutils::{
         budget::ContractCostType,
-        {Address as _, Events},
+        {Address as _, Events, Ledger},
     },
     Address, Bytes, BytesN, Env, IntoVal, String, Symbol, TryIntoVal,
 };
@@ -326,6 +326,170 @@ fn test_whitelist_root_requires_timelock_after_enable() {
     client.timelock_execute(&operation_id);
 
     assert_eq!(client.get_whitelist_root(), Some(scheduled_root));
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #43)")]
+fn test_set_timelock_delay_below_min_fails_at_schedule() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let pubkey = BytesN::from_array(&env, &[1u8; 32]);
+
+    env.mock_all_auths();
+    client.initialize(&admin, &pubkey);
+    client.enable_timelock(&timelock::MIN_DELAY);
+
+    // Scheduling a delay below MIN_DELAY should fail immediately with InvalidTimelockDelay
+    let invalid_delay = timelock::MIN_DELAY - 1;
+    let action = TimelockAction::SetTimelockDelay(invalid_delay);
+    client.timelock_schedule(&action);
+}
+
+#[test]
+fn test_set_timelock_delay_valid_updates_on_execute() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let pubkey = BytesN::from_array(&env, &[1u8; 32]);
+
+    env.mock_all_auths();
+    client.initialize(&admin, &pubkey);
+    client.enable_timelock(&timelock::MIN_DELAY);
+
+    // Verify initial delay
+    assert_eq!(client.timelock_delay(), Some(timelock::MIN_DELAY));
+
+    // Schedule a valid new delay
+    let new_delay = timelock::MIN_DELAY * 2;
+    let action = TimelockAction::SetTimelockDelay(new_delay);
+    let operation_id = client.timelock_schedule(&action);
+
+    // Delay should not change until execution
+    assert_eq!(client.timelock_delay(), Some(timelock::MIN_DELAY));
+
+    // Fast-forward and execute
+    env.ledger().with_mut(|ledger| {
+        ledger.timestamp += timelock::MIN_DELAY;
+    });
+    client.timelock_execute(&operation_id);
+
+    // Delay should now be updated
+    assert_eq!(client.timelock_delay(), Some(new_delay));
+}
+
+#[test]
+fn test_set_timelock_delay_preserves_existing_operation_eta() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+    let pubkey = BytesN::from_array(&env, &[1u8; 32]);
+
+    env.mock_all_auths();
+    client.initialize(&admin, &pubkey);
+    client.enable_timelock(&timelock::MIN_DELAY);
+
+    // Schedule an admin change under the old delay
+    let admin_action = TimelockAction::SetAdmin(new_admin.clone());
+    let admin_op_id = client.timelock_schedule(&admin_action);
+    let admin_op = client.timelock_operation(&admin_op_id).unwrap();
+    let original_eta = admin_op.eta;
+
+    // Schedule a delay change
+    let new_delay = timelock::MIN_DELAY * 3;
+    let delay_action = TimelockAction::SetTimelockDelay(new_delay);
+    let delay_op_id = client.timelock_schedule(&delay_action);
+
+    // Execute the delay change
+    env.ledger().with_mut(|ledger| {
+        ledger.timestamp += timelock::MIN_DELAY;
+    });
+    client.timelock_execute(&delay_op_id);
+
+    // Verify the delay has changed
+    assert_eq!(client.timelock_delay(), Some(new_delay));
+
+    // Verify the admin operation still has its original ETA
+    let admin_op_after = client.timelock_operation(&admin_op_id).unwrap();
+    assert_eq!(admin_op_after.eta, original_eta);
+
+    // The admin operation should still execute at its original ETA
+    env.ledger().with_mut(|ledger| {
+        ledger.timestamp = original_eta;
+    });
+    client.timelock_execute(&admin_op_id);
+    assert_eq!(client.get_admin().unwrap(), new_admin);
+}
+
+#[test]
+fn test_set_timelock_delay_min_boundary() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let pubkey = BytesN::from_array(&env, &[1u8; 32]);
+
+    env.mock_all_auths();
+    client.initialize(&admin, &pubkey);
+    client.enable_timelock(&timelock::MIN_DELAY);
+
+    // MIN_DELAY should be accepted
+    let action = TimelockAction::SetTimelockDelay(timelock::MIN_DELAY);
+    let operation_id = client.timelock_schedule(&action);
+
+    env.ledger().with_mut(|ledger| {
+        ledger.timestamp += timelock::MIN_DELAY;
+    });
+    client.timelock_execute(&operation_id);
+
+    assert_eq!(client.timelock_delay(), Some(timelock::MIN_DELAY));
+}
+
+#[test]
+fn test_set_timelock_delay_max_boundary() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let pubkey = BytesN::from_array(&env, &[1u8; 32]);
+
+    env.mock_all_auths();
+    client.initialize(&admin, &pubkey);
+    client.enable_timelock(&timelock::MIN_DELAY);
+
+    // MAX_DELAY should be accepted
+    let action = TimelockAction::SetTimelockDelay(timelock::MAX_DELAY);
+    let operation_id = client.timelock_schedule(&action);
+
+    env.ledger().with_mut(|ledger| {
+        ledger.timestamp += timelock::MIN_DELAY;
+    });
+    client.timelock_execute(&operation_id);
+
+    assert_eq!(client.timelock_delay(), Some(timelock::MAX_DELAY));
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #43)")]
+fn test_set_timelock_delay_above_max_fails_at_schedule() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let pubkey = BytesN::from_array(&env, &[1u8; 32]);
+
+    env.mock_all_auths();
+    client.initialize(&admin, &pubkey);
+    client.enable_timelock(&timelock::MIN_DELAY);
+
+    // Scheduling a delay above MAX_DELAY should fail immediately
+    let invalid_delay = timelock::MAX_DELAY + 1;
+    let action = TimelockAction::SetTimelockDelay(invalid_delay);
+    client.timelock_schedule(&action);
 }
 
 #[test]
