@@ -103,6 +103,11 @@ pub(crate) fn operation_id(e: &Env, action: &TimelockAction) -> BytesN<32> {
             data.append(&Bytes::from_array(e, &[5u8]));
             data.append(&(*seconds).to_xdr(e));
         }
+        TimelockAction::SetBridgeRelayers(chain_id, relayers) => {
+            data.append(&Bytes::from_array(e, &[6u8]));
+            data.append(&chain_id.clone().to_xdr(e));
+            data.append(&relayers.clone().to_xdr(e));
+        }
     }
     let hash = e.crypto().sha256(&data);
     BytesN::from_array(e, &hash.to_array())
@@ -255,6 +260,9 @@ pub(crate) fn execute(e: Env, id: BytesN<32>) {
             e.events()
                 .publish((symbol_short!("upgrade"),), wasm_hash.clone());
             e.deployer().update_current_contract_wasm(wasm_hash);
+        }
+        TimelockAction::SetBridgeRelayers(chain_id, relayers) => {
+            crate::bridge::set_bridge_relayers(&e, chain_id, relayers.relayers, relayers.threshold);
         }
     }
 
