@@ -9,7 +9,7 @@ use soroban_sdk::{
     symbol_short,
     testutils::{
         budget::ContractCostType,
-        {Address as _, Events},
+        {Address as _, Events, Ledger},
     },
     Address, Bytes, BytesN, Env, IntoVal, String, Symbol, TryIntoVal,
 };
@@ -714,6 +714,74 @@ fn test_mint_wrap_rejects_signature_from_wrong_key() {
     assert_maps_to_invalid_signature(&result);
 
     // Nothing may be written by the failed mint.
+    assert!(client.get_wrap(&user, &period).is_none());
+    assert_eq!(client.balance_of(&user), 0);
+}
+
+/// Verify that a bad (wrong-key) mint signature leaves no residual
+/// temporary `MintGuard` entry in either temporary or persistent storage
+/// (issue #258).
+#[test]
+fn test_temporary_guard_cleared_on_bad_signature() {
+    use crate::storage_types::DataKey;
+
+    let env = Env::default();
+    let contract_id = env.register(StellarWrapContract, ());
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let signing_key = SigningKey::from_bytes(&[90u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    env.mock_all_auths();
+    client.initialize(&admin, &admin_pubkey);
+    env.mock_all_auths();
+
+    let archetype = symbol_short!("arch");
+    let data_hash = BytesN::from_array(&env, &[42u8; 32]);
+    let period = 202401u64;
+
+    // Sign with a key other than the configured admin pubkey so the mint
+    // must be rejected on the signature check with InvalidSignature (#5).
+    let wrong_key = SigningKey::from_bytes(&[88u8; 32]);
+    let signature = sign_payload(
+        &env,
+        &wrong_key,
+        &contract_id,
+        &user,
+        period,
+        &archetype,
+        &data_hash,
+    );
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        client.mint_wrap(
+            &user,
+            &period,
+            &archetype,
+            &data_hash,
+            &CURRENT_PAYLOAD_VERSION,
+            &signature,
+        );
+    }));
+    assert_maps_to_invalid_signature(&result);
+
+    // No temporary `MintGuard` entry may remain for the user after the
+    // failed mint, in either tier of storage.
+    let guard_key = DataKey::MintGuard(user.clone());
+    env.as_contract(&contract_id, || {
+        assert!(
+            !env.storage().temporary().has(&guard_key),
+            "MintGuard must NOT persist in temporary storage after a bad-signature mint"
+        );
+        assert!(
+            !env.storage().persistent().has(&guard_key),
+            "MintGuard must NOT persist in persistent storage after a bad-signature mint"
+        );
+    });
+
+    // Nothing may be written by the failed mint either.
     assert!(client.get_wrap(&user, &period).is_none());
     assert_eq!(client.balance_of(&user), 0);
 }
