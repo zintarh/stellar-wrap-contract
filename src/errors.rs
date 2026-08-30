@@ -63,4 +63,5 @@ pub enum ContractError {
     StorageInvariantViolation = 51,
     /// The admin signing key provided to `initialize` is invalid (e.g. all-zero).
     InvalidAdminPubKey = 52,
+    InvalidThreshold = 53,
 }

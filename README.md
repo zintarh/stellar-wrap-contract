@@ -32,12 +32,15 @@ Each wrap record stores:
 - `timestamp: u64`
 - `data_hash: BytesN<32>`
 - `archetype: Symbol`
-- `period: u64`
+- `period: u64` (the canonical period format, represented as an unsigned 64-bit integer)
 
-`period` is encoded as `YYYYMM` and validated on mint:
+`period` is encoded as a `u64` in `YYYYMM` format (e.g. `202401` for January 2024) and validated on mint:
 
-- year must be between `2024` and `2100`
-- month must be between `01` and `12`
+- Year (`period / 100`) must be between `2024` and `2100`.
+- Month (`period % 100`) must be between `01` and `12`.
+
+#### Non-Monthly Periods
+On-chain validation strictly enforces the `YYYYMM` format. Therefore, non-monthly periods (such as weekly, daily, or quarterly wraps) are not natively supported by the contract validation logic. Integrations requiring non-monthly periods must map their descriptors to a canonical `YYYYMM` `u64` value (e.g., mapping Q1 2025 to `202503` or a specific week to the month in which it ends) before initiating a mint.
 
 ## SBT compatibility
 
@@ -63,19 +66,47 @@ Returned by `health()`, reports:
 - `DataKey::LatestPeriod(Address)`
 - `DataKey::MigrationVersion`
 
-## Public interface
+## API reference
 
-### Write methods
+Every public entrypoint in `src/lib.rs` is listed below, grouped by module. The
+auth column states who must authorise the invocation ("—" = permissionless
+read). See the subsystem sections that follow for the authorization model,
+worked examples, and links to the detailed docs.
 
-- `initialize(e: Env, admin: Address, admin_pubkey: BytesN<32>)`
-- `update_admin(e: Env, new_admin: Address)`
-- `mint_wrap(e: Env, user: Address, period: u64, archetype: Symbol, data_hash: BytesN<32>, payload_version: u32, signature: BytesN<64>)`
-- `mint_wrap_batch(e: Env, items: Vec<BatchWrapItem>, aggregated_signature: Option<BytesN<64>>)`
-- `revoke_wrap(e: Env, user: Address, period: u64, reason_hash: BytesN<32>)`
-- `transfer_wrap(e: Env, from: Address, to: Address, period: u64)`
-- `expire_wrap(e: Env, user: Address, period: u64)`
-- `migrate(e: Env, version: u32)`
-- `upgrade(e: Env, new_wasm_hash: BytesN<32>)`
+### Administration & lifecycle
+
+| Entrypoint | Auth |
+| --- | --- |
+| `initialize(admin, admin_pubkey)` | deployer (callable once) |
+| `update_admin(new_admin)` | admin |
+| `propose_admin(new_admin)` | admin |
+| `accept_admin()` | proposed admin |
+| `cancel_proposed_admin()` | admin |
+| `get_pending_admin()` | — |
+| `get_admin()` | — |
+| `get_admin_pubkey()` | — |
+| `set_name(name)` | admin |
+| `set_symbol(symbol)` | admin |
+| `pause()` / `unpause()` | admin |
+| `is_paused()` | — |
+| `migrate(version)` | admin |
+| `migration_version()` | — |
+| `upgrade(new_wasm_hash)` | admin |
+| `renew_all_ttls(user)` | admin |
+| `extend_ttl(user, period)` | anyone |
+| `set_transfer_fee(token, recipient, amount)` | admin |
+| `get_transfer_fee()` | — |
+| `set_expiration_duration(duration)` | admin |
+| `expiration_duration()` | — |
+
+### Minting
+
+| Entrypoint | Auth |
+| --- | --- |
+| `mint_wrap(user, period, archetype, data_hash, payload_version, signature)` | `user` + admin Ed25519 signature |
+| `mint_wrap_batch(items, aggregated_signature)` | per-item `user` + signature (see [Batch minting](#batch-minting)) |
+| `transition_wrap_state(user, period, next_state)` | `user` |
+| `expire_wrap(user, period)` | anyone |
 
 ### Mint signature payload versioning
 
@@ -97,20 +128,308 @@ clients must sign this exact byte layout. See
 [docs/signing-payload.md](docs/signing-payload.md) for the full reference and a
 TypeScript signer example.
 
-### Read methods
+### Transfer
 
-- `get_wrap(e: Env, user: Address, period: u64) -> Option<WrapRecord>`  
-  Returns the wrap record for the specified user and period. Safe to call before initialization — returns `None` if the contract has not been initialized or if no wrap exists for the given user and period.
-- `balance_of(e: Env, user: Address) -> i128`
-- `verify_data(e: Env, user: Address, period: u64, data: Bytes) -> bool`
-- `verify_with_oracle(e: Env, oracle: Address, data_hash: BytesN<32>) -> bool`
-- `get_latest_wrap(e: Env, user: Address) -> Option<WrapRecord>`
-- `get_admin(e: Env) -> Option<Address>`
-- `health(e: Env) -> ContractHealth`
-- `name(e: Env) -> String`
-- `symbol(e: Env) -> String`
-- `decimals(e: Env) -> u32`
-- `migration_version(e: Env) -> u32`
+| Entrypoint | Auth |
+| --- | --- |
+| `transfer_wrap(from, to, period)` | `from` (charges the configured fee) |
+| `backfill_wrap_periods(user, periods)` | admin |
+
+### Queries
+
+| Entrypoint |
+| --- |
+| `get_wrap(user, period)` |
+| `get_mint_timestamp(user, period)` |
+| `get_last_updated(user)` |
+| `total_wrap_count()` |
+| `get_latest_wrap(user)` |
+| `get_wraps(user, start, limit)` |
+| `get_all_wraps_for_user(user)` |
+| `has_wrap(user, period)` |
+| `version()` |
+| `contract_version()` |
+| `health()` |
+
+`get_wrap` returns the wrap record for the specified user and period. It is
+safe to call before initialization — it returns `None` if the contract has not
+been initialized or if no wrap exists for the given user and period.
+
+### Data verification
+
+| Entrypoint |
+| --- |
+| `verify_data(user, period, data)` |
+| `verify_with_oracle(oracle, data_hash)` |
+
+### Alias & opt-out
+
+| Entrypoint | Auth |
+| --- | --- |
+| `set_alias_hash(user, alias_hash)` | `user` |
+| `get_alias_hash(user)` | — |
+| `opt_out(user)` / `opt_in(user)` | `user` |
+| `is_opted_out(user)` | — |
+
+### Revoke & burn
+
+| Entrypoint | Auth |
+| --- | --- |
+| `revoke_wrap(user, period, reason_hash)` | admin |
+| `burn_wrap(user, period)` | wrap owner |
+| `total_revoked()` | — |
+
+### Storage accounting & fees
+
+| Entrypoint | Auth |
+| --- | --- |
+| `storage_bytes()` | — |
+| `current_fee()` | — |
+| `set_fee_params(params)` | admin |
+| `fee_params()` | — |
+
+### Whitelist (Merkle)
+
+| Entrypoint | Auth |
+| --- | --- |
+| `set_whitelist_root(root)` | admin |
+| `clear_whitelist_root()` | admin |
+| `get_whitelist_root()` | — |
+| `whitelist_leaf(user)` | — |
+| `verify_whitelist(user, proof)` | — |
+
+### Timelock
+
+| Entrypoint | Auth |
+| --- | --- |
+| `enable_timelock(delay_seconds)` | admin (one-way) |
+| `timelock_delay()` | — |
+| `timelock_schedule(action)` | admin |
+| `timelock_execute(id)` | admin |
+| `timelock_cancel(id)` | admin |
+| `timelock_operation(id)` | — |
+| `timelock_pending()` | — |
+| `timelock_operation_id(action)` | — |
+
+### Bridge
+
+| Entrypoint | Auth |
+| --- | --- |
+| `set_bridge_relayer(relayer)` | admin |
+| `get_bridge_relayer()` | — |
+| `set_chain_status(chain_id, enabled)` | admin |
+| `is_chain_supported(chain_id)` | — |
+| `bridge_wrap_out(user, destination_chain, recipient_address, period)` | `user` |
+| `bridge_wrap_in(source_chain, source_nonce, recipient, period, archetype, data_hash)` | relayer |
+| `get_outbound_bridge_request(nonce)` | — |
+| `get_inbound_bridge_record(source_chain, source_nonce)` | — |
+| `is_inbound_nonce_processed(source_chain, source_nonce)` | — |
+| `get_outbound_nonce()` | — |
+
+### DAO governance
+
+| Entrypoint | Auth |
+| --- | --- |
+| `create_admin_proposal(proposer, proposed_admin, duration_seconds)` | proposer |
+| `vote_admin_proposal(voter, proposal_id, support)` | voter |
+| `execute_admin_proposal(proposal_id)` | anyone after the voting period ends |
+| `cancel_admin_proposal(caller, proposal_id)` | proposer or admin |
+| `get_admin_proposal(proposal_id)` | — |
+| `get_admin_proposal_vote(proposal_id, voter)` | — |
+| `get_admin_proposal_count()` | — |
+
+### Staking
+
+| Entrypoint | Auth |
+| --- | --- |
+| `stake(user, amount)` | `user` |
+| `unstake(user)` | `user` |
+| `withdraw_stake(user)` | `user` |
+| `get_stake(user)` | — |
+| `get_stake_priority(user)` | — |
+| `total_staked()` | — |
+| `set_stake_config(config)` | admin |
+| `get_stake_config()` | — |
+| `get_discounted_fee(user)` | — |
+
+### Token interface (SEP-41)
+
+| Entrypoint |
+| --- |
+| `name()` |
+| `symbol()` |
+| `decimals()` |
+| `balance_of(user)` |
+
+## Staking
+
+Users stake the contract token to earn a mint-fee discount ("priority"). The
+discount is expressed in basis points and derived from the stake size relative
+to `min_stake`. Staking is opt-in and per-user; a cooldown applies before
+staked funds can be withdrawn.
+
+### Entrypoints
+
+| Entrypoint | Auth | Purpose |
+| --- | --- | --- |
+| `stake(user, amount)` | `user` | Deposit at least `min_stake`; raises priority. |
+| `unstake(user)` | `user` | Start the cooldown; priority drops to 0 immediately. |
+| `withdraw_stake(user)` | `user` | Withdraw once the cooldown has elapsed. |
+| `get_stake(user)` | — | The user's `StakeRecord` (amount, timestamps). |
+| `get_stake_priority(user)` | — | Discount priority in basis points (0 while unstaking). |
+| `total_staked()` | — | Sum of all active stakes. |
+| `set_stake_config(config)` | admin | Configure `min_stake`, cooldown, and the priority curve. |
+| `get_stake_config()` | — | The current `StakeConfig`. |
+| `get_discounted_fee(user)` | — | The raw fee reduced by the user's priority discount. |
+
+### Authorization model
+
+- `stake`, `unstake`, and `withdraw_stake` require the **user's** authorization
+  (`user.require_auth()`).
+- `set_stake_config` is **admin-only**; the config is validated on write
+  (`min_stake > 0`, `cooldown_seconds > 0`, `max_priority_bps <= 10_000`).
+- All reads are permissionless.
+
+### Worked example
+
+1. Admin configures the curve: `set_stake_config({ min_stake: 100, cooldown_seconds: 604800, priority_multiplier_bps: 1000, max_priority_bps: 5000 })`.
+2. Alice calls `stake(alice, 500)`.
+3. `get_stake_priority(alice)` returns `min(500 / 100 * 1000, 5000) = 5000` bps (50%).
+4. `get_discounted_fee(alice)` returns the storage fee reduced by 50%.
+5. Alice calls `unstake(alice)`, waits 7 days, then `withdraw_stake(alice)`.
+
+> **Not yet enforced:** the staking discount is *computed* (`get_discounted_fee`)
+> but is **not applied** during `mint_wrap`/`mint_wrap_batch` — mints do not
+> currently charge the storage fee, so staking changes the priority number only,
+> not the amount a user actually pays.
+
+## Timelock controller
+
+`enable_timelock` is a one-way switch that forces sensitive admin mutations
+(admin handover, signing-key rotation, WASM upgrade, whitelist-root change, and
+delay change) through a `schedule` → wait → `execute` flow with a publicly
+observable delay window.
+
+### Entrypoints
+
+| Entrypoint | Auth | Purpose |
+| --- | --- | --- |
+| `enable_timelock(delay_seconds)` | admin (one-way) | Turn the timelock on (1 hour – 30 days). |
+| `timelock_delay()` | — | Current delay, or `None` if disabled. |
+| `timelock_schedule(action)` | admin | Queue an action; returns the operation id. |
+| `timelock_execute(id)` | admin | Apply a queued operation after its ETA. |
+| `timelock_cancel(id)` | admin | Drop a queued operation. |
+| `timelock_operation(id)` | — | The queued `TimelockOperation`, or `None`. |
+| `timelock_pending()` | — | Ids of all queued operations. |
+| `timelock_operation_id(action)` | — | Pre-compute the deterministic operation id. |
+
+### Authorization model
+
+- `enable_timelock`, `timelock_schedule`, `timelock_execute`, and
+  `timelock_cancel` are **admin-only**.
+- Enabling is **one-way**; the delay can only be changed afterwards by
+  scheduling a `TimelockAction::SetTimelockDelay` operation (itself delayed).
+- Once enabled, direct `update_admin`, `propose_admin`/`accept_admin`, and
+  `upgrade` calls panic with `TimelockRequired`.
+
+### Worked example
+
+```bash
+enable_timelock --delay_seconds 172800            # 48h, one-way
+timelock_schedule --action '{"SetAdmin":"G..."}'  # returns <id>
+timelock_pending                                   # audit the queue
+timelock_execute --id <id>                         # apply after the ETA
+timelock_cancel --id <id>                          # or abort before the ETA
+```
+
+See [docs/timelock.md](docs/timelock.md) for the full architecture and operator
+runbook.
+
+## Whitelist (Merkle)
+
+The contract can gate behaviour on a whitelist of addresses without storing the
+list on-chain. Only a 32-byte merkle root is published; membership is proven
+per-call with a merkle proof.
+
+### Entrypoints
+
+| Entrypoint | Auth | Purpose |
+| --- | --- | --- |
+| `set_whitelist_root(root)` | admin | Publish or replace the root. |
+| `clear_whitelist_root()` | admin | Remove the root, disabling whitelist checks. |
+| `get_whitelist_root()` | — | Current root, or `None`. |
+| `whitelist_leaf(user)` | — | The leaf hash for an address. |
+| `verify_whitelist(user, proof)` | — | `true` if the proof proves membership. |
+
+### Authorization model
+
+- `set_whitelist_root` and `clear_whitelist_root` are **admin-only**.
+- `verify_whitelist` and `whitelist_leaf` are permissionless reads.
+
+### Worked example
+
+```bash
+set_whitelist_root --root <32-byte-root>
+verify_whitelist --user <USER_ADDRESS> --proof '[<sibling-hash>, ...]'
+```
+
+See [docs/whitelist-merkle.md](docs/whitelist-merkle.md) for the leaf encoding,
+tree layout, and proof ordering.
+
+> **Not yet enforced:** the merkle gate (`require_whitelisted`) exists but is
+> **not called** by any mint or transfer entrypoint, so publishing a root
+> currently does not restrict who can mint. It is exposed for future
+> private-mint phases.
+
+## Batch minting
+
+`mint_wrap_batch` mints up to `MAX_BATCH_SIZE` (100) wraps in one call. Each item
+is validated for period, payload version, authorization, and signature.
+
+### Signature modes
+
+`mint_wrap_batch(items, aggregated_signature)` accepts one of two signature
+modes:
+
+1. **Individual signatures** (`aggregated_signature = None`): each
+   `BatchWrapItem` carries its own Ed25519 `signature` over the canonical
+   per-item payload, verified exactly like `mint_wrap`.
+2. **Aggregated signature** (`aggregated_signature = Some(sig)`): a single
+   signature over the concatenation of all item payloads; every item must use
+   the same `payload_version`.
+
+### Authorization model
+
+Each `item.user` must authorise the call (`item.user.require_auth()`), and the
+signature(s) must verify against the admin Ed25519 public key. `BatchEmpty` and
+`BatchTooLarge` are raised for empty batches or batches larger than 100 items.
+
+### Worked example
+
+```bash
+mint_wrap_batch \
+  --items '[{"user":"G...","period":202401,"archetype":"arch","data_hash":"...","payload_version":1,"signature":"..."}]' \
+  --aggregated_signature 'null'
+```
+
+See [docs/signing-payload.md](docs/signing-payload.md) for the canonical payload
+layout that both single and batch signatures sign.
+
+## Features not yet enforced
+
+The following capabilities exist in the contract but are **not yet wired into the
+mint path**. They are listed so the README does not overstate behaviour:
+
+- **Whitelist gating** — `set_whitelist_root` / `verify_whitelist` and the
+  internal `require_whitelisted` gate exist, but no mint or transfer entrypoint
+  calls them. Publishing a root does not yet restrict who can mint.
+- **Fee collection** — the storage-accounting fee model (`current_fee`,
+  `set_fee_params`, `fee_params`) is computed on-chain, but `mint_wrap` does not
+  charge it. `transfer_wrap` charges a separate, fixed `set_transfer_fee`
+  amount unrelated to the storage fee.
+- **Staking discounts** — `get_discounted_fee` computes a discount from a user's
+  stake, but mints do not apply it, so staking affects priority numbers only,
+  not the fees a user actually pays.
 
 ## Oracle hash verification
 
@@ -255,7 +574,14 @@ Successful admin rotations emit one event:
 
 ### Revoke event
 
-Revoke functionality is not implemented in this contract. Wraps are non-transferable and permanent once minted.
+Successful revocations emit one event:
+
+- **Topic 0**: `revoke` (`Symbol`)
+- **Topic 1**: `user` (`Address`)
+- **Topic 2**: `period` (`u64`)
+- **Data**: `reason_hash` (`BytesN<32>`) — the SHA-256 of an off-chain reason, or a zero hash when omitted
+
+See [docs/revoke-policy.md](docs/revoke-policy.md) for the operational policy.
 
 ## Important note for indexers
 
@@ -644,6 +970,11 @@ storage layout must ship as a numbered migration:
 
 - [Canonical signed payload encoding](docs/signing-payload.md) — exact field order, XDR encoding rules, and test vectors required by backend signing services (issue #213)
 - [Admin rotation procedure](docs/admin-rotation.md) — safe procedure for rotating the admin address and signing pubkey, including verification, event monitoring, and rollback plan
+- [Timelock controller](docs/timelock.md) — architecture and operator runbook for the admin timelock
+- [Off-chain whitelisting via Merkle proofs](docs/whitelist-merkle.md) — leaf encoding, tree layout, and proof verification
+- [Bridge architecture](docs/bridge-architecture.md) — cross-chain bridge workflow and components
+- [Revoke policy](docs/revoke-policy.md) — operational policy for `revoke_wrap`
+- [Using `verify_data`](docs/verify-data.md) — off-chain JSON integrity checks
 
 ## Development
 

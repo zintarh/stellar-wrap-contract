@@ -49,7 +49,7 @@ fn sign_payload(
 #[should_panic(expected = "Error(Contract, #4)")]
 fn test_replay_attack_same_period_fails() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let signing_key = SigningKey::from_bytes(&[1u8; 32]);
@@ -87,7 +87,7 @@ fn test_replay_attack_same_period_fails() {
 
     // Verify the wrap was created
     let wrap = client.get_wrap(&user, &period);
-    assert!(wrap.is_some(), "First mint should succeed");
+    assert!(wrap.is_some(), "First mint should succeed.");
 
     // Replay attack: Try to mint again with the exact same parameters
     // This should PANIC with WrapAlreadyExists error (#4)
@@ -107,7 +107,7 @@ fn test_replay_attack_same_period_fails() {
 #[should_panic(expected = "Error(Contract, #4)")]
 fn test_replay_attack_different_hash_same_period_fails() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let signing_key = SigningKey::from_bytes(&[1u8; 32]);
@@ -172,7 +172,7 @@ fn test_replay_attack_different_hash_same_period_fails() {
 #[test]
 fn test_multiple_periods_for_same_user_success() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let signing_key = SigningKey::from_bytes(&[1u8; 32]);
@@ -264,7 +264,7 @@ fn test_multiple_periods_for_same_user_success() {
 #[test]
 fn test_signature_cannot_be_stolen_by_another_user() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let signing_key = SigningKey::from_bytes(&[1u8; 32]);
@@ -304,7 +304,7 @@ fn test_signature_cannot_be_stolen_by_another_user() {
 
     // Verify User A has the wrap
     let wrap_a = client.get_wrap(&user_a, &period);
-    assert!(wrap_a.is_some(), "User A should have the wrap");
+    assert!(wrap_a.is_some(), "User A should have the wrap.");
 
     // User B tries to mint with their own period (this is allowed)
     let data_hash_for_b = BytesN::from_array(&env, &[99u8; 32]);
@@ -341,7 +341,7 @@ fn test_signature_cannot_be_stolen_by_another_user() {
     let user_b_period_dec = client.get_wrap(&user_b, &period);
     assert!(
         user_b_period_dec.is_none(),
-        "User B should not have User A's period"
+        "User B should not have User A's period."
     );
 }
 
@@ -352,8 +352,8 @@ fn test_cross_contract_replay_protection() {
     let env = Env::default();
 
     // Deploy two separate contract instances (V1 and V2)
-    let contract_v1 = env.register_contract(None, StellarWrapContract);
-    let contract_v2 = env.register_contract(None, StellarWrapContract);
+    let contract_v1 = env.register(StellarWrapContract, ());
+    let contract_v2 = env.register(StellarWrapContract, ());
 
     let client_v1 = StellarWrapContractClient::new(&env, &contract_v1);
     let client_v2 = StellarWrapContractClient::new(&env, &contract_v2);
@@ -395,7 +395,7 @@ fn test_cross_contract_replay_protection() {
 
     // Verify the wrap exists on V1
     let wrap_v1 = client_v1.get_wrap(&user, &period);
-    assert!(wrap_v1.is_some(), "Wrap should exist on contract V1");
+    assert!(wrap_v1.is_some(), "Wrap should exist on contract V1.");
 
     // NOTE: For full cross-contract replay protection, the signature
     // verification should include the contract address in the signed payload.
@@ -438,11 +438,11 @@ fn test_cross_contract_replay_protection() {
 
     assert!(
         result.is_err(),
-        "A signature from V1 should not be replayable on V2"
+        "A signature from V1 should not be replayable on V2."
     );
     assert!(
         client_v2.get_wrap(&user, &period).is_none(),
-        "the replay attempt must not create a wrap on V2"
+        "The replay attempt must not create a wrap on V2."
     );
 
     // The same user can mint on V2 (they are independent contracts)
@@ -477,9 +477,9 @@ fn test_cross_contract_replay_protection() {
 #[test]
 fn test_gas_analysis_mint_operation() {
     let env = Env::default();
-    env.budget().reset_unlimited();
+    env.cost_estimate().budget().reset_unlimited();
 
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let signing_key = SigningKey::from_bytes(&[1u8; 32]);
@@ -506,7 +506,7 @@ fn test_gas_analysis_mint_operation() {
     );
 
     // Reset budget before the mint operation
-    env.budget().reset_default();
+    env.cost_estimate().budget().reset_default();
 
     // Perform the mint operation
     client.mint_wrap(
@@ -519,24 +519,24 @@ fn test_gas_analysis_mint_operation() {
     );
 
     // Get budget consumption
-    env.budget().print();
+    env.cost_estimate().budget().print();
     // Get budget consumption (only when gas reporting is explicitly enabled)
     if std::env::var("SOROBAN_GAS_REPORT").is_ok() {
-        env.budget().print();
+        env.cost_estimate().budget().print();
     }
 
     // Get actual CPU instructions used
-    let cpu_insns = env.budget().cpu_instruction_cost();
-    let mem_bytes = env.budget().memory_bytes_cost();
+    let cpu_insns = env.cost_estimate().budget().cpu_instruction_cost();
+    let mem_bytes = env.cost_estimate().budget().memory_bytes_cost();
 
     // Assert reasonable upper bounds (these values should be tuned based on actual needs)
     // For mainnet deployment, you want these to be as low as possible
     assert!(
         cpu_insns < 10_000_000,
-        "CPU instructions too high: {}",
+        "CPU instructions are too high: {}",
         cpu_insns
     );
-    assert!(mem_bytes < 200_000, "Memory usage too high: {}", mem_bytes);
+    assert!(mem_bytes < 200_000, "Memory usage is too high: {}", mem_bytes);
 
     // Gas analysis results:
     // CPU Instructions: Check assertion output
@@ -549,9 +549,9 @@ fn test_gas_analysis_mint_operation() {
 #[test]
 fn test_gas_analysis_multiple_mints() {
     let env = Env::default();
-    env.budget().reset_unlimited();
+    env.cost_estimate().budget().reset_unlimited();
 
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let signing_key = SigningKey::from_bytes(&[1u8; 32]);
@@ -562,7 +562,7 @@ fn test_gas_analysis_multiple_mints() {
     client.initialize(&admin, &admin_pubkey);
     env.mock_all_auths();
 
-    env.budget().reset_default();
+    env.cost_estimate().budget().reset_default();
 
     // Perform 5 mints for different periods
     for i in 1..6 {
@@ -599,13 +599,13 @@ fn test_gas_analysis_multiple_mints() {
         );
     }
 
-    let cpu_insns = env.budget().cpu_instruction_cost();
-    let mem_bytes = env.budget().memory_bytes_cost();
+    let cpu_insns = env.cost_estimate().budget().cpu_instruction_cost();
+    let mem_bytes = env.cost_estimate().budget().memory_bytes_cost();
 
     // Gas analysis for 5 mints - results tracked in budget
     // Verify resource usage is within reasonable bounds for batch operations
-    assert!(cpu_insns < 50_000_000, "Batch CPU too high: {}", cpu_insns);
-    assert!(mem_bytes < 500_000, "Batch memory too high: {}", mem_bytes);
+    assert!(cpu_insns < 50_000_000, "Batch CPU usage is too high: {}", cpu_insns);
+    assert!(mem_bytes < 500_000, "Batch memory usage is too high: {}", mem_bytes);
 }
 
 /// Test 8: Timestamp Manipulation Resistance
@@ -613,7 +613,7 @@ fn test_gas_analysis_multiple_mints() {
 #[test]
 fn test_timestamp_is_from_ledger_not_user() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let signing_key = SigningKey::from_bytes(&[1u8; 32]);
@@ -656,7 +656,7 @@ fn test_timestamp_is_from_ledger_not_user() {
     let wrap = client.get_wrap(&user, &period).unwrap();
 
     // Verify timestamp matches ledger, not any user-provided value
-    assert_eq!(wrap.timestamp, 1000000, "Timestamp should come from ledger");
+    assert_eq!(wrap.timestamp, 1000000, "Timestamp should come from the ledger.");
 
     // Advance ledger time and mint another period
     env.ledger().with_mut(|li| {
@@ -687,7 +687,7 @@ fn test_timestamp_is_from_ledger_not_user() {
     let wrap_2 = client.get_wrap(&user, &period_2).unwrap();
     assert_eq!(
         wrap_2.timestamp, 2000000,
-        "Second timestamp should match new ledger time"
+        "Second timestamp should match the new ledger time."
     );
 }
 
@@ -696,7 +696,7 @@ fn test_timestamp_is_from_ledger_not_user() {
 #[test]
 fn test_edge_case_long_symbols() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let signing_key = SigningKey::from_bytes(&[1u8; 32]);
@@ -734,7 +734,7 @@ fn test_edge_case_long_symbols() {
     );
 
     let wrap = client.get_wrap(&user, &period);
-    assert!(wrap.is_some(), "Should handle reasonably long symbols");
+    assert!(wrap.is_some(), "Wrap should exist for reasonably long symbols.");
 }
 
 /// Test 10: Unauthorized Access - Non-Admin Cannot Mint
@@ -743,7 +743,7 @@ fn test_edge_case_long_symbols() {
 #[should_panic]
 fn test_non_admin_cannot_mint() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let signing_key = SigningKey::from_bytes(&[1u8; 32]);
@@ -788,7 +788,7 @@ fn test_non_admin_cannot_mint() {
 #[should_panic]
 fn test_non_admin_cannot_revoke() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let signing_key = SigningKey::from_bytes(&[1u8; 32]);
@@ -812,7 +812,7 @@ fn test_non_admin_cannot_revoke() {
 #[test]
 fn test_two_step_admin_transfer_success() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -844,7 +844,7 @@ fn test_two_step_admin_transfer_success() {
 #[test]
 fn test_admin_cancel_proposed_admin() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -873,7 +873,7 @@ fn test_admin_cancel_proposed_admin() {
 #[should_panic]
 fn test_unauthorized_acceptance_fails() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -916,7 +916,7 @@ fn test_unauthorized_acceptance_fails() {
 #[should_panic(expected = "Error(Contract, #10)")]
 fn test_accept_admin_no_proposal_fails() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -935,7 +935,7 @@ fn test_accept_admin_no_proposal_fails() {
 #[should_panic(expected = "Error(Contract, #11)")]
 fn test_propose_admin_when_proposal_exists_fails() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -960,7 +960,7 @@ fn test_propose_admin_when_proposal_exists_fails() {
 #[should_panic(expected = "Error(Contract, #10)")]
 fn test_cancel_no_proposal_fails() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -979,7 +979,7 @@ fn test_cancel_no_proposal_fails() {
 #[should_panic]
 fn test_non_admin_cannot_propose_admin() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -1008,7 +1008,7 @@ fn test_non_admin_cannot_propose_admin() {
 #[should_panic]
 fn test_non_admin_cannot_cancel_proposal() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -1050,7 +1050,7 @@ fn test_non_admin_cannot_cancel_proposal() {
 #[test]
 fn test_update_admin_clears_pending_proposal() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -1080,7 +1080,7 @@ fn test_update_admin_clears_pending_proposal() {
 #[test]
 fn test_get_pending_admin_none() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -1097,7 +1097,7 @@ fn test_get_pending_admin_none() {
 #[test]
 fn test_propose_cancel_repropose() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -1132,7 +1132,7 @@ fn test_propose_cancel_repropose() {
 #[test]
 fn test_new_admin_can_propose_further_transfers() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let admin_1 = Address::generate(&env);
@@ -1156,4 +1156,65 @@ fn test_new_admin_can_propose_further_transfers() {
     // Final state
     assert_eq!(client.get_admin().unwrap(), admin_3);
     assert!(client.get_pending_admin().is_none());
+}
+
+/// Test 23: Tampered data_hash Invalidates Admin Signature
+///
+/// The admin signs a payload that commits to `data_hash_a`. If the caller
+/// substitutes `data_hash_b` (a different hash) when invoking `mint_wrap`,
+/// the contract must reject the call with `InvalidSignature` (error #5)
+/// because the signed payload no longer matches what is being submitted.
+/// The user's wrap record must remain absent after the failed attempt.
+#[test]
+#[should_panic(expected = "Error(Contract, #5)")]
+fn test_tampered_data_hash_invalidates_admin_signature() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let signing_key = SigningKey::from_bytes(&[1u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    client.initialize(&admin, &admin_pubkey);
+    env.mock_all_auths();
+
+    let archetype = symbol_short!("architect");
+    let period = 202512u64; // December 2025
+
+    // Hash A: what the admin signs
+    let data_hash_a = BytesN::from_array(&env, &[42u8; 32]);
+    // Hash B: what the attacker submits instead
+    let data_hash_b = BytesN::from_array(&env, &[99u8; 32]);
+
+    // Admin signs over hash A
+    let signature = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user,
+        period,
+        &archetype,
+        &data_hash_a,
+        CURRENT_PAYLOAD_VERSION,
+    );
+
+    // Attacker submits hash B together with the signature that was made for hash A.
+    // The contract must detect the mismatch and panic with InvalidSignature (#5).
+    client.mint_wrap(
+        &user,
+        &period,
+        &archetype,
+        &data_hash_b,         // tampered: different from what was signed
+        &CURRENT_PAYLOAD_VERSION,
+        &signature,
+    );
+
+    // Execution must not reach this point.
+    // If it did, the user would have a wrap — which is the vulnerability being guarded against.
+    assert!(
+        client.get_wrap(&user, &period).is_none(),
+        "User must not have a wrap after a signature verification failure"
+    );
 }
