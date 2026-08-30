@@ -34,7 +34,7 @@ fn setup_env() -> (
     let env = Env::default();
     env.mock_all_auths();
 
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let signing_key = SigningKey::from_bytes(&TEST_SIGNING_KEY_BYTES);
@@ -42,6 +42,7 @@ fn setup_env() -> (
     let admin_pubkey = BytesN::from_array(&env, &pubkey_bytes);
     let admin = Address::generate(&env);
 
+    env.mock_all_auths();
     client.initialize(&admin, &admin_pubkey);
 
     (env, client, contract_id, signing_key, pubkey_bytes)

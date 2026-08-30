@@ -56,6 +56,7 @@ fn validate_delay(e: &Env, seconds: u64) {
 /// It cannot be disabled or shortened afterwards without going through the
 /// timelock itself (`TimelockAction::SetTimelockDelay`), which is exactly the
 /// guarantee the controller is meant to provide.
+#[allow(deprecated)] // TODO(#718): migrate to #[contractevent]
 pub(crate) fn enable(e: Env, delay_seconds: u64) {
     crate::admin::read_admin(&e).require_auth();
 
@@ -139,6 +140,7 @@ fn remove_op(e: &Env, id: &BytesN<32>) {
 /// - [`ContractError::NotInitialized`] if there is no admin.
 /// - [`ContractError::InvalidTimelockDelay`] if the timelock is not enabled.
 /// - [`ContractError::TimelockOperationExists`] if the same action is queued.
+#[allow(deprecated)] // TODO(#718): migrate to #[contractevent]
 pub(crate) fn schedule(e: Env, action: TimelockAction) -> BytesN<32> {
     crate::admin::read_admin(&e).require_auth();
 
@@ -185,6 +187,7 @@ pub(crate) fn schedule(e: Env, action: TimelockAction) -> BytesN<32> {
 ///
 /// # Panics
 /// - [`ContractError::TimelockOperationNotFound`] if `id` is not queued.
+#[allow(deprecated)] // TODO(#718): migrate to #[contractevent]
 pub(crate) fn cancel(e: Env, id: BytesN<32>) {
     crate::admin::read_admin(&e).require_auth();
 
@@ -209,6 +212,7 @@ pub(crate) fn cancel(e: Env, id: BytesN<32>) {
 /// # Panics
 /// - [`ContractError::TimelockOperationNotFound`] if `id` is not queued.
 /// - [`ContractError::TimelockNotReady`] if the ETA has not been reached.
+#[allow(deprecated)] // TODO(#718): migrate to #[contractevent]
 pub(crate) fn execute(e: Env, id: BytesN<32>) {
     let admin = crate::admin::read_admin(&e);
     admin.require_auth();

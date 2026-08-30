@@ -55,18 +55,41 @@ The delay is bounded to `MIN_DELAY` (1 hour) … `MAX_DELAY` (30 days).
 so an out-of-range value can never sit in the queue waiting to brick the
 controller.
 
-## What the timelock closes off
+## Privileged entrypoint coverage
 
-Once enabled, the direct paths panic with `TimelockRequired` (21):
+Once enabled, entrypoints marked **Yes** reject direct calls with
+`TimelockRequired` and must be reached through `timelock_schedule` plus
+`timelock_execute`. Entry points marked **No** remain direct admin calls by
+design and are not represented by a `TimelockAction` variant.
 
-- `update_admin`
-- `propose_admin` and `accept_admin` — the two-step handover is also blocked,
-  because a proposal that can be accepted immediately would bypass the delay.
-  `cancel_proposed_admin` stays open so a stale proposal can still be cleared.
-- `upgrade`
+| Entrypoint | Timelocked? | Rationale |
+| --- | --- | --- |
+| `initialize` | No | Deployment bootstrap is single-use and must be signed by the configured admin account. |
+| `update_admin` | Yes | Ownership changes need an observable delay. |
+| `propose_admin` / `accept_admin` | Yes | Two-step handover must not bypass the delay. |
+| `cancel_proposed_admin` | No | Clearing a stale handover does not grant access or change ownership. |
+| `upgrade` | Yes | WASM changes need an observable delay. |
+| `set_whitelist_root` / `clear_whitelist_root` | Yes | Whitelist access-control changes need an observable delay. |
+| `TimelockAction::SetAdminPubKey` | Yes | Mint-signing key rotation needs an observable delay; it has no direct entrypoint. |
+| `migrate` | No | No corresponding timelock action exists; retained as a direct admin migration operation. |
+| `set_name` / `set_symbol` | No | No corresponding timelock action exists; retained as direct admin metadata configuration. |
+| `backfill_wrap_periods` | No | No corresponding timelock action exists; retained as a direct admin migration operation. |
+| `pause` / `unpause` | No | An emergency stop must remain immediately available. |
+| `set_transfer_fee` | No | No corresponding timelock action exists; retained as a direct admin configuration. |
+| `set_expiration_duration` | No | No corresponding timelock action exists; retained as a direct admin configuration. |
+| `set_fee_params` | No | No corresponding timelock action exists; retained as a direct admin configuration. |
+| `set_stake_config` | No | No corresponding timelock action exists; retained as a direct admin configuration. |
+| `set_bridge_relayer` | No | No corresponding timelock action exists; retained as a direct admin configuration. |
+| `set_chain_status` | No | No corresponding timelock action exists; retained as a direct admin configuration. |
 
-Deliberately **not** timelocked: `pause` / `unpause`. An emergency stop is only
-useful if it is immediate, and pausing cannot move value or change ownership.
+The **No** entries are an explicit scope decision: they remain admin-only, but
+the current closed `TimelockAction` enum provides no delayed operation for them.
+
+DAO governance is also subject to the delay. When the timelock is disabled, a
+passing `execute_admin_proposal` updates the admin immediately. When it is
+enabled, the current admin must authorize proposal execution, and the passing
+proposal queues `TimelockAction::SetAdmin`; the admin remains unchanged until
+that queued operation reaches its ETA and is executed.
 
 ## Guarantees and caveats
 
