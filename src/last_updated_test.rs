@@ -40,6 +40,7 @@ fn setup(env: &Env, client: &StellarWrapContractClient) -> (SigningKey, Address,
     let admin_pubkey = BytesN::from_array(env, &signing_key.verifying_key().to_bytes());
     let admin = Address::generate(env);
     let user = Address::generate(env);
+    env.mock_all_auths();
     client.initialize(&admin, &admin_pubkey);
     env.mock_all_auths();
     (signing_key, admin, user)
@@ -49,7 +50,7 @@ fn setup(env: &Env, client: &StellarWrapContractClient) -> (SigningKey, Address,
 fn test_last_updated_none_before_any_action() {
     let env = Env::default();
     env.ledger().with_mut(|li| li.timestamp = 1_000_000);
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let (_, _, user) = setup(&env, &client);
@@ -61,7 +62,7 @@ fn test_last_updated_none_before_any_action() {
 fn test_last_updated_after_mint_matches_ledger_time() {
     let env = Env::default();
     env.ledger().with_mut(|li| li.timestamp = 1_000_000);
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let (signing_key, _, user) = setup(&env, &client);
@@ -75,7 +76,7 @@ fn test_last_updated_after_mint_matches_ledger_time() {
 fn test_last_updated_monotonic_across_mints() {
     let env = Env::default();
     env.ledger().with_mut(|li| li.timestamp = 1_000_000);
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let (signing_key, _, user) = setup(&env, &client);
@@ -98,7 +99,7 @@ fn test_last_updated_monotonic_across_mints() {
 fn test_last_updated_updated_on_revoke() {
     let env = Env::default();
     env.ledger().with_mut(|li| li.timestamp = 1_000_000);
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let (signing_key, _, user) = setup(&env, &client);
@@ -117,7 +118,7 @@ fn test_last_updated_updated_on_revoke() {
 fn test_last_updated_independent_per_user() {
     let env = Env::default();
     env.ledger().with_mut(|li| li.timestamp = 1_000_000);
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let (signing_key, _, user_a) = setup(&env, &client);
