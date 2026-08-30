@@ -1,9 +1,14 @@
 //! # Stellar Wrap Registry
 //!
-//! A Soroban smart contract on Stellar that records timestamped data-wrap
 //! commitments on-chain. Each wrap binds a user address, a period
-//! (`YYYYMM`), an archetype label, and a SHA-256 data hash into an
-//! immutable record.
+//! (represented as a `u64` in `YYYYMM` format), an archetype label, and a SHA-256
+//! data hash into an immutable record.
+//!
+//! ### Period Format Contract
+//! - **Type**: Unsigned 64-bit integer (`u64`).
+//! - **Canonical Format**: `YYYYMM` (e.g. `202512` for December 2025).
+//! - **Validation**: Enforced on-chain to have year between `2024` and `2100`, and month between `01` and `12`.
+//! - **Non-Monthly Periods**: Not natively supported by the validation rules. Integrations must map non-monthly periods (weekly, daily, quarterly) to a valid `YYYYMM` value.
 //!
 //! ## Security
 //!
@@ -13,13 +18,6 @@
 //! compromised. The admin address controls the public-key rotation.
 
 #![no_std]
-// The codebase is mid-migration from Soroban SDK 25 to 27. The SDK 27 release
-// renamed `register_contract` -> `register`, `Env::budget` -> cost-estimate
-// accessors, and deprecates `Events::publish` in favor of the `#[contractevent]`
-// macro. Suppress those deprecation lints until the migration is complete so
-// CI's `-D warnings` gate passes. TODO(#migration): adopt the `#[contractevent]`
-// macro and the new test registration/budget APIs.
-#![allow(deprecated)]
 
 #[cfg(any(test, feature = "testutils"))]
 extern crate std;
@@ -49,7 +47,7 @@ mod token;
 mod transfer;
 
 pub use errors::ContractError;
-pub use mint::CURRENT_PAYLOAD_VERSION;
+pub use mint::{validate_period, CURRENT_PAYLOAD_VERSION, MAX_PERIOD_YEAR, MIN_PERIOD_YEAR};
 pub use oracle::DataHashOracle;
 pub use storage_types::{
     AdminProposal, ContractHealth, DataKey, InboundBridgeRecord, OutboundBridgeRequest,
@@ -78,6 +76,12 @@ impl StellarWrapContract {
     /// recipient.
     pub fn set_transfer_fee(e: Env, token: Address, recipient: Address, amount: i128) {
         admin::set_transfer_fee(e, token, recipient, amount);
+    }
+
+    /// Admin-only: remove the configured transfer fee, returning the contract
+    /// to the unconfigured state where transfers are free by default.
+    pub fn clear_transfer_fee(e: Env) {
+        admin::clear_transfer_fee(e);
     }
 
     pub fn pause(e: Env) {
@@ -561,14 +565,14 @@ impl StellarWrapContract {
         timelock::operation_id(&e, &action)
     }
 
-    /// Admin: Set the cross-chain token bridge relayer address.
-    pub fn set_bridge_relayer(e: Env, relayer: Address) {
-        bridge::set_bridge_relayer(&e, relayer);
+    /// Admin: Set the cross-chain token bridge relayers for a given chain.
+    pub fn set_bridge_relayers(e: Env, chain_id: u32, relayers: soroban_sdk::Vec<BytesN<32>>, threshold: u32) {
+        bridge::set_bridge_relayers(&e, chain_id, relayers, threshold);
     }
 
-    /// Returns the configured cross-chain token bridge relayer address.
-    pub fn get_bridge_relayer(e: Env) -> Option<Address> {
-        bridge::get_bridge_relayer(&e)
+    /// Returns the configured cross-chain token bridge relayers for a given chain.
+    pub fn get_bridge_relayers(e: Env, chain_id: u32) -> Option<storage_types::BridgeRelayerSet> {
+        bridge::get_bridge_relayers(&e, chain_id)
     }
 
     /// Admin: Set enabled status for a destination/source cross-chain network chain ID.
@@ -592,6 +596,12 @@ impl StellarWrapContract {
         bridge::bridge_wrap_out(e, user, destination_chain, recipient_address, period)
     }
 
+    /// Relayer-authorized refund for an outbound bridge request rejected by
+    /// the destination chain. Restores the locked wrap to `Active`.
+    pub fn bridge_wrap_refund(e: Env, outbound_nonce: u64) {
+        bridge::bridge_wrap_refund(e, outbound_nonce);
+    }
+
     /// Fulfill an inbound cross-chain wrap bridge transfer from external chain.
     pub fn bridge_wrap_in(
         e: Env,
@@ -601,6 +611,7 @@ impl StellarWrapContract {
         period: u64,
         archetype: Symbol,
         data_hash: BytesN<32>,
+        signatures: soroban_sdk::Vec<BytesN<64>>,
     ) {
         bridge::bridge_wrap_in(
             e,
@@ -610,6 +621,7 @@ impl StellarWrapContract {
             period,
             archetype,
             data_hash,
+            signatures,
         );
     }
 
@@ -790,6 +802,8 @@ mod last_updated_test;
 #[cfg(test)]
 mod oracle_test;
 #[cfg(test)]
+mod prop_test;
+#[cfg(test)]
 mod security_test;
 #[cfg(test)]
 mod stake_test;
@@ -801,3 +815,5 @@ mod test_utils;
 mod test_vectors;
 #[cfg(test)]
 mod transfer_test;
+#[cfg(test)]
+mod queries_test;

@@ -75,6 +75,7 @@ fn write_total_staked(e: &Env, amount: i128) {
 /// - [`ContractError::StakeTooLow`] if `amount < config.min_stake`.
 /// - [`ContractError::StakeCooldownActive`] if an unstake is already in progress.
 /// - [`ContractError::StakeArithmeticOverflow`] on total overflow.
+#[allow(deprecated)] // TODO(#718): migrate to #[contractevent]
 pub(crate) fn stake(e: Env, user: Address, amount: i128) {
     crate::admin::require_not_paused(&e);
     user.require_auth();
@@ -146,6 +147,7 @@ pub(crate) fn stake(e: Env, user: Address, amount: i128) {
 /// # Panics
 /// - [`ContractError::StakeNotFound`] if the user has no active stake.
 /// - [`ContractError::StakeCooldownActive`] if an unstake is already in progress.
+#[allow(deprecated)] // TODO(#718): migrate to #[contractevent]
 pub(crate) fn unstake(e: Env, user: Address) {
     crate::admin::require_not_paused(&e);
     user.require_auth();
@@ -177,6 +179,7 @@ pub(crate) fn unstake(e: Env, user: Address) {
 /// - [`ContractError::StakeNotFound`] if the user has no stake record.
 /// - [`ContractError::StakeNotUnstaking`] if unstake was never initiated.
 /// - [`ContractError::StakeCooldownNotElapsed`] if cooldown hasn't passed.
+#[allow(deprecated)] // TODO(#718): migrate to #[contractevent]
 pub(crate) fn withdraw_stake(e: Env, user: Address) {
     crate::admin::require_not_paused(&e);
     user.require_auth();
@@ -236,15 +239,11 @@ pub(crate) fn get_stake_priority(e: &Env, user: Address) -> u32 {
         return 0;
     }
 
-    // Calculate how many multiples of min_stake the user has staked.
-    let multiples = (record.amount / config.min_stake) as u32;
-    let priority = multiples.saturating_mul(config.priority_multiplier_bps);
-
-    if priority > config.max_priority_bps {
-        config.max_priority_bps
-    } else {
-        priority
-    }
+    // Stay in i128 until the final cast to avoid truncating large stakes.
+    let multiples: i128 = record.amount / config.min_stake;
+    let priority: i128 = multiples.saturating_mul(config.priority_multiplier_bps as i128);
+    let capped: i128 = priority.min(config.max_priority_bps as i128);
+    capped as u32
 }
 
 /// Return the total amount staked across all users.
@@ -257,6 +256,7 @@ pub(crate) fn get_total_staked(e: &Env) -> i128 {
 /// # Panics
 /// - [`ContractError::InvalidStakeConfig`] if `min_stake == 0` or
 ///   `cooldown_seconds == 0` or `max_priority_bps > 10_000`.
+#[allow(deprecated)] // TODO(#718): migrate to #[contractevent]
 pub(crate) fn set_stake_config(e: &Env, config: StakeConfig) {
     crate::admin::read_admin(e).require_auth();
 
