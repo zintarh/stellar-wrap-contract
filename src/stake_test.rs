@@ -20,13 +20,14 @@ fn env_with_time() -> Env {
 #[test]
 fn test_stake_basic_flow() {
     let env = env_with_time();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
     let pubkey = BytesN::from_array(&env, &[1u8; 32]);
     let user = Address::generate(&env);
 
+    env.mock_all_auths();
     client.initialize(&admin, &pubkey);
     env.mock_all_auths();
 
@@ -47,7 +48,7 @@ fn test_stake_basic_flow() {
 #[test]
 fn test_stake_multiple_times_accumulates() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -70,7 +71,7 @@ fn test_stake_multiple_times_accumulates() {
 #[should_panic(expected = "Error(Contract, #18)")]
 fn test_stake_below_minimum_fails() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -87,7 +88,7 @@ fn test_stake_below_minimum_fails() {
 #[test]
 fn test_unstake_and_withdraw_flow() {
     let env = env_with_time();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -123,7 +124,7 @@ fn test_unstake_and_withdraw_flow() {
 #[should_panic(expected = "Error(Contract, #22)")]
 fn test_withdraw_before_cooldown_fails() {
     let env = env_with_time();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -144,7 +145,7 @@ fn test_withdraw_before_cooldown_fails() {
 #[should_panic(expected = "Error(Contract, #19)")]
 fn test_unstake_nonexistent_fails() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -161,7 +162,7 @@ fn test_unstake_nonexistent_fails() {
 #[should_panic(expected = "Error(Contract, #20)")]
 fn test_double_unstake_fails() {
     let env = env_with_time();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -179,7 +180,7 @@ fn test_double_unstake_fails() {
 #[test]
 fn test_stake_priority_computation() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -206,7 +207,7 @@ fn test_stake_priority_computation() {
 #[test]
 fn test_stake_priority_zero_for_non_staker() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -221,7 +222,7 @@ fn test_stake_priority_zero_for_non_staker() {
 #[test]
 fn test_stake_config_defaults() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -239,7 +240,7 @@ fn test_stake_config_defaults() {
 #[test]
 fn test_admin_set_stake_config() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -267,7 +268,7 @@ fn test_admin_set_stake_config() {
 #[should_panic(expected = "Error(Contract, #23)")]
 fn test_invalid_stake_config_zero_min_stake_fails() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -289,7 +290,7 @@ fn test_invalid_stake_config_zero_min_stake_fails() {
 #[should_panic(expected = "Error(Contract, #23)")]
 fn test_invalid_stake_config_max_bps_exceeds_10000_fails() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -310,7 +311,7 @@ fn test_invalid_stake_config_max_bps_exceeds_10000_fails() {
 #[test]
 fn test_total_staked_multi_user() {
     let env = env_with_time();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -341,7 +342,7 @@ fn test_total_staked_multi_user() {
 #[test]
 fn test_discounted_fee_with_stake() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -374,7 +375,7 @@ fn test_discounted_fee_with_stake() {
 #[test]
 fn test_discounted_fee_zero_when_raw_fee_zero() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -394,7 +395,7 @@ fn test_discounted_fee_zero_when_raw_fee_zero() {
 #[test]
 fn test_stake_events_emitted() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -429,7 +430,7 @@ fn test_stake_events_emitted() {
 #[test]
 fn test_cannot_stake_during_unstaking() {
     let env = env_with_time();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -452,7 +453,7 @@ fn test_cannot_stake_during_unstaking() {
 #[test]
 fn test_re_stake_after_withdraw() {
     let env = env_with_time();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -485,7 +486,7 @@ fn test_re_stake_after_withdraw() {
 #[should_panic(expected = "Error(Contract, #21)")]
 fn test_withdraw_without_unstake_fails() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
