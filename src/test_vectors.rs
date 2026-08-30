@@ -57,7 +57,7 @@ fn fixture_archetype() -> Symbol {
 
 fn setup_fixture_env() -> (Env, Address, Address, BytesN<32>, BytesN<64>, Bytes) {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let user = Address::generate(&env);
     let signing_key = SigningKey::from_bytes(&FIXTURE_SECRET_SEED);
     let pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
@@ -110,6 +110,7 @@ fn test_deterministic_fixture_used_in_contract_mint() {
 
     let client = StellarWrapContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
+    env.mock_all_auths();
     client.initialize(&admin, &pubkey);
     env.mock_all_auths();
 
