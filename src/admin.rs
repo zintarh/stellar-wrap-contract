@@ -35,7 +35,7 @@ pub(crate) fn initialize(e: Env, admin: Address, admin_pubkey: BytesN<32>) {
     e.storage()
         .instance()
         .set(&DataKey::AdminPubKey, &admin_pubkey);
-    e.events().publish((symbol_short!("init"),), admin);
+    crate::events::publish_event(&e, crate::events::Event::AdminInit { admin });
 }
 
 /// Immediate admin replacement.
@@ -64,7 +64,7 @@ pub(crate) fn update_admin(e: Env, new_admin: Address) {
 pub(crate) fn set_pause(e: Env, paused: bool) {
     read_admin(&e).require_auth();
     e.storage().instance().set(&DataKey::Paused, &paused);
-    e.events().publish((symbol_short!("pause"),), paused);
+    crate::events::publish_event(&e, crate::events::Event::AdminPause { paused });
 }
 
 /// Admin-only: configure the token-denominated fee charged by `transfer_wrap`.
@@ -94,7 +94,7 @@ pub(crate) fn set_transfer_fee(e: Env, token: Address, recipient: Address, amoun
 pub(crate) fn clear_transfer_fee(e: Env) {
     read_admin(&e).require_auth();
     e.storage().instance().remove(&DataKey::TransferFee);
-    e.events().publish((symbol_short!("fee_clr"),), ());
+    crate::events::publish_event(&e, crate::events::Event::AdminFeeCleared);
 }
 
 pub(crate) fn is_paused(e: &Env) -> bool {
