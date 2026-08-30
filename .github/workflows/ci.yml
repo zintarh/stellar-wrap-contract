@@ -32,6 +32,8 @@ jobs:
       run: RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
     - name: Run tests
       run: cargo test
+    - name: Check README documents all entrypoints
+      run: python3 scripts/check_readme_entrypoints.py
     - name: Clean test snapshots
       run: rm -rf test_snapshots/
 

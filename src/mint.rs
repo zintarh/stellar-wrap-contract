@@ -12,13 +12,14 @@ pub(crate) const TTL_TEMP: u32 = 17_280;
 pub const CURRENT_PAYLOAD_VERSION: u32 = 2;
 /// Default expiration duration for unverified wraps: 7 days in seconds.
 const DEFAULT_EXPIRATION_SECONDS: u64 = 7 * 24 * 60 * 60;
+pub const MIN_PERIOD_YEAR: u64 = 2024;
 pub const MAX_PERIOD_YEAR: u64 = 2100;
 
-fn validate_period(e: &Env, period: u64) {
+pub fn validate_period(e: &Env, period: u64) {
     let year = period / 100;
     let month = period % 100;
 
-    if !(2024..=MAX_PERIOD_YEAR).contains(&year) || !(1..=12).contains(&month) {
+    if !(MIN_PERIOD_YEAR..=MAX_PERIOD_YEAR).contains(&year) || !(1..=12).contains(&month) {
         panic_with_error!(e, ContractError::InvalidPeriod);
     }
 }
@@ -57,6 +58,34 @@ pub(crate) fn update_last_updated(e: &Env, user: &Address) {
     }
 }
 
+/// Updates the latest period for a user if `period` is greater than the currently stored latest period (if any).
+///
+/// Storage bytes are accounted once, when the entry is first created; subsequent updates
+/// only overwrite the existing value if `period` is higher and renew its TTL.
+pub(crate) fn update_latest_period(e: &Env, user: &Address, period: u64) {
+    let latest_key = DataKey::LatestPeriod(user.clone());
+    let current_latest: Option<u64> = e.storage().persistent().get(&latest_key);
+    let should_update = match current_latest {
+        Some(cur) => period > cur,
+        None => true,
+    };
+    if should_update {
+        let was_missing = current_latest.is_none();
+        e.storage().persistent().set(&latest_key, &period);
+        e.storage()
+            .persistent()
+            .extend_ttl(&latest_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
+        if was_missing {
+            storage_accounting::add_storage_bytes(
+                e,
+                storage_accounting::estimate_latest_bytes_new(),
+            );
+        }
+    }
+}
+
+
+#[allow(deprecated)] // TODO(#718): migrate to #[contractevent]
 pub(crate) fn mint_wrap(
     e: Env,
     user: Address,
@@ -145,23 +174,7 @@ pub(crate) fn mint_wrap(
         );
     }
 
-    // LatestPeriod: if newly inserted, account for bytes
-    let latest_key = DataKey::LatestPeriod(user.clone());
-    let current_latest: u64 = e.storage().persistent().get(&latest_key).unwrap_or(0);
-    if period > current_latest {
-        // If latest did not exist before (==0) we'll consider it a new entry when current_latest == 0
-        let was_missing = current_latest == 0;
-        e.storage().persistent().set(&latest_key, &period);
-        e.storage()
-            .persistent()
-            .extend_ttl(&latest_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
-        if was_missing {
-            storage_accounting::add_storage_bytes(
-                &e,
-                storage_accounting::estimate_latest_bytes_new(),
-            );
-        }
-    }
+    update_latest_period(&e, &user, period);
 
     // UserPeriods: if we push a new period value, account for it
     let user_periods_key = DataKey::UserPeriods(user.clone());
@@ -217,6 +230,7 @@ pub(crate) fn mint_wrap(
 
 pub const MAX_BATCH_SIZE: u32 = 100;
 
+#[allow(deprecated)] // TODO(#718): migrate to #[contractevent]
 pub(crate) fn mint_wrap_batch(
     e: Env,
     items: soroban_sdk::Vec<crate::storage_types::BatchWrapItem>,
@@ -322,21 +336,7 @@ pub(crate) fn mint_wrap_batch(
             );
         }
 
-        let latest_key = DataKey::LatestPeriod(item.user.clone());
-        let current_latest: u64 = e.storage().persistent().get(&latest_key).unwrap_or(0);
-        if item.period > current_latest {
-            let was_missing = current_latest == 0;
-            e.storage().persistent().set(&latest_key, &item.period);
-            e.storage()
-                .persistent()
-                .extend_ttl(&latest_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
-            if was_missing {
-                storage_accounting::add_storage_bytes(
-                    &e,
-                    storage_accounting::estimate_latest_bytes_new(),
-                );
-            }
-        }
+        update_latest_period(&e, &item.user, item.period);
 
         let user_periods_key = DataKey::UserPeriods(item.user.clone());
         let mut periods: soroban_sdk::Vec<u64> = e
@@ -386,6 +386,7 @@ pub(crate) fn mint_wrap_batch(
     }
 }
 
+#[allow(deprecated)] // TODO(#718): migrate to #[contractevent]
 pub(crate) fn transition_wrap_state(e: Env, user: Address, period: u64, next_state: WrapState) {
     crate::admin::require_not_paused(&e);
     user.require_auth();
@@ -452,6 +453,7 @@ pub(crate) fn set_expiration_duration(e: &Env, duration: u64) {
 /// will cause the FSM transition to fail with [`ContractError::InvalidStateTransition`].
 ///
 /// Expired wraps remain in persistent storage; no storage bytes are reclaimed.
+#[allow(deprecated)] // TODO(#718): migrate to #[contractevent]
 pub(crate) fn expire_wrap(e: Env, user: Address, period: u64) {
     crate::admin::require_not_paused(&e);
 
