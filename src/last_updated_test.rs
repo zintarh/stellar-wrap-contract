@@ -40,6 +40,7 @@ fn setup(env: &Env, client: &StellarWrapContractClient) -> (SigningKey, Address,
     let admin_pubkey = BytesN::from_array(env, &signing_key.verifying_key().to_bytes());
     let admin = Address::generate(env);
     let user = Address::generate(env);
+    env.mock_all_auths();
     client.initialize(&admin, &admin_pubkey);
     env.mock_all_auths();
     (signing_key, admin, user)

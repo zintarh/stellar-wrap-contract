@@ -18,10 +18,9 @@ pub(crate) fn get_last_updated(e: Env, user: Address) -> Option<u64> {
 }
 
 pub(crate) fn balance_of(e: Env, user: Address) -> i128 {
-    let count_key = DataKey::WrapCount(user);
     e.storage()
         .persistent()
-        .get::<_, u32>(&count_key)
+        .get::<_, u32>(&DataKey::WrapCount(user))
         .unwrap_or(0) as i128
 }
 

@@ -23,6 +23,7 @@ pub(crate) fn read_admin(e: &Env) -> Address {
 ///   misconfiguration rather than discovering it after deployment.
 #[allow(deprecated)] // TODO(#718): migrate to #[contractevent]
 pub(crate) fn initialize(e: Env, admin: Address, admin_pubkey: BytesN<32>) {
+    admin.require_auth();
     if e.storage().instance().has(&DataKey::Admin) {
         panic_with_error!(e, ContractError::AlreadyInitialized);
     }

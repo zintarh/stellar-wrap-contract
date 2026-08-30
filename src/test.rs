@@ -3,7 +3,7 @@
 extern crate std;
 
 use super::*;
-use crate::test_utils::{sign_payload, sign_payload_versioned};
+use crate::test_utils::{decode_events, sign_payload, sign_payload_versioned};
 use ed25519_dalek::SigningKey;
 use soroban_sdk::{
     symbol_short,
@@ -165,6 +165,57 @@ fn test_revoke_emits_event_multi_user() {
 }
 
 #[test]
+fn test_revoke_non_latest_wrap_preserves_latest() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let signing_key = SigningKey::from_bytes(&[16u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    client.initialize(&admin, &admin_pubkey);
+    env.mock_all_auths();
+
+    let archetype = symbol_short!("arch");
+    let older_hash = BytesN::from_array(&env, &[10u8; 32]);
+    let newer_hash = BytesN::from_array(&env, &[20u8; 32]);
+    let older_period = 202401u64;
+    let newer_period = 202402u64;
+
+    let older_sig = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user,
+        older_period,
+        &archetype,
+        &older_hash,
+    );
+    let newer_sig = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user,
+        newer_period,
+        &archetype,
+        &newer_hash,
+    );
+
+    client.mint_wrap(&user, &older_period, &archetype, &older_hash, &1u32, &older_sig);
+    client.mint_wrap(&user, &newer_period, &archetype, &newer_hash, &1u32, &newer_sig);
+
+    let reason = BytesN::from_array(&env, &[0u8; 32]);
+    client.revoke_wrap(&user, &older_period, &reason);
+
+    assert!(client.get_wrap(&user, &older_period).is_none());
+    let latest = client.get_latest_wrap(&user).unwrap();
+    assert_eq!(latest.period, newer_period);
+    assert_eq!(latest.data_hash, newer_hash);
+}
+
+#[test]
 fn test_balance_of_and_count() {
     let env = Env::default();
     let contract_id = env.register(StellarWrapContract, ());
@@ -215,8 +266,117 @@ fn test_initialize_twice_fails() {
     let admin = Address::generate(&env);
     let pubkey = BytesN::from_array(&env, &[1u8; 32]);
 
+    env.mock_all_auths();
     client.initialize(&admin, &pubkey);
     client.initialize(&admin, &pubkey);
+}
+
+#[test]
+#[should_panic]
+fn test_initialize_without_admin_auth_fails() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let pubkey = BytesN::from_array(&env, &[1u8; 32]);
+
+    client.initialize(&admin, &pubkey);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #26)")]
+fn test_defeated_admin_proposal_is_persisted() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let proposer = Address::generate(&env);
+    let proposed_admin = Address::generate(&env);
+    let pubkey = BytesN::from_array(&env, &[1u8; 32]);
+
+    env.mock_all_auths();
+    client.initialize(&admin, &pubkey);
+    let proposal_id = client.create_admin_proposal(&proposer, &proposed_admin, &100);
+    client.vote_admin_proposal(&proposer, &proposal_id, &false);
+    env.ledger().with_mut(|ledger| {
+        ledger.timestamp += 101;
+    });
+
+    client.execute_admin_proposal(&proposal_id);
+
+    let proposal = client.get_admin_proposal(&proposal_id).unwrap();
+    assert_eq!(proposal.status, ProposalStatus::Defeated);
+    let events = decode_events(&env);
+    let (topics, _) = events.last().expect("defeat event was not emitted");
+    let event_name: Symbol = topics[1].try_into_val(&env).unwrap();
+    assert_eq!(event_name, symbol_short!("defeated"));
+
+    client.execute_admin_proposal(&proposal_id);
+}
+
+#[test]
+fn test_passing_admin_proposal_is_timelocked() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let proposer = Address::generate(&env);
+    let proposed_admin = Address::generate(&env);
+    let pubkey = BytesN::from_array(&env, &[1u8; 32]);
+
+    env.mock_all_auths();
+    client.initialize(&admin, &pubkey);
+    client.enable_timelock(&timelock::MIN_DELAY);
+    let proposal_id = client.create_admin_proposal(&proposer, &proposed_admin, &100);
+    client.vote_admin_proposal(&proposer, &proposal_id, &true);
+    env.ledger().with_mut(|ledger| {
+        ledger.timestamp += 101;
+    });
+
+    client.execute_admin_proposal(&proposal_id);
+
+    assert_eq!(client.get_admin().unwrap(), admin);
+    let action = TimelockAction::SetAdmin(proposed_admin.clone());
+    let operation_id = client.timelock_operation_id(&action);
+    assert!(client.timelock_operation(&operation_id).is_some());
+
+    env.ledger().with_mut(|ledger| {
+        ledger.timestamp += timelock::MIN_DELAY;
+    });
+    client.timelock_execute(&operation_id);
+
+    assert_eq!(client.get_admin().unwrap(), proposed_admin);
+}
+
+#[test]
+fn test_whitelist_root_requires_timelock_after_enable() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let initial_root = BytesN::from_array(&env, &[1u8; 32]);
+    let scheduled_root = BytesN::from_array(&env, &[2u8; 32]);
+    let pubkey = BytesN::from_array(&env, &[3u8; 32]);
+
+    env.mock_all_auths();
+    client.initialize(&admin, &pubkey);
+    client.set_whitelist_root(&initial_root);
+    client.enable_timelock(&timelock::MIN_DELAY);
+
+    let direct_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        client.set_whitelist_root(&scheduled_root);
+    }));
+    assert!(direct_result.is_err());
+    assert_eq!(client.get_whitelist_root(), Some(initial_root));
+
+    let action = TimelockAction::SetWhitelistRoot(scheduled_root.clone());
+    let operation_id = client.timelock_schedule(&action);
+    env.ledger().with_mut(|ledger| {
+        ledger.timestamp += timelock::MIN_DELAY;
+    });
+    client.timelock_execute(&operation_id);
+
+    assert_eq!(client.get_whitelist_root(), Some(scheduled_root));
 }
 
 #[test]
@@ -244,7 +404,7 @@ fn test_initialize_after_rejected_zero_pubkey_succeeds() {
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         client.initialize(&admin, &BytesN::from_array(&env, &[0u8; 32]));
     }));
-    assert!(result.is_err(), "zero admin pubkey must be rejected");
+    assert!(result.is_err(), "Zero admin public key must be rejected.");
     assert!(!client.health().initialized);
 
     // A subsequent valid initialization still succeeds.
@@ -1570,6 +1730,114 @@ fn test_burn_wrap_multiple_users_independent() {
     assert!(client.get_wrap(&user_b, &period).is_some());
 }
 
+#[test]
+fn test_burn_then_transfer_remaining_wrap_succeeds() {
+    // Acceptance criterion: mint two, burn one, transfer the other successfully.
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let signing_key = SigningKey::from_bytes(&[41u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+    let recipient = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let fee_recipient = Address::generate(&env);
+
+    let token_id = env
+        .register_stellar_asset_contract_v2(token_admin.clone())
+        .address();
+
+    client.initialize(&admin, &admin_pubkey);
+    env.mock_all_auths();
+    // Configure fee with amount=0 so transfer succeeds without token balance
+    client.set_transfer_fee(&token_id, &fee_recipient, &0i128);
+
+    let archetype = symbol_short!("arch");
+    let period1 = 202401u64;
+    let period2 = 202402u64;
+
+    let hash1 = BytesN::from_array(&env, &[41u8; 32]);
+    let hash2 = BytesN::from_array(&env, &[42u8; 32]);
+
+    let sig1 = sign_payload(&env, &signing_key, &contract_id, &user, period1, &archetype, &hash1);
+    let sig2 = sign_payload(&env, &signing_key, &contract_id, &user, period2, &archetype, &hash2);
+
+    client.mint_wrap(&user, &period1, &archetype, &hash1, &1u32, &sig1);
+    client.mint_wrap(&user, &period2, &archetype, &hash2, &1u32, &sig2);
+
+    // Burn period1 — WrapPeriods must be updated so transfer of period2 works
+    client.burn_wrap(&user, &period1);
+
+    assert!(client.get_wrap(&user, &period1).is_none());
+    assert_eq!(client.balance_of(&user), 1);
+
+    // Transfer period2 to recipient — must not panic with StorageInvariantViolation
+    client.transfer_wrap(&user, &recipient, &period2);
+
+    assert!(client.get_wrap(&user, &period2).is_none());
+    assert!(client.get_wrap(&recipient, &period2).is_some());
+    assert_eq!(client.balance_of(&user), 0);
+    assert_eq!(client.balance_of(&recipient), 1);
+}
+
+#[test]
+fn test_wrap_count_equals_wrap_periods_len_after_mint_burn_transfer() {
+    // Acceptance criterion: WrapCount == WrapPeriods.len() holds after any
+    // sequence of mint / burn / transfer.
+    let env = Env::default();
+    let contract_id = env.register_contract(None, StellarWrapContract);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let signing_key = SigningKey::from_bytes(&[42u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+    let other = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let fee_recipient = Address::generate(&env);
+
+    let token_id = env
+        .register_stellar_asset_contract_v2(token_admin.clone())
+        .address();
+
+    client.initialize(&admin, &admin_pubkey);
+    env.mock_all_auths();
+    // Configure fee with amount=0 so transfer succeeds without token balance
+    client.set_transfer_fee(&token_id, &fee_recipient, &0i128);
+
+    let archetype = symbol_short!("arch");
+    let periods: [u64; 4] = [202401, 202402, 202403, 202404];
+    let hashes: [[u8; 32]; 4] = [[10; 32], [20; 32], [30; 32], [40; 32]];
+
+    // Mint all four
+    for i in 0..4 {
+        let hash = BytesN::from_array(&env, &hashes[i]);
+        let sig = sign_payload(&env, &signing_key, &contract_id, &user, periods[i], &archetype, &hash);
+        client.mint_wrap(&user, &periods[i], &archetype, &hash, &1u32, &sig);
+    }
+    assert_eq!(client.balance_of(&user), 4);
+
+    // Burn 202401 → count 3
+    client.burn_wrap(&user, &periods[0]);
+    assert_eq!(client.balance_of(&user), 3);
+
+    // Burn 202402 → count 2
+    client.burn_wrap(&user, &periods[1]);
+    assert_eq!(client.balance_of(&user), 2);
+
+    // Transfer 202403 to other → user count 1, other count 1
+    client.transfer_wrap(&user, &other, &periods[2]);
+    assert_eq!(client.balance_of(&user), 1);
+    assert_eq!(client.balance_of(&other), 1);
+
+    // Transfer remaining 202404 — must not panic with StorageInvariantViolation
+    client.transfer_wrap(&user, &other, &periods[3]);
+    assert_eq!(client.balance_of(&user), 0);
+    assert_eq!(client.balance_of(&other), 2);
+}
+
 // ============================================================================
 // get_all_wraps_for_user tests
 // ============================================================================
@@ -2623,3 +2891,63 @@ fn test_storage_md_documents_every_datakey_variant() {
         );
     }
 }
+
+#[test]
+fn test_update_latest_period_option_storage_accounting() {
+    use crate::mint::update_latest_period;
+    use crate::storage_accounting::{estimate_latest_bytes_new, get_storage_bytes};
+
+    let env = Env::default();
+    let contract_id = env.register(StellarWrapContract, ());
+    let _client = StellarWrapContractClient::new(&env, &contract_id);
+    let user = Address::generate(&env);
+
+    let initial_bytes = env.as_contract(&contract_id, || get_storage_bytes(&env));
+
+    // 1. First insert with period 0 (Option is None -> Option is Some(0)).
+    // Storage bytes must increase because entry was missing.
+    env.as_contract(&contract_id, || {
+        update_latest_period(&env, &user, 0);
+    });
+
+    let bytes_after_first = env.as_contract(&contract_id, || get_storage_bytes(&env));
+    assert_eq!(
+        bytes_after_first - initial_bytes,
+        estimate_latest_bytes_new(),
+        "storage accounting must add bytes when entry was missing, even for period 0"
+    );
+
+    let latest_key = DataKey::LatestPeriod(user.clone());
+    let stored_period: Option<u64> =
+        env.as_contract(&contract_id, || env.storage().persistent().get(&latest_key));
+    assert_eq!(stored_period, Some(0));
+
+    // 2. Second update with higher period 10 (Option is Some(0) -> Some(10)).
+    // Storage bytes must not increase because entry already existed.
+    env.as_contract(&contract_id, || {
+        update_latest_period(&env, &user, 10);
+    });
+
+    let bytes_after_second = env.as_contract(&contract_id, || get_storage_bytes(&env));
+    assert_eq!(
+        bytes_after_second, bytes_after_first,
+        "updating an existing LatestPeriod entry must not add duplicate storage bytes"
+    );
+
+    let updated_period: Option<u64> =
+        env.as_contract(&contract_id, || env.storage().persistent().get(&latest_key));
+    assert_eq!(updated_period, Some(10));
+
+    // 3. Third update with lower period 5 (should be ignored).
+    env.as_contract(&contract_id, || {
+        update_latest_period(&env, &user, 5);
+    });
+
+    let bytes_after_third = env.as_contract(&contract_id, || get_storage_bytes(&env));
+    assert_eq!(bytes_after_third, bytes_after_second);
+    let unchanged_period: Option<u64> =
+        env.as_contract(&contract_id, || env.storage().persistent().get(&latest_key));
+    assert_eq!(unchanged_period, Some(10));
+}
+
+

@@ -110,6 +110,7 @@ fn test_deterministic_fixture_used_in_contract_mint() {
 
     let client = StellarWrapContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
+    env.mock_all_auths();
     client.initialize(&admin, &pubkey);
     env.mock_all_auths();
 

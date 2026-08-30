@@ -560,14 +560,14 @@ impl StellarWrapContract {
         timelock::operation_id(&e, &action)
     }
 
-    /// Admin: Set the cross-chain token bridge relayer address.
-    pub fn set_bridge_relayer(e: Env, relayer: Address) {
-        bridge::set_bridge_relayer(&e, relayer);
+    /// Admin: Set the cross-chain token bridge relayers for a given chain.
+    pub fn set_bridge_relayers(e: Env, chain_id: u32, relayers: soroban_sdk::Vec<BytesN<32>>, threshold: u32) {
+        bridge::set_bridge_relayers(&e, chain_id, relayers, threshold);
     }
 
-    /// Returns the configured cross-chain token bridge relayer address.
-    pub fn get_bridge_relayer(e: Env) -> Option<Address> {
-        bridge::get_bridge_relayer(&e)
+    /// Returns the configured cross-chain token bridge relayers for a given chain.
+    pub fn get_bridge_relayers(e: Env, chain_id: u32) -> Option<storage_types::BridgeRelayerSet> {
+        bridge::get_bridge_relayers(&e, chain_id)
     }
 
     /// Admin: Set enabled status for a destination/source cross-chain network chain ID.
@@ -591,6 +591,12 @@ impl StellarWrapContract {
         bridge::bridge_wrap_out(e, user, destination_chain, recipient_address, period)
     }
 
+    /// Relayer-authorized refund for an outbound bridge request rejected by
+    /// the destination chain. Restores the locked wrap to `Active`.
+    pub fn bridge_wrap_refund(e: Env, outbound_nonce: u64) {
+        bridge::bridge_wrap_refund(e, outbound_nonce);
+    }
+
     /// Fulfill an inbound cross-chain wrap bridge transfer from external chain.
     pub fn bridge_wrap_in(
         e: Env,
@@ -600,6 +606,7 @@ impl StellarWrapContract {
         period: u64,
         archetype: Symbol,
         data_hash: BytesN<32>,
+        signatures: soroban_sdk::Vec<BytesN<64>>,
     ) {
         bridge::bridge_wrap_in(
             e,
@@ -609,6 +616,7 @@ impl StellarWrapContract {
             period,
             archetype,
             data_hash,
+            signatures,
         );
     }
 
@@ -800,3 +808,5 @@ mod test_utils;
 mod test_vectors;
 #[cfg(test)]
 mod transfer_test;
+#[cfg(test)]
+mod queries_test;

@@ -112,6 +112,7 @@ fn test_expire_draft_wrap_after_deadline_succeeds() {
     let period = 202501u64;
     let insertion_time = 1000000u64;
 
+    env.mock_all_auths();
     client.initialize(&admin, &pubkey);
 
     // Insert a Draft wrap directly with a known timestamp.

@@ -42,6 +42,7 @@ fn setup_env() -> (
     let admin_pubkey = BytesN::from_array(&env, &pubkey_bytes);
     let admin = Address::generate(&env);
 
+    env.mock_all_auths();
     client.initialize(&admin, &admin_pubkey);
 
     (env, client, contract_id, signing_key, pubkey_bytes)

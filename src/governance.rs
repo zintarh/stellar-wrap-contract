@@ -1,6 +1,7 @@
 use soroban_sdk::{panic_with_error, symbol_short, Address, Env};
 
 use crate::admin::read_admin;
+use crate::storage_types::TimelockAction;
 use crate::{AdminProposal, ContractError, DataKey, ProposalStatus};
 
 /// Create a new proposal to update the contract admin.
@@ -117,10 +118,17 @@ pub(crate) fn execute_admin_proposal(e: Env, proposal_id: u64) {
 
     if proposal.votes_for > proposal.votes_against {
         proposal.status = ProposalStatus::Executed;
-        e.storage()
-            .instance()
-            .set(&DataKey::Admin, &proposal.proposed_admin);
-        e.storage().instance().remove(&DataKey::PendingAdmin);
+        if crate::timelock::is_enabled(&e) {
+            crate::timelock::schedule(
+                e.clone(),
+                TimelockAction::SetAdmin(proposal.proposed_admin.clone()),
+            );
+        } else {
+            e.storage()
+                .instance()
+                .set(&DataKey::Admin, &proposal.proposed_admin);
+            e.storage().instance().remove(&DataKey::PendingAdmin);
+        }
 
         e.events().publish(
             (symbol_short!("gov"), symbol_short!("executed")),
@@ -136,8 +144,6 @@ pub(crate) fn execute_admin_proposal(e: Env, proposal_id: u64) {
             (symbol_short!("gov"), symbol_short!("defeated")),
             (proposal_id,),
         );
-
-        panic_with_error!(e, ContractError::ProposalDefeated);
     }
 
     e.storage()

@@ -134,7 +134,6 @@ pub(crate) fn transfer_wrap(e: Env, from: Address, to: Address, period: u64) {
         panic_with_error!(e, ContractError::InvalidTransfer);
     }
 
-    let fee = read_fee(&e);
     let source_key = DataKey::Wrap(from.clone(), period);
     let destination_key = DataKey::Wrap(to.clone(), period);
     let record: WrapRecord = e
@@ -142,6 +141,12 @@ pub(crate) fn transfer_wrap(e: Env, from: Address, to: Address, period: u64) {
         .persistent()
         .get(&source_key)
         .unwrap_or_else(|| panic_with_error!(e, ContractError::WrapNotFound));
+
+    if record.fsm.state == crate::storage_types::WrapState::Bridged {
+        panic_with_error!(e, ContractError::InvalidStateTransition);
+    }
+
+    let fee = read_fee(&e);
 
     if e.storage().persistent().has(&destination_key) {
         panic_with_error!(e, ContractError::WrapAlreadyExists);

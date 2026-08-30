@@ -7,7 +7,7 @@ use crate::test_utils::sign_payload;
 use ed25519_dalek::SigningKey;
 use soroban_sdk::{
     symbol_short,
-    testutils::{Address as _, AuthorizedFunction, AuthorizedInvocation, Events},
+    testutils::{Address as _, AuthorizedFunction, AuthorizedInvocation, Events, Ledger},
     token::{Client as TokenClient, StellarAssetClient},
     vec, Address, BytesN, Env, IntoVal, Symbol, TryIntoVal,
 };
@@ -145,6 +145,51 @@ fn transfer_moves_record_collects_fee_and_updates_indexes() {
     assert_eq!(client.get_latest_wrap(&fixture.to).unwrap().period, 202405);
     assert_eq!(token.balance(&fixture.from), 90);
     assert_eq!(token.balance(&fixture.fee_recipient), 10);
+}
+
+#[test]
+fn transfer_keeps_every_query_consistent_for_both_parties() {
+    let fixture = fixture(Some(10), 100);
+    let client = StellarWrapContractClient::new(&fixture.env, &fixture.contract_id);
+
+    mint(&fixture, &fixture.from, 202401, 1);
+    mint(&fixture, &fixture.from, 202403, 3);
+    mint(&fixture, &fixture.to, 202405, 5);
+    let total_before = client.total_wrap_count();
+
+    // Advance the ledger so a transfer can move the per-user last-updated marker.
+    fixture.env.ledger().with_mut(|li| li.timestamp = 2_000_000);
+
+    client.transfer_wrap(&fixture.from, &fixture.to, &202403);
+
+    assert!(client.get_wrap(&fixture.from, &202403).is_none());
+    assert!(client.get_wrap(&fixture.to, &202403).is_some());
+
+    assert_eq!(client.balance_of(&fixture.from), 1);
+    assert_eq!(client.balance_of(&fixture.to), 2);
+
+    let from_wraps = client.get_all_wraps_for_user(&fixture.from);
+    let to_wraps = client.get_all_wraps_for_user(&fixture.to);
+    assert!(
+        from_wraps.iter().all(|w| w.period != 202403),
+        "sender must no longer list the transferred period"
+    );
+    assert!(
+        to_wraps.iter().any(|w| w.period == 202403),
+        "recipient must now list the transferred period"
+    );
+
+    assert_eq!(client.get_latest_wrap(&fixture.from).unwrap().period, 202401);
+    assert_eq!(client.get_latest_wrap(&fixture.to).unwrap().period, 202405);
+
+    assert_eq!(client.get_last_updated(&fixture.from), Some(2_000_000));
+    assert_eq!(client.get_last_updated(&fixture.to), Some(2_000_000));
+
+    assert_eq!(
+        client.total_wrap_count(),
+        total_before,
+        "a transfer must not change the global wrap count"
+    );
 }
 
 #[test]
