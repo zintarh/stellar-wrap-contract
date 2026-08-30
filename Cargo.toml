@@ -16,8 +16,9 @@ testutils = ["soroban-sdk/testutils"]
 soroban-sdk = "=27.0.3"
 # ed25519-dalek is a direct dependency (not just dev) to force Cargo version
 # unification across the dependency tree. soroban-env-host transitively depends
-# on ed25519-dalek and would otherwise resolve to an incompatible v3.0 without
-# a Cargo.lock (which is gitignored). Keep this pin synced.
+# on ed25519-dalek and would otherwise resolve to an incompatible v3.0.
+# Cargo.lock is committed to ensure reproducible builds; keep this pin synced
+# whenever the lockfile is regenerated.
 ed25519-dalek = { version = "=3.0.0", features = ["rand_core"] }
 
 [dev-dependencies]
