@@ -239,15 +239,11 @@ pub(crate) fn get_stake_priority(e: &Env, user: Address) -> u32 {
         return 0;
     }
 
-    // Calculate how many multiples of min_stake the user has staked.
-    let multiples = (record.amount / config.min_stake) as u32;
-    let priority = multiples.saturating_mul(config.priority_multiplier_bps);
-
-    if priority > config.max_priority_bps {
-        config.max_priority_bps
-    } else {
-        priority
-    }
+    // Stay in i128 until the final cast to avoid truncating large stakes.
+    let multiples: i128 = record.amount / config.min_stake;
+    let priority: i128 = multiples.saturating_mul(config.priority_multiplier_bps as i128);
+    let capped: i128 = priority.min(config.max_priority_bps as i128);
+    capped as u32
 }
 
 /// Return the total amount staked across all users.

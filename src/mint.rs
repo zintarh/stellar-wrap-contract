@@ -84,7 +84,6 @@ pub(crate) fn update_latest_period(e: &Env, user: &Address, period: u64) {
     }
 }
 
-
 #[allow(deprecated)] // TODO(#718): migrate to #[contractevent]
 pub(crate) fn mint_wrap(
     e: Env,
