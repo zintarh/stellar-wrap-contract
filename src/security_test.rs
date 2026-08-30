@@ -87,7 +87,7 @@ fn test_replay_attack_same_period_fails() {
 
     // Verify the wrap was created
     let wrap = client.get_wrap(&user, &period);
-    assert!(wrap.is_some(), "First mint should succeed");
+    assert!(wrap.is_some(), "First mint should succeed.");
 
     // Replay attack: Try to mint again with the exact same parameters
     // This should PANIC with WrapAlreadyExists error (#4)
@@ -304,7 +304,7 @@ fn test_signature_cannot_be_stolen_by_another_user() {
 
     // Verify User A has the wrap
     let wrap_a = client.get_wrap(&user_a, &period);
-    assert!(wrap_a.is_some(), "User A should have the wrap");
+    assert!(wrap_a.is_some(), "User A should have the wrap.");
 
     // User B tries to mint with their own period (this is allowed)
     let data_hash_for_b = BytesN::from_array(&env, &[99u8; 32]);
@@ -341,7 +341,7 @@ fn test_signature_cannot_be_stolen_by_another_user() {
     let user_b_period_dec = client.get_wrap(&user_b, &period);
     assert!(
         user_b_period_dec.is_none(),
-        "User B should not have User A's period"
+        "User B should not have User A's period."
     );
 }
 
@@ -395,7 +395,7 @@ fn test_cross_contract_replay_protection() {
 
     // Verify the wrap exists on V1
     let wrap_v1 = client_v1.get_wrap(&user, &period);
-    assert!(wrap_v1.is_some(), "Wrap should exist on contract V1");
+    assert!(wrap_v1.is_some(), "Wrap should exist on contract V1.");
 
     // NOTE: For full cross-contract replay protection, the signature
     // verification should include the contract address in the signed payload.
@@ -438,11 +438,11 @@ fn test_cross_contract_replay_protection() {
 
     assert!(
         result.is_err(),
-        "A signature from V1 should not be replayable on V2"
+        "A signature from V1 should not be replayable on V2."
     );
     assert!(
         client_v2.get_wrap(&user, &period).is_none(),
-        "the replay attempt must not create a wrap on V2"
+        "The replay attempt must not create a wrap on V2."
     );
 
     // The same user can mint on V2 (they are independent contracts)
@@ -533,10 +533,10 @@ fn test_gas_analysis_mint_operation() {
     // For mainnet deployment, you want these to be as low as possible
     assert!(
         cpu_insns < 10_000_000,
-        "CPU instructions too high: {}",
+        "CPU instructions are too high: {}",
         cpu_insns
     );
-    assert!(mem_bytes < 200_000, "Memory usage too high: {}", mem_bytes);
+    assert!(mem_bytes < 200_000, "Memory usage is too high: {}", mem_bytes);
 
     // Gas analysis results:
     // CPU Instructions: Check assertion output
@@ -604,8 +604,8 @@ fn test_gas_analysis_multiple_mints() {
 
     // Gas analysis for 5 mints - results tracked in budget
     // Verify resource usage is within reasonable bounds for batch operations
-    assert!(cpu_insns < 50_000_000, "Batch CPU too high: {}", cpu_insns);
-    assert!(mem_bytes < 500_000, "Batch memory too high: {}", mem_bytes);
+    assert!(cpu_insns < 50_000_000, "Batch CPU usage is too high: {}", cpu_insns);
+    assert!(mem_bytes < 500_000, "Batch memory usage is too high: {}", mem_bytes);
 }
 
 /// Test 8: Timestamp Manipulation Resistance
@@ -656,7 +656,7 @@ fn test_timestamp_is_from_ledger_not_user() {
     let wrap = client.get_wrap(&user, &period).unwrap();
 
     // Verify timestamp matches ledger, not any user-provided value
-    assert_eq!(wrap.timestamp, 1000000, "Timestamp should come from ledger");
+    assert_eq!(wrap.timestamp, 1000000, "Timestamp should come from the ledger.");
 
     // Advance ledger time and mint another period
     env.ledger().with_mut(|li| {
@@ -687,7 +687,7 @@ fn test_timestamp_is_from_ledger_not_user() {
     let wrap_2 = client.get_wrap(&user, &period_2).unwrap();
     assert_eq!(
         wrap_2.timestamp, 2000000,
-        "Second timestamp should match new ledger time"
+        "Second timestamp should match the new ledger time."
     );
 }
 
@@ -734,7 +734,7 @@ fn test_edge_case_long_symbols() {
     );
 
     let wrap = client.get_wrap(&user, &period);
-    assert!(wrap.is_some(), "Should handle reasonably long symbols");
+    assert!(wrap.is_some(), "Wrap should exist for reasonably long symbols.");
 }
 
 /// Test 10: Unauthorized Access - Non-Admin Cannot Mint
