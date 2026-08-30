@@ -94,10 +94,8 @@ Troubleshooting checklist for `Error(Contract, #6)`:
 
 Some failures can look like “unexpected panics” depending on the tooling:
 
-- `ContractError::InvalidSignature` is raised when `env.crypto().ed25519_verify(...)` fails.
-- If you see `Error(Contract, #6)`, it corresponds to `ContractError::InvalidSignature`.
-
-If your CLI/tooling shows a different wording around an Ed25519 verify failure, still map it to code **#6** using the contract error.
+- `ContractError::InvalidSignature` (`Error(Contract, #5)`) is raised whenever an Ed25519 mint signature fails to verify — wrong key, tampered payload/period, non-canonical public key, or a corrupted signature. The contract verifies signatures in-guest (`src/signature.rs`, `verify_ed25519`) so failures always surface as the contract error rather than a raw host `Crypto`/`InvalidInput` error.
+- If you see `Error(Contract, #6)`, it corresponds to `ContractError::InvalidPeriod`, not a signature failure.
 
 ---
 

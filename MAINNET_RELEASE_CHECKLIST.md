@@ -30,7 +30,7 @@ Use this checklist before deploying the Stellar Wrap Contract to mainnet. It com
 ## 4. Initialization
 
 - [ ] Prepare the initialization payload with the final admin and admin public key values.
-- [ ] Submit the `initialize(admin, admin_pubkey)` transaction only after the artifact and configuration checks above are complete.
+- [ ] Submit the `initialize(admin, admin_pubkey)` transaction signed by the intended admin account, only after the artifact and configuration checks above are complete.
 - [ ] Verify the contract instance is initialized successfully and that the admin address is set as expected.
 - [ ] Record the deployed contract ID and the final initialization parameters for operational reference.
 

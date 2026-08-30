@@ -65,10 +65,16 @@ the version constant moved before assuming key compromise or a client bug.
 
 ### Period encoding
 
-`period` is an integer in `YYYYMM` format (e.g. `202401` for January 2024).
-The semantic meaning is irrelevant to the encoding — it is signed as a plain
-`u64`. Valid range: `202401`–`210012` (enforced by `validate_period` in
-`src/mint.rs`, `Error(Contract, #6)` otherwise).
+`period` is the canonical identifier representing the time interval of the wrap, defined as an unsigned 64-bit integer (`u64`) in `YYYYMM` format (e.g., `202401` for January 2024, `202512` for December 2025).
+
+The semantic meaning is irrelevant to the cryptographic encoding — it is signed as a plain `u64`. Valid range: `202401`–`210012` (enforced by `validate_period` in `src/mint.rs`, returning `Error(Contract, #6)` otherwise).
+
+#### Non-Monthly Periods
+Because the contract validation logic enforces a strict month check (`period % 100` must be between `1` and `12`) and year check (`period / 100` must be between `2024` and `2100`), non-monthly periods (e.g. daily, weekly, or quarterly periods) are not natively supported by the contract constraints. 
+
+To support non-monthly wraps, integrations and off-chain tools must map their custom period representation to a valid `YYYYMM` `u64` value before generating the signature and executing the mint transaction. For example:
+- **Quarterly Wraps**: Map Q1 (Jan-Mar) to `YYYY03`, Q2 to `YYYY06`, Q3 to `YYYY09`, Q4 to `YYYY12`.
+- **Weekly / Daily Wraps**: Map the week or day to the year and month of the end date of that interval.
 
 ### Archetype encoding
 
@@ -124,8 +130,10 @@ pub fn verify_mint_signature(
     signature: &BytesN<64>,
 ) -> Result<(), ContractError> {
     let payload = construct_mint_payload(e, contract_id, user, period, archetype, data_hash, payload_version);
-    e.crypto().ed25519_verify(admin_pubkey, &payload, signature);
-    Ok(())
+    // In-guest Ed25519 verification (ed25519-dalek, same 3.0.0 pin the host
+    // uses) so any failure surfaces as Error(Contract, #5) instead of the
+    // host's uncatchable Error(Crypto, InvalidInput) trap.
+    verify_ed25519(admin_pubkey, &payload, signature)
 }
 ```
 
@@ -253,8 +261,9 @@ fn sign_payload(
 ```
 
 Any byte modification to the payload (including reordering fields, or signing
-with the wrong `payload_version`) produces a different message, and
-`ed25519_verify` will panic with `Error(Contract, #5)`.
+with the wrong `payload_version`) produces a different message, and the
+contract's in-guest Ed25519 verification (`verify_ed25519` in `src/signature.rs`)
+will panic with `Error(Contract, #5)`.
 
 ---
 
@@ -264,7 +273,7 @@ with the wrong `payload_version`) produces a different message, and
 | Code | Name | Triggered when |
 |------|------|----------------|
 | `#3` | `Unauthorized` | `user.require_auth()` fails |
-| `#5` | `InvalidSignature` | `payload_version` doesn't match `CURRENT_PAYLOAD_VERSION`, or `ed25519_verify` rejects the signature (wrong payload order/fields, wrong key, corrupted bytes) |
+| `#5` | `InvalidSignature` | `payload_version` doesn't match `CURRENT_PAYLOAD_VERSION`, or in-guest Ed25519 verification rejects the signature (wrong payload order/fields, wrong key, corrupted bytes) |
 | `#6` | `InvalidPeriod` | `period` is outside `202401`–`210012` |
 
 See [ERRORS.md](../ERRORS.md) for the full error catalogue.
