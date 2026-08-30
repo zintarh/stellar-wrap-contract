@@ -13,6 +13,7 @@ const ESTIMATE_WRAP_KEY_BYTES: u64 = 48; // enum + address + u64 rounded
 const ESTIMATE_WRAPCOUNT_ENTRY_BYTES: u64 = 16; // key + u32 value overhead
 const ESTIMATE_LATEST_ENTRY_BYTES: u64 = 16;
 const ESTIMATE_USERPERIODS_ENTRY_BYTES: u64 = 64; // vector overhead (conservative)
+const ESTIMATE_LASTUPDATED_ENTRY_BYTES: u64 = 16; // key + u64 value overhead
 
 /// Read current estimated storage bytes (instance storage)
 pub(crate) fn get_storage_bytes(e: &Env) -> u64 {
@@ -96,4 +97,8 @@ pub(crate) fn estimate_latest_bytes_new() -> u64 {
 
 pub(crate) fn estimate_userperiods_bytes_new() -> u64 {
     ESTIMATE_USERPERIODS_ENTRY_BYTES
+}
+
+pub(crate) fn estimate_lastupdated_bytes_new() -> u64 {
+    ESTIMATE_LASTUPDATED_ENTRY_BYTES
 }

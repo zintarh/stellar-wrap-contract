@@ -1,10 +1,12 @@
 use soroban_sdk::{panic_with_error, symbol_short, Address, Env};
 
 use crate::admin::read_admin;
+use crate::storage_types::TimelockAction;
 use crate::{AdminProposal, ContractError, DataKey, ProposalStatus};
 
 /// Create a new proposal to update the contract admin.
 /// Returns the generated proposal ID.
+#[allow(deprecated)] // TODO(#718): migrate to #[contractevent]
 pub(crate) fn create_admin_proposal(
     e: Env,
     proposer: Address,
@@ -54,6 +56,7 @@ pub(crate) fn create_admin_proposal(
 }
 
 /// Cast a vote on an active governance proposal.
+#[allow(deprecated)] // TODO(#718): migrate to #[contractevent]
 pub(crate) fn vote_admin_proposal(e: Env, voter: Address, proposal_id: u64, support: bool) {
     voter.require_auth();
 
@@ -96,6 +99,7 @@ pub(crate) fn vote_admin_proposal(e: Env, voter: Address, proposal_id: u64, supp
 }
 
 /// Execute a proposal once voting has ended. If votes_for > votes_against, the admin is updated.
+#[allow(deprecated)] // TODO(#718): migrate to #[contractevent]
 pub(crate) fn execute_admin_proposal(e: Env, proposal_id: u64) {
     let mut proposal: AdminProposal = e
         .storage()
@@ -114,8 +118,17 @@ pub(crate) fn execute_admin_proposal(e: Env, proposal_id: u64) {
 
     if proposal.votes_for > proposal.votes_against {
         proposal.status = ProposalStatus::Executed;
-        e.storage().instance().set(&DataKey::Admin, &proposal.proposed_admin);
-        e.storage().instance().remove(&DataKey::PendingAdmin);
+        if crate::timelock::is_enabled(&e) {
+            crate::timelock::schedule(
+                e.clone(),
+                TimelockAction::SetAdmin(proposal.proposed_admin.clone()),
+            );
+        } else {
+            e.storage()
+                .instance()
+                .set(&DataKey::Admin, &proposal.proposed_admin);
+            e.storage().instance().remove(&DataKey::PendingAdmin);
+        }
 
         e.events().publish(
             (symbol_short!("gov"), symbol_short!("executed")),
@@ -131,8 +144,6 @@ pub(crate) fn execute_admin_proposal(e: Env, proposal_id: u64) {
             (symbol_short!("gov"), symbol_short!("defeated")),
             (proposal_id,),
         );
-
-        panic_with_error!(e, ContractError::ProposalDefeated);
     }
 
     e.storage()
@@ -141,6 +152,7 @@ pub(crate) fn execute_admin_proposal(e: Env, proposal_id: u64) {
 }
 
 /// Cancel a governance proposal. Can be called by the proposer or current admin before execution.
+#[allow(deprecated)] // TODO(#718): migrate to #[contractevent]
 pub(crate) fn cancel_admin_proposal(e: Env, caller: Address, proposal_id: u64) {
     caller.require_auth();
 
@@ -178,11 +190,7 @@ pub(crate) fn get_admin_proposal(e: &Env, proposal_id: u64) -> Option<AdminPropo
 }
 
 /// Query a voter's choice on a proposal.
-pub(crate) fn get_admin_proposal_vote(
-    e: &Env,
-    proposal_id: u64,
-    voter: Address,
-) -> Option<bool> {
+pub(crate) fn get_admin_proposal_vote(e: &Env, proposal_id: u64, voter: Address) -> Option<bool> {
     e.storage()
         .persistent()
         .get(&DataKey::AdminProposalVote(proposal_id, voter))
