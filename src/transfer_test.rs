@@ -7,7 +7,7 @@ use crate::test_utils::sign_payload;
 use ed25519_dalek::SigningKey;
 use soroban_sdk::{
     symbol_short,
-    testutils::{Address as _, AuthorizedFunction, AuthorizedInvocation, Events},
+    testutils::{Address as _, AuthorizedFunction, AuthorizedInvocation, Events, Ledger},
     token::{Client as TokenClient, StellarAssetClient},
     vec, Address, BytesN, Env, IntoVal, Symbol, TryIntoVal,
 };
@@ -24,7 +24,7 @@ struct Fixture {
 
 fn fixture(fee_amount: Option<i128>, sender_token_balance: i128) -> Fixture {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let signing_key = SigningKey::from_bytes(&[21u8; 32]);
@@ -71,7 +71,7 @@ fn mint(fixture: &Fixture, owner: &Address, period: u64, hash_byte: u8) {
         &archetype,
         &data_hash,
     );
-    client.mint_wrap(owner, &period, &archetype, &data_hash, &signature);
+    client.mint_wrap(owner, &period, &archetype, &data_hash, &1u32, &signature);
 }
 
 #[test]
@@ -87,6 +87,25 @@ fn transfer_moves_record_collects_fee_and_updates_indexes() {
     let original = client.get_wrap(&fixture.from, &202403).unwrap();
 
     client.transfer_wrap(&fixture.from, &fixture.to, &202403);
+
+    // Read events immediately after the generating call; in SDK 27 a later
+    // contract invocation clears the previously recorded event buffer.
+    let events = crate::test_utils::decode_events(&fixture.env);
+    let (topics, data) = events.last().expect("transfer event was not emitted");
+    let event_name: Symbol = topics[0].try_into_val(&fixture.env).unwrap();
+    let event_from: Address = topics[1].try_into_val(&fixture.env).unwrap();
+    let event_to: Address = topics[2].try_into_val(&fixture.env).unwrap();
+    let event_period: u64 = topics[3].try_into_val(&fixture.env).unwrap();
+    let event_fee: (Address, Address, i128) = data.try_into_val(&fixture.env).unwrap();
+
+    assert_eq!(event_name, symbol_short!("transfer"));
+    assert_eq!(event_from, fixture.from);
+    assert_eq!(event_to, fixture.to);
+    assert_eq!(event_period, 202403);
+    assert_eq!(
+        event_fee,
+        (fixture.token_id.clone(), fixture.fee_recipient.clone(), 10)
+    );
 
     assert_eq!(
         fixture.env.auths(),
@@ -126,20 +145,51 @@ fn transfer_moves_record_collects_fee_and_updates_indexes() {
     assert_eq!(client.get_latest_wrap(&fixture.to).unwrap().period, 202405);
     assert_eq!(token.balance(&fixture.from), 90);
     assert_eq!(token.balance(&fixture.fee_recipient), 10);
+}
 
-    let events = fixture.env.events().all();
-    let (_, topics, data) = events.last().expect("transfer event was not emitted");
-    let event_name: Symbol = topics.get(0).unwrap().try_into_val(&fixture.env).unwrap();
-    let event_from: Address = topics.get(1).unwrap().try_into_val(&fixture.env).unwrap();
-    let event_to: Address = topics.get(2).unwrap().try_into_val(&fixture.env).unwrap();
-    let event_period: u64 = topics.get(3).unwrap().try_into_val(&fixture.env).unwrap();
-    let event_fee: (Address, Address, i128) = data.try_into_val(&fixture.env).unwrap();
+#[test]
+fn transfer_keeps_every_query_consistent_for_both_parties() {
+    let fixture = fixture(Some(10), 100);
+    let client = StellarWrapContractClient::new(&fixture.env, &fixture.contract_id);
 
-    assert_eq!(event_name, symbol_short!("transfer"));
-    assert_eq!(event_from, fixture.from);
-    assert_eq!(event_to, fixture.to);
-    assert_eq!(event_period, 202403);
-    assert_eq!(event_fee, (fixture.token_id, fixture.fee_recipient, 10));
+    mint(&fixture, &fixture.from, 202401, 1);
+    mint(&fixture, &fixture.from, 202403, 3);
+    mint(&fixture, &fixture.to, 202405, 5);
+    let total_before = client.total_wrap_count();
+
+    // Advance the ledger so a transfer can move the per-user last-updated marker.
+    fixture.env.ledger().with_mut(|li| li.timestamp = 2_000_000);
+
+    client.transfer_wrap(&fixture.from, &fixture.to, &202403);
+
+    assert!(client.get_wrap(&fixture.from, &202403).is_none());
+    assert!(client.get_wrap(&fixture.to, &202403).is_some());
+
+    assert_eq!(client.balance_of(&fixture.from), 1);
+    assert_eq!(client.balance_of(&fixture.to), 2);
+
+    let from_wraps = client.get_all_wraps_for_user(&fixture.from);
+    let to_wraps = client.get_all_wraps_for_user(&fixture.to);
+    assert!(
+        from_wraps.iter().all(|w| w.period != 202403),
+        "sender must no longer list the transferred period"
+    );
+    assert!(
+        to_wraps.iter().any(|w| w.period == 202403),
+        "recipient must now list the transferred period"
+    );
+
+    assert_eq!(client.get_latest_wrap(&fixture.from).unwrap().period, 202401);
+    assert_eq!(client.get_latest_wrap(&fixture.to).unwrap().period, 202405);
+
+    assert_eq!(client.get_last_updated(&fixture.from), Some(2_000_000));
+    assert_eq!(client.get_last_updated(&fixture.to), Some(2_000_000));
+
+    assert_eq!(
+        client.total_wrap_count(),
+        total_before,
+        "a transfer must not change the global wrap count"
+    );
 }
 
 #[test]
@@ -216,20 +266,23 @@ fn zero_fee_allows_transfer_without_a_token_balance() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #10)")]
-fn transfer_rejects_missing_fee_configuration() {
-    let fixture = fixture(None, 100);
+fn transfer_succeeds_without_fee_configuration() {
+    let fixture = fixture(None, 0);
     mint(&fixture, &fixture.from, 202401, 1);
 
-    StellarWrapContractClient::new(&fixture.env, &fixture.contract_id).transfer_wrap(
-        &fixture.from,
-        &fixture.to,
-        &202401,
-    );
+    let client = StellarWrapContractClient::new(&fixture.env, &fixture.contract_id);
+    assert_eq!(client.get_transfer_fee(), None);
+
+    client.transfer_wrap(&fixture.from, &fixture.to, &202401);
+
+    assert!(client.get_wrap(&fixture.from, &202401).is_none());
+    assert!(client.get_wrap(&fixture.to, &202401).is_some());
+    assert_eq!(client.balance_of(&fixture.from), 0);
+    assert_eq!(client.balance_of(&fixture.to), 1);
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #8)")]
+#[should_panic(expected = "Error(Contract, #9)")]
 fn transfer_rejects_a_missing_source_record() {
     let fixture = fixture(Some(10), 100);
 
@@ -292,13 +345,27 @@ fn legacy_owner_must_be_backfilled_before_another_mint() {
         &data_hash,
     );
     assert!(client
-        .try_mint_wrap(&fixture.from, &202402, &archetype, &data_hash, &signature,)
+        .try_mint_wrap(
+            &fixture.from,
+            &202402,
+            &archetype,
+            &data_hash,
+            &1u32,
+            &signature
+        )
         .is_err());
     assert!(client.get_wrap(&fixture.from, &202402).is_none());
     assert_eq!(client.balance_of(&fixture.from), 1);
 
     client.backfill_wrap_periods(&fixture.from, &vec![&fixture.env, 202401_u64]);
-    client.mint_wrap(&fixture.from, &202402, &archetype, &data_hash, &signature);
+    client.mint_wrap(
+        &fixture.from,
+        &202402,
+        &archetype,
+        &data_hash,
+        &1u32,
+        &signature,
+    );
     assert_eq!(client.balance_of(&fixture.from), 2);
 }
 
@@ -400,7 +467,7 @@ fn transfer_guard_rejects_nested_transfer_before_fee_collection() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #11)")]
+#[should_panic(expected = "Error(Contract, #14)")]
 fn admin_cannot_configure_a_negative_fee() {
     let fixture = fixture(Some(10), 100);
 
@@ -412,7 +479,7 @@ fn admin_cannot_configure_a_negative_fee() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #9)")]
+#[should_panic(expected = "Error(Contract, #49)")]
 fn self_transfer_is_rejected() {
     let fixture = fixture(Some(10), 100);
     mint(&fixture, &fixture.from, 202401, 1);
@@ -434,5 +501,72 @@ fn setting_transfer_fee_requires_admin_authorization() {
         &fixture.token_id,
         &fixture.fee_recipient,
         &10,
+    );
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #14)")]
+fn setting_transfer_fee_rejects_identical_token_and_recipient() {
+    let fixture = fixture(None, 100);
+    let client = StellarWrapContractClient::new(&fixture.env, &fixture.contract_id);
+    client.set_transfer_fee(&fixture.token_id, &fixture.token_id, &10);
+}
+
+#[test]
+#[should_panic]
+fn clear_transfer_fee_requires_admin_authorization() {
+    let fixture = fixture(Some(10), 100);
+    fixture.env.set_auths(&[]);
+    StellarWrapContractClient::new(&fixture.env, &fixture.contract_id).clear_transfer_fee();
+}
+
+#[test]
+fn clear_transfer_fee_emits_event_and_clears_configuration() {
+    let fixture = fixture(Some(10), 100);
+    let client = StellarWrapContractClient::new(&fixture.env, &fixture.contract_id);
+
+    assert!(client.get_transfer_fee().is_some());
+
+    client.clear_transfer_fee();
+
+    let events = crate::test_utils::decode_events(&fixture.env);
+    let (topics, _data) = events.last().expect("fee_clr event was not emitted");
+    let event_name: Symbol = topics[0].try_into_val(&fixture.env).unwrap();
+    assert_eq!(event_name, symbol_short!("fee_clr"));
+
+    assert_eq!(client.get_transfer_fee(), None);
+
+    // Verify transfer succeeds with 0 token charges after clearing
+    mint(&fixture, &fixture.from, 202401, 1);
+    client.transfer_wrap(&fixture.from, &fixture.to, &202401);
+    assert_eq!(client.balance_of(&fixture.from), 0);
+    assert_eq!(client.balance_of(&fixture.to), 1);
+
+    // Verify fee can be re-set after clearing
+    client.set_transfer_fee(&fixture.token_id, &fixture.fee_recipient, &25);
+    assert_eq!(
+        client.get_transfer_fee(),
+        Some(TransferFeeConfig {
+            amount: 25,
+            recipient: fixture.fee_recipient.clone(),
+            token: fixture.token_id.clone(),
+        })
+    );
+}
+
+#[test]
+fn zzz_probe_raw() {
+    let fixture = fixture(Some(10), 100);
+    let client = StellarWrapContractClient::new(&fixture.env, &fixture.contract_id);
+    mint(&fixture, &fixture.from, 202401, 1);
+    let n1 = fixture.env.events().all().events().len();
+    let _b = client.balance_of(&fixture.from);
+    let n2 = fixture.env.events().all().events().len();
+    let n3 = fixture.env.host().get_events().unwrap().0.len();
+    std::eprintln!(
+        "RAWPROBE mint={} after_balance_of={} host_total={}",
+        n1,
+        n2,
+        n3
     );
 }

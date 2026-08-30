@@ -1,4 +1,4 @@
-use crate::{ContractHealth, DataKey, WrapRecord};
+use crate::{ContractHealth, DataKey, TransferFeeConfig, WrapRecord};
 use soroban_sdk::{Address, Bytes, BytesN, Env, String};
 
 pub(crate) fn get_wrap(e: Env, user: Address, period: u64) -> Option<WrapRecord> {
@@ -10,11 +10,17 @@ pub(crate) fn get_mint_timestamp(e: Env, user: Address, period: u64) -> Option<u
     wrap.map(|r| r.timestamp)
 }
 
+/// Return the ledger timestamp of the user's most recent state change via a
+/// successful mint or revoke, or `None` if the user has never minted or had a
+/// wrap revoked.
+pub(crate) fn get_last_updated(e: Env, user: Address) -> Option<u64> {
+    e.storage().persistent().get(&DataKey::LastUpdated(user))
+}
+
 pub(crate) fn balance_of(e: Env, user: Address) -> i128 {
-    let count_key = DataKey::WrapCount(user);
     e.storage()
         .persistent()
-        .get::<_, u32>(&count_key)
+        .get::<_, u32>(&DataKey::WrapCount(user))
         .unwrap_or(0) as i128
 }
 
@@ -27,7 +33,7 @@ pub(crate) fn total_wrap_count(e: Env) -> u32 {
 
 pub(crate) fn verify_data(e: Env, user: Address, period: u64, data: Bytes) -> bool {
     let wrap: Option<WrapRecord> = e.storage().persistent().get(&DataKey::Wrap(user, period));
-    wrap.map_or(false, |record| {
+    wrap.is_some_and(|record| {
         let computed_hash = e.crypto().sha256(&data);
         let computed_hash = BytesN::from_array(&e, &computed_hash.to_array());
         record.data_hash == computed_hash
@@ -111,6 +117,11 @@ pub(crate) fn get_wraps(
 pub(crate) fn get_all_wraps_for_user(e: Env, user: Address) -> soroban_sdk::Vec<WrapRecord> {
     // Fetch all wraps by using the maximum possible range.
     get_wraps(e, user, 0, u32::MAX)
+}
+
+/// Return the configured transfer-fee configuration, or `None` if unset.
+pub(crate) fn get_transfer_fee(e: Env) -> Option<TransferFeeConfig> {
+    e.storage().instance().get(&DataKey::TransferFee)
 }
 
 pub(crate) fn health(e: Env) -> ContractHealth {

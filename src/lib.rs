@@ -24,6 +24,7 @@ use soroban_sdk::{
 mod admin;
 mod alias;
 mod bridge;
+mod burn;
 mod errors;
 mod events;
 mod governance;
@@ -40,10 +41,13 @@ mod timelock;
 mod token;
 mod transfer;
 
-pub use mint::CURRENT_PAYLOAD_VERSION;
+pub use errors::ContractError;
+pub use mint::{validate_period, CURRENT_PAYLOAD_VERSION, MAX_PERIOD_YEAR, MIN_PERIOD_YEAR};
 pub use oracle::DataHashOracle;
 pub use storage_types::{
-    AdminProposal, ContractHealth, DataKey, InboundBridgeRecord, OutboundBridgeRequest, ProposalStatus, StakeConfig, StakeRecord, TimelockAction, TimelockOperation, TransferFeeConfig, WrapLifecycleFSM, WrapRecord, WrapState,
+    AdminProposal, ContractHealth, DataKey, InboundBridgeRecord, OutboundBridgeRequest,
+    ProposalStatus, StakeConfig, StakeRecord, TimelockAction, TimelockOperation, TransferFeeConfig,
+    WrapLifecycleFSM, WrapRecord, WrapState,
 };
 pub use token::TokenInterface;
 
@@ -67,6 +71,12 @@ impl StellarWrapContract {
     /// recipient.
     pub fn set_transfer_fee(e: Env, token: Address, recipient: Address, amount: i128) {
         admin::set_transfer_fee(e, token, recipient, amount);
+    }
+
+    /// Admin-only: remove the configured transfer fee, returning the contract
+    /// to the unconfigured state where transfers are free by default.
+    pub fn clear_transfer_fee(e: Env) {
+        admin::clear_transfer_fee(e);
     }
 
     pub fn pause(e: Env) {
@@ -166,6 +176,22 @@ impl StellarWrapContract {
         mint::transition_wrap_state(e, user, period, next_state);
     }
 
+    /// Return the configured expiration duration (seconds) for unverified wraps.
+    /// Defaults to 7 days when unset.
+    pub fn expiration_duration(e: Env) -> u64 {
+        mint::get_expiration_duration(&e)
+    }
+
+    /// Admin-only: set the expiration duration (seconds) for unverified wraps.
+    pub fn set_expiration_duration(e: Env, duration: u64) {
+        mint::set_expiration_duration(&e, duration);
+    }
+
+    /// Expire an unverified wrap whose deadline has passed. Callable by anyone.
+    pub fn expire_wrap(e: Env, user: Address, period: u64) {
+        mint::expire_wrap(e, user, period);
+    }
+
     pub fn get_wrap(e: Env, user: Address, period: u64) -> Option<WrapRecord> {
         queries::get_wrap(e, user, period)
     }
@@ -175,6 +201,13 @@ impl StellarWrapContract {
     /// Returns `None` if no mint has occurred for the given user-period.
     pub fn get_mint_timestamp(e: Env, user: Address, period: u64) -> Option<u64> {
         queries::get_mint_timestamp(e, user, period)
+    }
+
+    /// Returns the ledger timestamp of the user's most recent state change via
+    /// a successful mint or revoke, or `None` if the user has never minted or
+    /// had a wrap revoked. The value is monotonic (non-decreasing) per user.
+    pub fn get_last_updated(e: Env, user: Address) -> Option<u64> {
+        queries::get_last_updated(e, user)
     }
 
     pub fn total_wrap_count(e: Env) -> u32 {
@@ -208,9 +241,9 @@ impl StellarWrapContract {
 
     /// Returns every wrap record owned by `user` in a single call.
     ///
-    /// This is a convenience wrapper around [`get_wraps`] that fetches all
+    /// This is a convenience wrapper around `get_wraps` that fetches all
     /// records without pagination. For users with many wraps, prefer the
-    /// paginated [`get_wraps`] to stay within Soroban resource limits.
+    /// paginated `get_wraps` to stay within Soroban resource limits.
     pub fn get_all_wraps_for_user(e: Env, user: Address) -> soroban_sdk::Vec<WrapRecord> {
         queries::get_all_wraps_for_user(e, user)
     }
@@ -234,7 +267,7 @@ impl StellarWrapContract {
     /// `(user, period)` pairs are **not** automatically extended on new mints.
     /// Anyone can call this `extend_ttl` function to renew a specific wrap record.
     ///
-    /// **Bulk renewal (admin):** The [`renew_all_ttls`] function allows the admin to
+    /// **Bulk renewal (admin):** The `renew_all_ttls` function allows the admin to
     /// extend the TTL of all metadata keys for a user. Full wrap-enumeration renewal
     /// requires period tracking (see Issue #90).
     ///
@@ -277,7 +310,7 @@ impl StellarWrapContract {
     /// # Motivation
     ///
     /// Active users who mint new wraps periodically will have their metadata keys
-    /// automatically renewed by [`mint_wrap`]. However, if there is a long gap between
+    /// automatically renewed by `mint_wrap`. However, if there is a long gap between
     /// mints, the metadata keys could expire. This function lets the admin proactively
     /// renew a user's metadata without requiring a new mint.
     ///
@@ -337,7 +370,7 @@ impl StellarWrapContract {
 
     /// Return whether a wrap exists for `(user, period)` without fetching the record.
     ///
-    /// Prefer this over [`Self::get_wrap`] when only a boolean check is needed.
+    /// Prefer this over `Self::get_wrap` when only a boolean check is needed.
     pub fn has_wrap(e: Env, user: Address, period: u64) -> bool {
         queries::has_wrap(e, user, period)
     }
@@ -362,18 +395,6 @@ impl StellarWrapContract {
     /// Return the alias hash for `user`, or `None` if one has not been set.
     pub fn get_alias_hash(e: Env, user: Address) -> Option<BytesN<32>> {
         alias::get_alias_hash(e, user)
-    }
-
-    pub fn name(e: Env) -> String {
-        token::name(e)
-    }
-
-    pub fn symbol(e: Env) -> String {
-        token::symbol(e)
-    }
-
-    pub fn decimals(e: Env) -> u32 {
-        token::decimals(e)
     }
 
     /// Set the caller's opt-out flag, preventing any future wraps from being
@@ -404,11 +425,12 @@ impl StellarWrapContract {
     /// Return the current contract version number.
     ///
     /// The version starts at `0` and is incremented automatically each time
-    /// the admin calls [`upgrade`] to replace the contract WASM. This provides
+    /// the admin calls `upgrade` to replace the contract WASM. This provides
     /// an on-chain audit trail of upgrade events.
     pub fn contract_version(e: Env) -> u32 {
         queries::contract_version(e)
     }
+
     pub fn revoke_wrap(e: Env, user: Address, period: u64, reason_hash: BytesN<32>) {
         revoke::revoke_wrap(e, user, period, reason_hash);
     }
@@ -419,28 +441,6 @@ impl StellarWrapContract {
 
     pub fn total_revoked(e: Env) -> u64 {
         queries::total_revoked(e)
-    }
-}
-
-/// Token interface implementation — generated as contract functions via
-/// `#[contractimpl]` so clients can call `name`, `symbol`, `decimals`,
-/// and `balance_of` directly.
-#[contractimpl]
-impl token::TokenInterface for StellarWrapContract {
-    fn name(e: Env) -> String {
-        queries::name(e)
-    }
-
-    fn symbol(e: Env) -> String {
-        queries::symbol(e)
-    }
-
-    fn decimals(e: Env) -> u32 {
-        queries::decimals(e)
-    }
-
-    fn balance_of(e: Env, user: Address) -> i128 {
-        queries::balance_of(e, user)
     }
 
     /// Returns estimated current persistent storage bytes used by the contract.
@@ -498,11 +498,7 @@ impl token::TokenInterface for StellarWrapContract {
     ///
     /// # Panics
     /// - [`ContractError::MerkleRootNotSet`] if no root has been published.
-    pub fn verify_whitelist(
-        e: Env,
-        user: Address,
-        proof: soroban_sdk::Vec<BytesN<32>>,
-    ) -> bool {
+    pub fn verify_whitelist(e: Env, user: Address, proof: soroban_sdk::Vec<BytesN<32>>) -> bool {
         merkle::verify_whitelist(e, user, proof)
     }
 
@@ -555,14 +551,15 @@ impl token::TokenInterface for StellarWrapContract {
     pub fn timelock_operation_id(e: Env, action: TimelockAction) -> BytesN<32> {
         timelock::operation_id(&e, &action)
     }
-    /// Admin: Set the cross-chain token bridge relayer address.
-    pub fn set_bridge_relayer(e: Env, relayer: Address) {
-        bridge::set_bridge_relayer(&e, relayer);
+
+    /// Admin: Set the cross-chain token bridge relayers for a given chain.
+    pub fn set_bridge_relayers(e: Env, chain_id: u32, relayers: soroban_sdk::Vec<BytesN<32>>, threshold: u32) {
+        bridge::set_bridge_relayers(&e, chain_id, relayers, threshold);
     }
 
-    /// Returns the configured cross-chain token bridge relayer address.
-    pub fn get_bridge_relayer(e: Env) -> Option<Address> {
-        bridge::get_bridge_relayer(&e)
+    /// Returns the configured cross-chain token bridge relayers for a given chain.
+    pub fn get_bridge_relayers(e: Env, chain_id: u32) -> Option<storage_types::BridgeRelayerSet> {
+        bridge::get_bridge_relayers(&e, chain_id)
     }
 
     /// Admin: Set enabled status for a destination/source cross-chain network chain ID.
@@ -586,6 +583,12 @@ impl token::TokenInterface for StellarWrapContract {
         bridge::bridge_wrap_out(e, user, destination_chain, recipient_address, period)
     }
 
+    /// Relayer-authorized refund for an outbound bridge request rejected by
+    /// the destination chain. Restores the locked wrap to `Active`.
+    pub fn bridge_wrap_refund(e: Env, outbound_nonce: u64) {
+        bridge::bridge_wrap_refund(e, outbound_nonce);
+    }
+
     /// Fulfill an inbound cross-chain wrap bridge transfer from external chain.
     pub fn bridge_wrap_in(
         e: Env,
@@ -595,6 +598,7 @@ impl token::TokenInterface for StellarWrapContract {
         period: u64,
         archetype: Symbol,
         data_hash: BytesN<32>,
+        signatures: soroban_sdk::Vec<BytesN<64>>,
     ) {
         bridge::bridge_wrap_in(
             e,
@@ -604,6 +608,7 @@ impl token::TokenInterface for StellarWrapContract {
             period,
             archetype,
             data_hash,
+            signatures,
         );
     }
 
@@ -662,15 +667,10 @@ impl token::TokenInterface for StellarWrapContract {
     }
 
     /// DAO Governance: Query vote cast by a specific voter on a proposal.
-    pub fn get_admin_proposal_vote(
-        e: Env,
-        proposal_id: u64,
-        voter: Address,
-    ) -> Option<bool> {
+    pub fn get_admin_proposal_vote(e: Env, proposal_id: u64, voter: Address) -> Option<bool> {
         governance::get_admin_proposal_vote(&e, proposal_id, voter)
     }
 
-    /// DAO Governance: Query total proposal count.
     /// DAO Governance: Query total proposal count.
     pub fn get_admin_proposal_count(e: Env) -> u64 {
         governance::get_admin_proposal_count(&e)
@@ -694,7 +694,7 @@ impl token::TokenInterface for StellarWrapContract {
     ///
     /// After calling this, the user must wait for the cooldown period
     /// (configured in `StakeConfig`) before they can withdraw their stake
-    /// via [`withdraw_stake`].
+    /// via `withdraw_stake`.
     ///
     /// While unstaking is in progress, the user receives no fee priority.
     ///
@@ -707,7 +707,7 @@ impl token::TokenInterface for StellarWrapContract {
     /// Complete the unstaking process and withdraw staked funds.
     ///
     /// Can only be called after the cooldown period has elapsed since
-    /// [`unstake`] was called.
+    /// `unstake` was called.
     ///
     /// # Authorization
     /// `user` must authorize the call.
@@ -756,18 +756,40 @@ impl token::TokenInterface for StellarWrapContract {
     }
 }
 
+/// Token interface implementation — generated as contract functions via
+/// `#[contractimpl]` so clients can call `name`, `symbol`, `decimals`,
+/// and `balance_of` directly.
+#[contractimpl]
+impl token::TokenInterface for StellarWrapContract {
+    fn name(e: Env) -> String {
+        queries::name(e)
+    }
+
+    fn symbol(e: Env) -> String {
+        queries::symbol(e)
+    }
+
+    fn decimals(e: Env) -> u32 {
+        queries::decimals(e)
+    }
+
+    fn balance_of(e: Env, user: Address) -> i128 {
+        queries::balance_of(e, user)
+    }
+}
+
 #[cfg(test)]
 mod balance_of_test;
 #[cfg(test)]
 mod bridge_test;
 #[cfg(test)]
-mod governance_test;
+mod expiration_test;
 #[cfg(test)]
-mod merkle_test;
+mod last_updated_test;
 #[cfg(test)]
 mod oracle_test;
 #[cfg(test)]
-mod expiration_test;
+mod prop_test;
 #[cfg(test)]
 mod security_test;
 #[cfg(test)]
@@ -779,6 +801,6 @@ mod test_utils;
 #[cfg(test)]
 mod test_vectors;
 #[cfg(test)]
-mod timelock_test;
-#[cfg(test)]
 mod transfer_test;
+#[cfg(test)]
+mod queries_test;

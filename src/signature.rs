@@ -1,3 +1,4 @@
+use ed25519_dalek::{Signature, VerifyingKey};
 use soroban_sdk::{contracttype, xdr::ToXdr, Address, Bytes, BytesN, Env, Symbol};
 
 use crate::ContractError;
@@ -37,7 +38,7 @@ pub fn construct_mint_payload(
 ) -> Bytes {
     let mut payload = Bytes::new(e);
     payload.append(&Bytes::from_array(e, MINT_DOMAIN_SEPARATOR));
-    
+
     let typed_payload = MintPayload {
         archetype: archetype.clone(),
         contract_id: contract_id.clone(),
@@ -46,9 +47,37 @@ pub fn construct_mint_payload(
         period,
         user: user.clone(),
     };
-    
+
     payload.append(&typed_payload.to_xdr(e));
     payload
+}
+
+/// Verifies an Ed25519 signature in-guest, mapping every failure mode to
+/// [`ContractError::InvalidSignature`].
+///
+/// The host `ed25519_verify` primitive cannot produce the contract error: on a
+/// bad signature it traps the VM with an uncatchable `Error(Crypto,
+/// InvalidInput)` host error (soroban-sdk `Crypto::ed25519_verify` discards the
+/// result, so the guest never regains control). Verifying here with the same
+/// pinned `ed25519-dalek` version (3.0.0, `verify_strict`) that
+/// `soroban-env-host` uses reproduces identical acceptance semantics while
+/// keeping the failure inside the contract's error domain.
+fn verify_ed25519(
+    public_key: &BytesN<32>,
+    message: &Bytes,
+    signature: &BytesN<64>,
+) -> Result<(), ContractError> {
+    let verifying_key = VerifyingKey::from_bytes(&public_key.to_array())
+        .map_err(|_| ContractError::InvalidSignature)?;
+    let sig = Signature::from_bytes(&signature.to_array());
+
+    let mut msg = [0u8; 512];
+    let len = message.len() as usize;
+    message.copy_into_slice(&mut msg[..len]);
+
+    verifying_key
+        .verify_strict(&msg[..len], &sig)
+        .map_err(|_| ContractError::InvalidSignature)
 }
 
 /// Verify an admin signature for a wrap mint request.
@@ -56,6 +85,9 @@ pub fn construct_mint_payload(
 /// The verification is performed over the canonical mint payload so the
 /// signature is bound to the current contract instance, the target user,
 /// the period, the archetype, and the data hash.
+///
+/// Every rejection — malformed key, tampered payload, wrong key, corrupted
+/// signature — surfaces as [`ContractError::InvalidSignature`].
 #[allow(clippy::too_many_arguments)]
 pub fn verify_mint_signature(
     e: &Env,
@@ -77,8 +109,7 @@ pub fn verify_mint_signature(
         data_hash,
         payload_version,
     );
-    e.crypto().ed25519_verify(admin_pubkey, &payload, signature);
-    Ok(())
+    verify_ed25519(admin_pubkey, &payload, signature)
 }
 
 /// Domain separator used for batch aggregated signatures.
@@ -95,7 +126,7 @@ pub fn construct_batch_mint_payload(
     payload.append(&Bytes::from_array(e, BATCH_MINT_DOMAIN_SEPARATOR));
     payload.append(&payload_version.to_xdr(e));
     payload.append(&contract_id.to_xdr(e));
-    payload.append(&(items.len() as u32).to_xdr(e));
+    payload.append(&items.len().to_xdr(e));
     for item in items.iter() {
         payload.append(&item.user.to_xdr(e));
         payload.append(&item.period.to_xdr(e));
@@ -106,6 +137,8 @@ pub fn construct_batch_mint_payload(
 }
 
 /// Verify an aggregated batch signature over a set of batch wrap items.
+///
+/// Any rejection surfaces as [`ContractError::InvalidSignature`].
 pub fn verify_batch_aggregated_signature(
     e: &Env,
     admin_pubkey: &BytesN<32>,
@@ -115,13 +148,76 @@ pub fn verify_batch_aggregated_signature(
     aggregated_signature: &BytesN<64>,
 ) -> Result<(), ContractError> {
     let payload = construct_batch_mint_payload(e, contract_id, items, payload_version);
-    e.crypto().ed25519_verify(admin_pubkey, &payload, aggregated_signature);
-    Ok(())
+    verify_ed25519(admin_pubkey, &payload, aggregated_signature)
 }
 
+pub const INBOUND_BRIDGE_DOMAIN_SEPARATOR: &[u8; 18] = b"stellar-bridge-in1";
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InboundBridgePayload {
+    pub archetype: Symbol,
+    pub contract_id: Address,
+    pub data_hash: BytesN<32>,
+    pub period: u64,
+    pub recipient: Address,
+    pub source_chain: u32,
+    pub source_nonce: u64,
+}
+
+pub fn construct_inbound_bridge_payload(
+    e: &Env,
+    contract_id: &Address,
+    source_chain: u32,
+    source_nonce: u64,
+    recipient: &Address,
+    period: u64,
+    archetype: &Symbol,
+    data_hash: &BytesN<32>,
+) -> Bytes {
+    let mut payload = Bytes::new(e);
+    payload.append(&Bytes::from_array(e, INBOUND_BRIDGE_DOMAIN_SEPARATOR));
+
+    let typed_payload = InboundBridgePayload {
+        archetype: archetype.clone(),
+        contract_id: contract_id.clone(),
+        data_hash: data_hash.clone(),
+        period,
+        recipient: recipient.clone(),
+        source_chain,
+        source_nonce,
+    };
+
+    payload.append(&typed_payload.to_xdr(e));
+    payload
+}
+
+pub fn verify_inbound_bridge_signature(
+    e: &Env,
+    relayer_pubkey: &BytesN<32>,
+    contract_id: &Address,
+    source_chain: u32,
+    source_nonce: u64,
+    recipient: &Address,
+    period: u64,
+    archetype: &Symbol,
+    data_hash: &BytesN<32>,
+    signature: &BytesN<64>,
+) -> Result<(), ContractError> {
+    let payload = construct_inbound_bridge_payload(
+        e,
+        contract_id,
+        source_chain,
+        source_nonce,
+        recipient,
+        period,
+        archetype,
+        data_hash,
+    );
+    verify_ed25519(relayer_pubkey, &payload, signature)
+}
 
 #[cfg(test)]
-#[allow(deprecated)]
 #[allow(clippy::too_many_arguments)]
 mod tests {
     extern crate std;
@@ -132,6 +228,7 @@ mod tests {
     use std::panic::{catch_unwind, AssertUnwindSafe};
 
     use crate::StellarWrapContract;
+    use crate::StellarWrapContractClient;
 
     fn sign_payload(
         env: &Env,
@@ -164,7 +261,7 @@ mod tests {
     #[test]
     fn test_construct_mint_payload_has_expected_byte_layout() {
         let env = Env::default();
-        let contract_id = env.register_contract(None, StellarWrapContract);
+        let contract_id = env.register(StellarWrapContract, ());
         let user = Address::generate(&env);
         let archetype = symbol_short!("arch");
         let data_hash = BytesN::from_array(&env, &[42u8; 32]);
@@ -175,7 +272,7 @@ mod tests {
 
         let mut expected = Bytes::new(&env);
         expected.append(&Bytes::from_array(&env, MINT_DOMAIN_SEPARATOR));
-        
+
         let typed_payload = MintPayload {
             archetype: archetype.clone(),
             contract_id: contract_id.clone(),
@@ -192,7 +289,7 @@ mod tests {
     #[test]
     fn test_verify_mint_signature_accepts_valid_signature() {
         let env = Env::default();
-        let contract_id = env.register_contract(None, StellarWrapContract);
+        let contract_id = env.register(StellarWrapContract, ());
         let user = Address::generate(&env);
         let archetype = symbol_short!("arch");
         let data_hash = BytesN::from_array(&env, &[7u8; 32]);
@@ -228,7 +325,7 @@ mod tests {
     #[test]
     fn test_verify_mint_signature_rejects_invalid_signature() {
         let env = Env::default();
-        let contract_id = env.register_contract(None, StellarWrapContract);
+        let contract_id = env.register(StellarWrapContract, ());
         let user = Address::generate(&env);
         let archetype = symbol_short!("arch");
         let data_hash = BytesN::from_array(&env, &[8u8; 32]);
@@ -259,7 +356,7 @@ mod tests {
     #[test]
     fn test_verify_mint_signature_rejects_wrong_key() {
         let env = Env::default();
-        let contract_id = env.register_contract(None, StellarWrapContract);
+        let contract_id = env.register(StellarWrapContract, ());
         let user = Address::generate(&env);
         let archetype = symbol_short!("arch");
         let data_hash = BytesN::from_array(&env, &[9u8; 32]);
@@ -300,7 +397,7 @@ mod tests {
     #[test]
     fn test_mint_wrap_rejects_invalid_signature_length() {
         let env = Env::default();
-        let contract_id = env.register_contract(None, StellarWrapContract);
+        let contract_id = env.register(StellarWrapContract, ());
         let client = StellarWrapContractClient::new(&env, &contract_id);
 
         let signing_key = SigningKey::from_bytes(&[99u8; 32]);
@@ -317,14 +414,7 @@ mod tests {
         let invalid_sig = BytesN::from_array(&env, &[0u8; 64]);
 
         let result = catch_unwind(AssertUnwindSafe(|| {
-            client.mint_wrap(
-                &user,
-                &period,
-                &archetype,
-                &data_hash,
-                &1u32,
-                &invalid_sig,
-            );
+            client.mint_wrap(&user, &period, &archetype, &data_hash, &1u32, &invalid_sig);
         }));
 
         assert!(result.is_err());
@@ -333,7 +423,7 @@ mod tests {
     #[test]
     fn test_verify_batch_aggregated_signature_success() {
         let env = Env::default();
-        let contract_id = env.register_contract(None, StellarWrapContract);
+        let contract_id = env.register(StellarWrapContract, ());
         let user1 = Address::generate(&env);
         let user2 = Address::generate(&env);
         let archetype = symbol_short!("arch");
@@ -383,6 +473,4 @@ mod tests {
         )
         .is_ok());
     }
-
->>>>>>> main
 }
