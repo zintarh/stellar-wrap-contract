@@ -151,6 +151,72 @@ pub fn verify_batch_aggregated_signature(
     verify_ed25519(admin_pubkey, &payload, aggregated_signature)
 }
 
+pub const INBOUND_BRIDGE_DOMAIN_SEPARATOR: &[u8; 18] = b"stellar-bridge-in1";
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InboundBridgePayload {
+    pub archetype: Symbol,
+    pub contract_id: Address,
+    pub data_hash: BytesN<32>,
+    pub period: u64,
+    pub recipient: Address,
+    pub source_chain: u32,
+    pub source_nonce: u64,
+}
+
+pub fn construct_inbound_bridge_payload(
+    e: &Env,
+    contract_id: &Address,
+    source_chain: u32,
+    source_nonce: u64,
+    recipient: &Address,
+    period: u64,
+    archetype: &Symbol,
+    data_hash: &BytesN<32>,
+) -> Bytes {
+    let mut payload = Bytes::new(e);
+    payload.append(&Bytes::from_array(e, INBOUND_BRIDGE_DOMAIN_SEPARATOR));
+
+    let typed_payload = InboundBridgePayload {
+        archetype: archetype.clone(),
+        contract_id: contract_id.clone(),
+        data_hash: data_hash.clone(),
+        period,
+        recipient: recipient.clone(),
+        source_chain,
+        source_nonce,
+    };
+
+    payload.append(&typed_payload.to_xdr(e));
+    payload
+}
+
+pub fn verify_inbound_bridge_signature(
+    e: &Env,
+    relayer_pubkey: &BytesN<32>,
+    contract_id: &Address,
+    source_chain: u32,
+    source_nonce: u64,
+    recipient: &Address,
+    period: u64,
+    archetype: &Symbol,
+    data_hash: &BytesN<32>,
+    signature: &BytesN<64>,
+) -> Result<(), ContractError> {
+    let payload = construct_inbound_bridge_payload(
+        e,
+        contract_id,
+        source_chain,
+        source_nonce,
+        recipient,
+        period,
+        archetype,
+        data_hash,
+    );
+    verify_ed25519(relayer_pubkey, &payload, signature)
+}
+
 #[cfg(test)]
 #[allow(clippy::too_many_arguments)]
 mod tests {

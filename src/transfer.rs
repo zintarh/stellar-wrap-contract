@@ -194,9 +194,7 @@ pub(crate) fn transfer_wrap(e: Env, from: Address, to: Address, period: u64) {
             (fee.token.clone(), fee.recipient.clone(), fee.amount),
         );
     } else {
-        e.events().publish(
-            (symbol_short!("transfer"), from, to, period),
-            (),
-        );
+        e.events()
+            .publish((symbol_short!("transfer"), from, to, period), ());
     }
 }

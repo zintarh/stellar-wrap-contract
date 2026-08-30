@@ -1,8 +1,9 @@
 use soroban_sdk::{panic_with_error, symbol_short, Address, Bytes, BytesN, Env, Symbol};
 
 use crate::storage_types::{
-    InboundBridgeRecord, OutboundBridgeRequest, WrapLifecycleFSM, WrapRecord, WrapState,
+    BridgeRelayerSet, InboundBridgeRecord, OutboundBridgeRequest, WrapLifecycleFSM, WrapRecord, WrapState,
 };
+use crate::signature::verify_inbound_bridge_signature;
 use crate::{storage_accounting, ContractError, DataKey};
 
 const TTL_ONE_YEAR: u32 = 17_280 * 365;
@@ -11,17 +12,25 @@ const TTL_ONE_YEAR: u32 = 17_280 * 365;
 pub(crate) fn set_bridge_relayer(e: &Env, relayer: Address) {
     let admin = crate::admin::read_admin(e);
     admin.require_auth();
+    if threshold == 0 || threshold > relayers.len() as u32 {
+        panic_with_error!(e, ContractError::InvalidThreshold);
+    }
+    let key = DataKey::BridgeRelayerSet(chain_id);
+    let relayer_set = BridgeRelayerSet {
+        relayers,
+        threshold,
+    };
     e.storage()
         .instance()
-        .set(&DataKey::BridgeRelayer, &relayer);
+        .set(&key, &relayer_set);
     e.storage()
         .instance()
         .extend_ttl(TTL_ONE_YEAR, TTL_ONE_YEAR);
 }
 
-/// Returns the configured bridge relayer address, or None if not set.
-pub(crate) fn get_bridge_relayer(e: &Env) -> Option<Address> {
-    e.storage().instance().get(&DataKey::BridgeRelayer)
+/// Returns the configured bridge relayer set for a given chain, or None if not set.
+pub(crate) fn get_bridge_relayers(e: &Env, chain_id: u32) -> Option<BridgeRelayerSet> {
+    e.storage().instance().get(&DataKey::BridgeRelayerSet(chain_id))
 }
 
 /// Enable or disable a cross-chain network chain ID. Requires admin authorization.
@@ -153,7 +162,11 @@ pub(crate) fn bridge_wrap_refund(e: Env, outbound_nonce: u64) {
         .extend_ttl(&wrap_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
 
     e.events().publish(
-        (symbol_short!("br_refund"), request.sender.clone(), request.period),
+        (
+            symbol_short!("br_refund"),
+            request.sender.clone(),
+            request.period,
+        ),
         outbound_nonce,
     );
 }
@@ -173,15 +186,57 @@ pub(crate) fn bridge_wrap_in(
     period: u64,
     archetype: Symbol,
     data_hash: BytesN<32>,
+    signatures: soroban_sdk::Vec<BytesN<64>>,
 ) {
     crate::admin::require_not_paused(&e);
 
-    let relayer = get_bridge_relayer(&e)
-        .unwrap_or_else(|| panic_with_error!(e, ContractError::BridgeNotInitialized));
-    relayer.require_auth();
-
     if !is_chain_supported(&e, source_chain) {
         panic_with_error!(e, ContractError::ChainDisabled);
+    }
+
+    let relayer_set = get_bridge_relayers(&e, source_chain)
+        .unwrap_or_else(|| panic_with_error!(e, ContractError::BridgeNotInitialized));
+
+    if signatures.len() < relayer_set.threshold {
+        panic_with_error!(e, ContractError::InvalidSignature);
+    }
+
+    let contract_id = e.current_contract_address();
+    let mut verified_count = 0;
+    let mut used_relayers = soroban_sdk::Vec::new(&e);
+
+    for sig in signatures.iter() {
+        let mut matched = false;
+        for relayer in relayer_set.relayers.iter() {
+            if used_relayers.contains(&relayer) {
+                continue;
+            }
+            if verify_inbound_bridge_signature(
+                &e,
+                &relayer,
+                &contract_id,
+                source_chain,
+                source_nonce,
+                &recipient,
+                period,
+                &archetype,
+                &data_hash,
+                &sig
+            ).is_ok() {
+                used_relayers.push_back(relayer);
+                matched = true;
+                break;
+            }
+        }
+        if matched {
+            verified_count += 1;
+        } else {
+            panic_with_error!(e, ContractError::InvalidSignature);
+        }
+    }
+
+    if verified_count < relayer_set.threshold {
+        panic_with_error!(e, ContractError::InvalidSignature);
     }
 
     let processed_key = DataKey::InboundBridgeProcessed(source_chain, source_nonce);
