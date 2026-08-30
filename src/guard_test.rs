@@ -240,7 +240,7 @@ fn test_duplicate_mint_failure_leaves_no_guard_entry() {
         &CURRENT_PAYLOAD_VERSION,
         &sig,
     );
-    assert!(result.is_err(), "duplicate mint must fail");
+    assert!(result.is_err(), "Duplicate mint should fail.");
 
     // No residual guard entry.
     let guard_key = DataKey::MintGuard(user.clone());
