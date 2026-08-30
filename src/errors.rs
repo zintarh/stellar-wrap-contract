@@ -63,4 +63,6 @@ pub enum ContractError {
     StorageInvariantViolation = 51,
     /// The admin signing key provided to `initialize` is invalid (e.g. all-zero).
     InvalidAdminPubKey = 52,
+    /// Scheduling a new timelock operation would exceed `MAX_PENDING_OPERATIONS`.
+    TooManyPendingOperations = 53,
 }

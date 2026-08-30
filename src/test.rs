@@ -2521,3 +2521,75 @@ fn test_update_latest_period_option_storage_accounting() {
 }
 
 
+
+// ============================================================================
+// Timelock pending-operations bound tests
+// ============================================================================
+
+/// Scheduling distinct actions up to MAX_PENDING_OPERATIONS succeeds; the
+/// (MAX_PENDING_OPERATIONS + 1)-th attempt panics with TooManyPendingOperations.
+#[test]
+#[should_panic(expected = "Error(Contract, #53)")]
+fn test_timelock_pending_operations_cap_is_enforced() {
+    let env = Env::default();
+    let contract_id = env.register(StellarWrapContract, ());
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let signing_key = SigningKey::from_bytes(&[1u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+
+    env.mock_all_auths();
+    client.initialize(&admin, &admin_pubkey);
+    client.enable_timelock(&timelock::MIN_DELAY);
+
+    // Schedule MAX_PENDING_OPERATIONS distinct SetAdmin operations.
+    // Each uses a freshly generated address so the deterministic id is unique.
+    for _ in 0..timelock::MAX_PENDING_OPERATIONS {
+        let addr = Address::generate(&env);
+        client.timelock_schedule(&TimelockAction::SetAdmin(addr));
+    }
+
+    // One more must be rejected.
+    let overflow_addr = Address::generate(&env);
+    client.timelock_schedule(&TimelockAction::SetAdmin(overflow_addr));
+}
+
+/// After executing (removing) an operation the slot is freed and a new
+/// operation can be scheduled, confirming the bound is not a one-time limit.
+#[test]
+fn test_timelock_pending_slot_freed_after_execute() {
+    let env = Env::default();
+    let contract_id = env.register(StellarWrapContract, ());
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let signing_key = SigningKey::from_bytes(&[1u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+
+    env.mock_all_auths();
+    client.initialize(&admin, &admin_pubkey);
+    client.enable_timelock(&timelock::MIN_DELAY);
+
+    // Fill every slot.
+    let mut first_id = BytesN::from_array(&env, &[0u8; 32]);
+    let mut first_addr = Address::generate(&env);
+    for i in 0..timelock::MAX_PENDING_OPERATIONS {
+        let addr = Address::generate(&env);
+        let id = client.timelock_schedule(&TimelockAction::SetAdmin(addr.clone()));
+        if i == 0 {
+            first_id = id;
+            first_addr = addr;
+        }
+    }
+
+    // Queue is now full; let the delay pass and execute the first operation.
+    env.ledger().with_mut(|l| l.timestamp += timelock::MIN_DELAY);
+    client.timelock_execute(&first_id);
+
+    // A slot is free; this must succeed.
+    let new_addr = Address::generate(&env);
+    // Ensure the new address differs from first_addr so its id is unique.
+    assert_ne!(new_addr, first_addr);
+    client.timelock_schedule(&TimelockAction::SetAdmin(new_addr));
+
+    assert_eq!(client.timelock_pending().len(), timelock::MAX_PENDING_OPERATIONS);
+}

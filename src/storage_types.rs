@@ -245,7 +245,8 @@ pub enum DataKey {
     TimelockDelay,
     /// A scheduled privileged action, keyed by its deterministic operation id.
     TimelockOp(BytesN<32>),
-    /// Ids of every currently scheduled timelock operation (instance-level).
+    /// Ids of every currently scheduled timelock operation (persistent).
+    /// Bounded to [`crate::timelock::MAX_PENDING_OPERATIONS`] entries.
     TimelockOps,
     // Token Bridge storage keys:
     /// Address authorized as the cross-chain token bridge relayer.

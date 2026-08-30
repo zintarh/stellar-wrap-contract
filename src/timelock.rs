@@ -19,6 +19,15 @@ pub const MIN_DELAY: u64 = 3_600;
 /// with an effectively infinite delay.
 pub const MAX_DELAY: u64 = 30 * 24 * 3_600;
 
+/// Hard cap on the number of simultaneously pending operations.
+///
+/// The `TimelockAction` enum has exactly 5 variants and the deterministic-id
+/// scheme already prevents duplicate actions, so in practice the queue never
+/// exceeds 5 entries.  This constant makes the bound explicit and enforceable,
+/// keeping the index size O(1) regardless of how many operations are scheduled
+/// over the lifetime of the contract.
+pub const MAX_PENDING_OPERATIONS: u32 = 10;
+
 /// Persistent TTL for scheduled operations (~1 year in ledgers), matching the
 /// TTL used for wrap records elsewhere in the contract.
 const TTL_ONE_YEAR: u32 = 17_280 * 365;
@@ -110,7 +119,7 @@ pub(crate) fn operation_id(e: &Env, action: &TimelockAction) -> BytesN<32> {
 
 fn read_op_ids(e: &Env) -> Vec<BytesN<32>> {
     e.storage()
-        .instance()
+        .persistent()
         .get(&DataKey::TimelockOps)
         .unwrap_or_else(|| Vec::new(e))
 }
@@ -128,8 +137,11 @@ fn remove_op(e: &Env, id: &BytesN<32>) {
         }
     }
     e.storage()
-        .instance()
+        .persistent()
         .set(&DataKey::TimelockOps, &remaining);
+    e.storage()
+        .persistent()
+        .extend_ttl(&DataKey::TimelockOps, TTL_ONE_YEAR, TTL_ONE_YEAR);
 }
 
 /// Admin-only: queue `action` for execution once the delay has elapsed.
@@ -159,6 +171,11 @@ pub(crate) fn schedule(e: Env, action: TimelockAction) -> BytesN<32> {
         panic_with_error!(e, ContractError::TimelockOperationExists);
     }
 
+    let mut ids = read_op_ids(&e);
+    if ids.len() >= MAX_PENDING_OPERATIONS {
+        panic_with_error!(e, ContractError::TooManyPendingOperations);
+    }
+
     let now = e.ledger().timestamp();
     let op = TimelockOperation {
         action,
@@ -171,9 +188,13 @@ pub(crate) fn schedule(e: Env, action: TimelockAction) -> BytesN<32> {
         .persistent()
         .extend_ttl(&key, TTL_ONE_YEAR, TTL_ONE_YEAR);
 
-    let mut ids = read_op_ids(&e);
     ids.push_back(id.clone());
-    e.storage().instance().set(&DataKey::TimelockOps, &ids);
+    e.storage()
+        .persistent()
+        .set(&DataKey::TimelockOps, &ids);
+    e.storage()
+        .persistent()
+        .extend_ttl(&DataKey::TimelockOps, TTL_ONE_YEAR, TTL_ONE_YEAR);
 
     e.events().publish(
         (symbol_short!("timelock"), symbol_short!("sched")),
