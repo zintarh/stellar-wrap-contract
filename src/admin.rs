@@ -1,7 +1,7 @@
 use soroban_sdk::{panic_with_error, symbol_short, Address, BytesN, Env};
 
 use crate::mint::TTL_TEMP;
-use crate::{ContractError, DataKey};
+use crate::{ContractError, DataKey, TransferFeeConfig};
 
 /// Reads the stored admin or panics with `NotInitialized`.
 pub(crate) fn read_admin(e: &Env) -> Address {
@@ -11,21 +11,38 @@ pub(crate) fn read_admin(e: &Env) -> Address {
         .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized))
 }
 
+/// Initializes the contract with the controlling admin address and the
+/// Ed25519 public key used to verify mint signatures.
+///
+/// # Panics
+/// - [`ContractError::AlreadyInitialized`] if the contract was already initialized.
+/// - [`ContractError::InvalidAdminPubKey`] if `admin_pubkey` is the all-zero
+///   key. An all-zero Ed25519 public key has no known corresponding private
+///   key, so accepting it would silently brick every future `mint_wrap` call
+///   (no valid signature could ever be produced) while leaving the contract in
+///   an "initialized" state. Rejecting it at initialization time prevents this
+///   misconfiguration rather than discovering it after deployment.
+#[allow(deprecated)] // TODO(#718): migrate to #[contractevent]
 pub(crate) fn initialize(e: Env, admin: Address, admin_pubkey: BytesN<32>) {
+    admin.require_auth();
     if e.storage().instance().has(&DataKey::Admin) {
         panic_with_error!(e, ContractError::AlreadyInitialized);
+    }
+    if admin_pubkey == BytesN::from_array(&e, &[0u8; 32]) {
+        panic_with_error!(e, ContractError::InvalidAdminPubKey);
     }
     e.storage().instance().set(&DataKey::Admin, &admin);
     e.storage()
         .instance()
         .set(&DataKey::AdminPubKey, &admin_pubkey);
-    e.events().publish((symbol_short!("init"),), admin);
+    crate::events::publish_event(&e, crate::events::Event::AdminInit { admin });
 }
 
 /// Immediate admin replacement.
 ///
 /// Rejected once the timelock controller is enabled — the admin must then use
 /// `schedule(TimelockAction::SetAdmin(..))` followed by `execute`.
+#[allow(deprecated)] // TODO(#718): migrate to #[contractevent]
 pub(crate) fn update_admin(e: Env, new_admin: Address) {
     crate::timelock::require_direct_call_allowed(&e);
     let current_admin = read_admin(&e);
@@ -43,10 +60,41 @@ pub(crate) fn update_admin(e: Env, new_admin: Address) {
     );
 }
 
+#[allow(deprecated)] // TODO(#718): migrate to #[contractevent]
 pub(crate) fn set_pause(e: Env, paused: bool) {
     read_admin(&e).require_auth();
     e.storage().instance().set(&DataKey::Paused, &paused);
-    e.events().publish((symbol_short!("pause"),), paused);
+    crate::events::publish_event(&e, crate::events::Event::AdminPause { paused });
+}
+
+/// Admin-only: configure the token-denominated fee charged by `transfer_wrap`.
+///
+/// An amount of zero enables fee-free transfers without removing the configured
+/// token and recipient.
+#[allow(deprecated)] // TODO(#718): migrate to #[contractevent]
+pub(crate) fn set_transfer_fee(e: Env, token: Address, recipient: Address, amount: i128) {
+    read_admin(&e).require_auth();
+    if amount < 0 || token == recipient {
+        panic_with_error!(e, ContractError::InvalidFeeParams);
+    }
+    e.storage().instance().set(
+        &DataKey::TransferFee,
+        &TransferFeeConfig {
+            amount,
+            recipient: recipient.clone(),
+            token: token.clone(),
+        },
+    );
+    e.events()
+        .publish((symbol_short!("fee"),), (token, recipient, amount));
+}
+
+/// Admin-only: clear the configured transfer fee, returning the contract to an unconfigured state.
+#[allow(deprecated)] // TODO(#718): migrate to #[contractevent]
+pub(crate) fn clear_transfer_fee(e: Env) {
+    read_admin(&e).require_auth();
+    e.storage().instance().remove(&DataKey::TransferFee);
+    crate::events::publish_event(&e, crate::events::Event::AdminFeeCleared);
 }
 
 pub(crate) fn is_paused(e: &Env) -> bool {
@@ -89,6 +137,7 @@ pub(crate) fn migration_version(e: &Env) -> u32 {
 ///
 /// Rejected once the timelock controller is enabled — the admin must then use
 /// `schedule(TimelockAction::Upgrade(..))` followed by `execute`.
+#[allow(deprecated)] // TODO(#718): migrate to #[contractevent]
 pub(crate) fn upgrade(e: Env, new_wasm_hash: BytesN<32>) {
     crate::timelock::require_direct_call_allowed(&e);
     let current_admin: Address = e
@@ -111,8 +160,10 @@ pub(crate) fn upgrade(e: Env, new_wasm_hash: BytesN<32>) {
         .set(&DataKey::ContractVersion, &next_version);
 
     // Emit audit event with the requested WASM hash and new version
-    e.events()
-        .publish((symbol_short!("upgrade"), next_version), new_wasm_hash.clone());
+    e.events().publish(
+        (symbol_short!("upgrade"), next_version),
+        new_wasm_hash.clone(),
+    );
 
     // Update the contract WASM with the provided hash
     e.deployer().update_current_contract_wasm(new_wasm_hash);

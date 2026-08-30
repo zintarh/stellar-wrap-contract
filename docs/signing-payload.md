@@ -124,8 +124,10 @@ pub fn verify_mint_signature(
     signature: &BytesN<64>,
 ) -> Result<(), ContractError> {
     let payload = construct_mint_payload(e, contract_id, user, period, archetype, data_hash, payload_version);
-    e.crypto().ed25519_verify(admin_pubkey, &payload, signature);
-    Ok(())
+    // In-guest Ed25519 verification (ed25519-dalek, same 3.0.0 pin the host
+    // uses) so any failure surfaces as Error(Contract, #5) instead of the
+    // host's uncatchable Error(Crypto, InvalidInput) trap.
+    verify_ed25519(admin_pubkey, &payload, signature)
 }
 ```
 
@@ -253,8 +255,9 @@ fn sign_payload(
 ```
 
 Any byte modification to the payload (including reordering fields, or signing
-with the wrong `payload_version`) produces a different message, and
-`ed25519_verify` will panic with `Error(Contract, #5)`.
+with the wrong `payload_version`) produces a different message, and the
+contract's in-guest Ed25519 verification (`verify_ed25519` in `src/signature.rs`)
+will panic with `Error(Contract, #5)`.
 
 ---
 
@@ -264,7 +267,7 @@ with the wrong `payload_version`) produces a different message, and
 | Code | Name | Triggered when |
 |------|------|----------------|
 | `#3` | `Unauthorized` | `user.require_auth()` fails |
-| `#5` | `InvalidSignature` | `payload_version` doesn't match `CURRENT_PAYLOAD_VERSION`, or `ed25519_verify` rejects the signature (wrong payload order/fields, wrong key, corrupted bytes) |
+| `#5` | `InvalidSignature` | `payload_version` doesn't match `CURRENT_PAYLOAD_VERSION`, or in-guest Ed25519 verification rejects the signature (wrong payload order/fields, wrong key, corrupted bytes) |
 | `#6` | `InvalidPeriod` | `period` is outside `202401`–`210012` |
 
 See [ERRORS.md](../ERRORS.md) for the full error catalogue.

@@ -1,12 +1,12 @@
 #![cfg(test)]
 
 use super::{StellarWrapContract, StellarWrapContractClient};
-use soroban_sdk::{Env, Address, testutils::Address as _};
+use soroban_sdk::{testutils::Address as _, Address, Env};
 
 #[test]
 fn test_balance_of_starts_at_zero() {
     let env = Env::default();
-    let contract_id = env.register_contract(None, StellarWrapContract);
+    let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
     let user = Address::generate(&env);

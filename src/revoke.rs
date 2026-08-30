@@ -1,7 +1,7 @@
 use soroban_sdk::{panic_with_error, symbol_short, Address, BytesN, Env};
 
 use crate::storage_accounting;
-use crate::{ContractError, DataKey, WrapRecord};
+use crate::{ContractError, DataKey};
 
 /// Revokes an existing wrap record for the given user and period.
 ///
@@ -23,6 +23,7 @@ use crate::{ContractError, DataKey, WrapRecord};
 ///   auditors can recompute the hash and confirm it matches the on-chain value.
 /// - If no reason is provided (all-zero hash), the event still emits for
 ///   transparency, but without a link to off-chain evidence.
+#[allow(deprecated)] // TODO(#718): migrate to #[contractevent]
 pub(crate) fn revoke_wrap(e: Env, user: Address, period: u64, reason_hash: BytesN<32>) {
     let admin: Address = e
         .storage()
@@ -69,6 +70,10 @@ pub(crate) fn revoke_wrap(e: Env, user: Address, period: u64, reason_hash: Bytes
     let current_total: u64 = e.storage().temporary().get(&total_revoked_key).unwrap_or(0);
     let next_total = current_total + 1;
     e.storage().instance().set(&total_revoked_key, &next_total);
+
+    // Record the revocation timestamp in the user's last-updated marker.
+    crate::mint::update_last_updated(&e, &user);
+
     e.events()
         .publish((symbol_short!("revoke"), user, period), reason_hash);
 }
