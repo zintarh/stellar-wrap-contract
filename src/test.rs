@@ -895,6 +895,7 @@ fn test_mint_wrap_rejects_signature_from_wrong_key() {
 
     // Nothing may be written by the failed mint.
     assert!(client.get_wrap(&user, &period).is_none());
+    assert!(client.get_latest_wrap(&user).is_none());
     assert_eq!(client.balance_of(&user), 0);
 }
 
