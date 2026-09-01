@@ -1,8 +1,8 @@
 use soroban_sdk::contracterror;
 
-#[contracterror]
-#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
-#[repr(u32)]
+#contracterror
+#derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)
+#{repr(u32)
 pub enum ContractError {
     AlreadyInitialized = 1,
     NotInitialized = 2,
@@ -64,4 +64,5 @@ pub enum ContractError {
     /// The admin signing key provided to `initialize` is invalid (e.g. all-zero).
     InvalidAdminPubKey = 52,
     InvalidThreshold = 53,
+    MerkleProofTooLong = 54,
 }
