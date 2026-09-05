@@ -123,7 +123,9 @@ pub(crate) fn bridge_wrap_out(
 
     let nonce_key = DataKey::OutboundBridgeNonce;
     let current_nonce: u64 = e.storage().instance().get(&nonce_key).unwrap_or(0);
-    let next_nonce = current_nonce + 1;
+    let next_nonce = current_nonce
+        .checked_add(1)
+        .unwrap_or_else(|| panic_with_error!(e, ContractError::ArithmeticOverflow));
     e.storage().instance().set(&nonce_key, &next_nonce);
     e.storage()
         .instance()
@@ -267,7 +269,9 @@ pub(crate) fn bridge_wrap_in(
             }
         }
         if matched {
-            verified_count += 1;
+            verified_count = verified_count
+                .checked_add(1)
+                .unwrap_or_else(|| panic_with_error!(e, ContractError::ArithmeticOverflow));
         } else {
             panic_with_error!(e, ContractError::InvalidSignature);
         }

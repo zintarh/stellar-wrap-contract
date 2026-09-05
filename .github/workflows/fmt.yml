@@ -1,11 +1,11 @@
 name: Cargo Fmt
-
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
-
+env:
+  RUSTFLAGS: "-C overflow-checks=on"
 jobs:
   fmt:
     name: Cargo Format Check
@@ -17,4 +17,4 @@ jobs:
         with:
           components: rustfmt
       - name: Run cargo fmt check
-        run: cargo fmt --check
+        run: cargo fmt --all -- --check

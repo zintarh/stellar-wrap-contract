@@ -1,5 +1,4 @@
 name: Cargo Clippy
-
 on:
   push:
     branches: [ main ]
@@ -18,3 +17,5 @@ jobs:
           components: clippy
       - name: Run cargo clippy
         run: cargo clippy --all-targets -- -D warnings
+        env:
+          RUSTFLAGS: "-C overflow-checks=yes"
