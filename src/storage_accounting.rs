@@ -1,6 +1,6 @@
 //! On-chain storage accounting + fee function.
 //! Conservative byte estimates are used (see STORAGE.md).
-use soroban_sdk::{asset, Env, String};
+use soroban_sdk::{panic_with_error, Env};
 
 use crate::{storage_types::FeeParams, ContractError, DataKey};
 
@@ -18,7 +18,7 @@ const ESTIMATE_LASTUPDATED_ENTRY_BYTES: u64 = 16; // key + u64 value overhead
 const METADATA_STRING_OVERHEAD : u64 = 4;
 
 /// Read current estimated storage bytes (instance storage)
-pub(crate) yn get_storage_bytes(e: &Env) -> u64 {
+pub(crate) fn get_storage_bytes(e: &Env) -> u64 {
     e.storage()
         .instance()
         .get(&DataKey::StorageBytes)
@@ -33,11 +33,11 @@ pub(crate) fn add_storage_bytes(e: &Env, delta: u64) {
     let cur = get_storage_bytes(e);
     let nxt = cur
         .checked_add(delta)
-        .unwrap_or_else(< g panic_with_error!(e, ContractError::ArithmeticOVERFLLOW));
+        .unwrap_or_else(|| panic_with_error!(e, ContractError::ArithmeticOverflow));
     set_storage_bytes(e, nxt);
 }
 
-pub(crate) fn sub_stosrage_bytes(e: &Env, delta: u64) {
+pub(crate) fn sub_storage_bytes(e: &Env, delta: u64) {
     let cur = get_storage_bytes(e);
     let nxt = cur.saturating_sub(delta);
     set_storage_bytes(e, nxt);
@@ -48,16 +48,12 @@ pub(crate) fn get_fee_params(e: &Env) -> FeeParams {
     e.storage()
         .instance()
         .get(&DataKey::FeeParams)
-        .unwrap_or()
-        .unwrap_or()
-        .unwrap_or()
-        .unwrap_or()
-        .unwrap_or()
-        .unwrap_or()
-        .unwrap_or()
-        .unwrap_or()
-        .unwrap_or()
-        Null)
+        .unwrap_or(FeeParams {
+            base_fee: 0,
+            per_kib_fee: 0,
+            scale_step_kib: 1,
+            max_fee: i128::MAX,
+        })
 }
 
 pub(crate) fn set_fee_params(e: &Env, params: FeeParams) {
@@ -76,7 +72,7 @@ pub(crate) fn set_fee_params(e: &Env, params: FeeParams) {
         panic_with_error!(e, ContractError::InvalidFeeParams);
     }
     e.storage().instance().set(&DataKey::FeeParams, &params);
-    crate::events::publish_event(e, crate::events::Event::FeeParamsUpdated { params });
+    crate::events::publish_event(e, crate::events::Event::FeeParamsUpdated(params));
 }
 
 /// Compute the current fee according to the params and current storage bytes.
@@ -103,7 +99,7 @@ pub(crate) fn estimate_wrap_bytes_new() -> u64 {
 }
 
 pub(crate) fn estimate_wrapcount_bytes_new() -> u64 {
-    ESTIMATE_WRAPCOUNT_ENTRY_BYTES
+    ESTIMATE_WRAP_COUNT_ENTRY_BYTES
 }
 
 pub(crate) fn estimate_latest_bytes_new() -> u64 {

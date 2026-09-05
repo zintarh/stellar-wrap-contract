@@ -86,6 +86,12 @@ pub struct WrapRecord {
 
     /// Current lifecycle state and its last update timestamp.
     pub fsm: WrapLifecycleFSM,
+
+    /// Optional human-readable description attached by the admin.
+    pub description: Option<String>,
+
+    /// Optional image URL attached by the admin.
+    pub image_url: Option<String>,
 }
 
 #[contracttype]
@@ -303,10 +309,6 @@ pub enum DataKey {
     StakeConfig,
     /// Total amount staked across all users (instance-level).
     TotalStaked,
-    /// Single relayer address that authorizes outbound bridge refunds
-    /// (`bridge_wrap_refund`). Kept alongside the per-chain relayer sets used
-    /// for inbound bridges.
-    BridgeRelayer,
 }
 
 #[contracttype]

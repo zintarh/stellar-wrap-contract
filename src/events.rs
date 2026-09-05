@@ -5,14 +5,16 @@
 //! variant converts to its corresponding `Symbol` and back, making
 //! event names strongly typed throughout the codebase.
 
-use soroban_sdk::{contracttype, Address, Env, Symbol};
+use soroban_sdk::{contracttype, symbol_short, Address, BytesN, Env, Symbol};
 
-use crate::storage_types::{StakeConfig, WrapState};
+use crate::storage_types::{FeeParams, StakeConfig, WrapState};
 /// All events emitted by the contract.
 ///
 /// This enum is used for type-safe event publishing via [`publish_event`].
 /// Each variant maps to a `(domain, action)` pair and carries the data fields
 /// that are published as the event payload.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Event {
     // Admin
     AdminInit(Address),
@@ -21,6 +23,7 @@ pub enum Event {
     AdminFeeUpdated(Address, Address, i128),
     AdminFeeCleared,
     AdminUpgrade(u32, BytesN<32>),
+    FeeParamsUpdated(FeeParams),
 
     // Bridge
     BridgeOut(Address, u32, u64, BytesN<32>, u64),
@@ -94,6 +97,10 @@ pub fn publish_event(e: &Env, event: Event) {
         ),
         Event::AdminUpgrade(..) => e.events().publish(
             (v1, symbol_short!("admin"), symbol_short!("upgrade")),
+            event,
+        ),
+        Event::FeeParamsUpdated(..) => e.events().publish(
+            (v1, symbol_short!("admin"), symbol_short!("feeparam")),
             event,
         ),
 
@@ -220,4 +227,24 @@ pub enum MintEventData {
     Mint(Address, u64, Symbol),
     /// A wrap's lifecycle state was transitioned.
     Transition(Address, u64, WrapState),
+}
+
+/// Strongly typed mint event topic.
+///
+/// Converted to a `Symbol` for the first topic of mint events via
+/// [`MintEventType::to_symbol`].
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum MintEventType {
+    /// A single or batch mint of a wrap.
+    Mint,
+}
+
+impl MintEventType {
+    /// Map this variant to its on-chain `Symbol` topic.
+    pub fn to_symbol(&self, e: &Env) -> Symbol {
+        match self {
+            MintEventType::Mint => symbol_short!("mint"),
+        }
+    }
 }
