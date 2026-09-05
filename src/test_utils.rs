@@ -47,8 +47,6 @@ pub(crate) fn sign_payload_versioned(
         payload_version,
     );
     let len = payload.len() as usize;
-
-    let len = payload.len() as usize;
     let mut out = vec![0u8; len];
     payload.copy_into_slice(&mut out);
 
