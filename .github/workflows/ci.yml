@@ -6,7 +6,7 @@ jobs:
   audit:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
     - name: Install cargo-audit
@@ -19,7 +19,7 @@ jobs:
     env:
       RUSTFLAGS: "-D warnings"
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
       with:
@@ -27,11 +27,11 @@ jobs:
     - name: Check format
       run: cargo fmt --check
     - name: Run clippy
-      run: cargo clippy --all-targets -- -D warnings
+      run: cargo clippy --workspace --all-targets -- -D warnings
     - name: Check doc compilation
-      run: RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
+      run: RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
     - name: Run tests
-      run: cargo test
+      run: cargo test --workspace
     - name: Track WASM size budget
       run: ./scripts/check_wasm_size.sh
     - name: Check README documents all entrypoints
@@ -47,11 +47,11 @@ jobs:
     # or generated code that would otherwise fail CI.  Keeping this job free
     # of -D warnings isolates any tarpaulin-side noise from the test/lint gate.
     steps:
-    - uses: actions/checkout@v4
-
-    - name: Install Rust (native only — no wasm32 target needed for tarpaulin)
+    - uses: actions/checkout@v5
+      
+    - name: Install Rust (native only - no wasm32 target needed for tarpaulin)
       uses: dtolnay/rust-toolchain@stable
-
+      
     - name: Cache cargo registry
       uses: actions/cache@v4
       with:
@@ -62,29 +62,29 @@ jobs:
         key: ${{ runner.os }}-cargo-tarpaulin-${{ hashFiles('**/Cargo.lock') }}
         restore-keys: |
           ${{ runner.os }}-cargo-tarpaulin-
-
+      
     - name: Install cargo-tarpaulin
       # Only install if not already cached.  --locked ensures the exact
       # version published in Cargo.lock (or the tarpaulin registry entry) is
       # used, giving reproducible installs across runs.
       run: |
-        if ! command -v cargo-tarpaulin &>/dev/null; then
+        if ! command -v cargo-tarpaulin >/dev/null 2>&1; then
           cargo install cargo-tarpaulin --locked
         fi
-
+      
     - name: Run coverage
       # tarpaulin.toml configures: --lib, Html+Xml output, coverage/ dir,
       # fail-under=90, and file exclusions.  Passing --config makes the
       # location explicit so this job is not sensitive to working-directory.
-      run: cargo tarpaulin --config tarpaulin.toml
-
+      run: cargo tarpaulin --workspace --config tarpaulin.toml
+      
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v4
       with:
         files: coverage/cobertura.xml
-        fail_ci_if_error: false   # don't block CI on codecov outages
+        fail_ci_error: false   # don't block CI on codecov outages
         token: ${{ secrets.CODECOV_TOKEN }}
-
+      
     - name: Upload HTML coverage report as artifact
       uses: actions/upload-artifact@v4
       with:

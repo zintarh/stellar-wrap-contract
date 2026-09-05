@@ -17,4 +17,4 @@ jobs:
         with:
           components: clippy
       - name: Run cargo clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features --no-deps -- -D warnings
