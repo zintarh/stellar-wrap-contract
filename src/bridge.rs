@@ -10,7 +10,7 @@ use crate::{
     ContractError, DataKey,
 };
 
-const TTL_ONE_YEAR: u32 = 17_280 * 365;
+use crate::ttl::TTL_ONE_YEAR;
 
 /// Set the bridge relayers for a given chain. Requires admin authorization.
 pub(crate) fn set_bridge_relayers(
@@ -204,10 +204,6 @@ pub(crate) fn bridge_wrap_refund(e: Env, outbound_nonce: u64) {
 
 /// Fulfill an inbound cross-chain token/wrap bridge transfer.
 /// Called by authorized relayer to process wraps coming from an external chain.
-///
-/// An opted-out recipient rejects the message without creating or updating any
-/// wrap records. The inbound nonce is still consumed and a `br_in_rej` event
-/// is emitted so the relayer does not retry the rejected message indefinitely.
 #[allow(deprecated)] // TODO(#718): migrate to #[contractevent]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn bridge_wrap_in(
@@ -294,17 +290,6 @@ pub(crate) fn bridge_wrap_in(
     e.storage()
         .persistent()
         .extend_ttl(&processed_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
-
-    if e.storage()
-        .persistent()
-        .has(&DataKey::OptOut(recipient.clone()))
-    {
-        e.events().publish(
-            (symbol_short!("br_in_rej"), recipient, source_chain),
-            (source_nonce, period),
-        );
-        return;
-    }
 
     let now = e.ledger().timestamp();
     let wrap_key = DataKey::Wrap(recipient.clone(), period);

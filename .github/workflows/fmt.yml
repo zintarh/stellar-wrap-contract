@@ -1,5 +1,4 @@
 name: Cargo Fmt
-
 on:
   push:
     branches: [ main ]
@@ -11,10 +10,10 @@ jobs:
     name: Cargo Format Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Install Rust
+      - uses: actions/checkout@v5
+      - name: Install Rst
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
-      - name: Run cargo fmt check
-        run: cargo fmt --check
+      - name: Run cargo fmt
+        run: cargo fmt --all -- --check

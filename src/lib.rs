@@ -51,6 +51,7 @@ mod storage_types;
 mod timelock;
 mod token;
 mod transfer;
+mod ttl;
 mod wrap_record_helpers;
 
 pub use errors::ContractError;
@@ -190,37 +191,7 @@ impl StellarWrapContract {
         description: Option<String>,
         image_url: Option<String>,
     ) {
-        user.require_auth();
-
-        if let Some(ref d) = description {
-            if d.len() > MAX_WRAP_DESCRIPTION_LEN {
-                panic!("wrap description exceeds maximum length");
-            }
-        }
-        if let Some(ref i) = image_url {
-            if i.len() > MAX_WRAP_IMAGE_URL_LEN {
-                panic!("wrap image URL exceeds maximum length");
-            }
-        }
-
-        let key = DataKey::Wrap(user.clone(), period);
-        let mut record: WrapRecord = e
-            .storage()
-            .persistent()
-            .get(&key)
-            .unwrap_or_else(|| panic!("wrap record does not exist"));
-
-        record.description = description;
-        record.image_url = image_url;
-        e.storage().persistent().set(&key, &record);
-
-        let ttl = 17280 * 365; // ~1 year in ledgers
-        e.storage().persistent().extend_ttl(&key, ttl, ttl);
-
-        e.events().publish(
-            (Symbol::new(&e, "set_wrap_metadata"), user, period),
-            (),
-        );
+        wrap_record_helpers::set_wrap_metadata(e, user, period, description, image_url);
     }
 
     /// Transfers one wrap record and atomically charges the configured fee.
@@ -372,31 +343,13 @@ impl StellarWrapContract {
     /// of being kept alive indefinitely at no cost to the caller beyond the
     /// call's own resource fee.
     pub fn extend_ttl(e: Env, user: Address, period: u64) {
-        use crate::constants::TTL_ONE_YEAR;
-        let wrap_key = DataKey::Wrap(user.clone(), period);
+        ttl::extend_ttl(e, user, period);
+    }
 
-        let existing_record: Option<WrapRecord> = e.storage().persistent().get(&wrap_key);
-        if let Some(record) = existing_record {
-            let is_terminal = matches!(
-                record.fsm.state,
-                WrapState::Cancelled | WrapState::Expired | WrapState::Archived
-            );
-            if !is_terminal {
-                e.storage().persistent().extend_ttl(&wrap_key, ttl, ttl);
-            }
-        }
-
-        let count_key = DataKey::WrapCount(user.clone());
-        if e.storage().persistent().has(&count_key) {
-            e.storage().persistent().extend_ttl(&count_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
-        }
-
-        let latest_key = DataKey::LatestPeriod(user);
-        if e.storage().persistent().has(&latest_key) {
-            e.storage().persistent().extend_ttl(&latest_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
-        }
-
-        e.storage().instance().extend_ttl(TTL_ONE_YEAR, TTL_ONE_YEAR);
+    #[cfg(any())]
+    #[allow(dead_code)]
+    fn _old_extend_ttl(e: Env, user: Address, period: u64) {
+        ttl::extend_ttl(e, user, period);
     }
 
     /// Admin-only function to extend TTL for all metadata keys associated with a user.
@@ -422,26 +375,13 @@ impl StellarWrapContract {
     /// # Panics
     /// - [`ContractError::NotInitialized`] if the contract has not been initialized.
     pub fn renew_all_ttls(e: Env, user: Address) {
-        let admin: Address = e
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
-        admin.require_auth();
+        ttl::renew_all_ttls(e, user);
+    }
 
-        let ttl = crate::constants::TTL_ONE_YEAR;
-
-        let count_key = DataKey::WrapCount(user.clone());
-        if e.storage().persistent().has(&count_key) {
-            e.storage().persistent().extend_ttl(&count_key, ttl, ttl);
-        }
-
-        let latest_key = DataKey::LatestPeriod(user);
-        if e.storage().persistent().has(&latest_key) {
-            e.storage().persistent().extend_ttl(&latest_key, ttl, ttl);
-        }
-
-        e.storage().instance().extend_ttl(ttl, ttl);
+    #[cfg(any())]
+    #[allow(dead_code)]
+    fn _old_renew_all_ttls(e: Env, user: Address) {
+        ttl::renew_all_ttls(e, user);
     }
 
     /// Return the current admin address, or `None` if the contract is not yet initialized.
@@ -500,11 +440,13 @@ impl StellarWrapContract {
     /// Set the caller's opt-out flag, preventing any future wraps from being
     /// minted for them. Only the user themselves can call this.
     pub fn opt_out(e: Env, user: Address) {
-        use crate::constants::TTL_ONE_YEAR;
-        user.require_auth();
-        let key = crate::storage_types::DataKey::OptOut(user);
-        e.storage().persistent().set(&key, &true);
-        e.storage().persistent().extend_ttl(&key, TTL_ONE_YEAR, TTL_ONE_YEAR);
+        optout::opt_out(e, user);
+    }
+
+    #[cfg(any())]
+    #[allow(dead_code)]
+    fn _old_opt_out(e: Env, user: Address) {
+        optout::opt_out(e, user);
     }
 
     /// Clear the caller's opt-out flag, allowing future wraps to be minted for
@@ -513,8 +455,20 @@ impl StellarWrapContract {
         optout::opt_in(e, user);
     }
 
+    #[cfg(any())]
+    #[allow(dead_code)]
+    fn _old_opt_in(e: Env, user: Address) {
+        optout::opt_in(e, user);
+    }
+
     /// Returns `true` if the user has opted out of future mints.
     pub fn is_opted_out(e: Env, user: Address) -> bool {
+        optout::is_opted_out(e, user)
+    }
+
+    #[cfg(any())]
+    #[allow(dead_code)]
+    fn _old_is_opted_out(e: Env, user: Address) -> bool {
         optout::is_opted_out(&e, &user)
     }
 
@@ -529,12 +483,10 @@ impl StellarWrapContract {
 
     pub fn revoke_wrap(e: Env, user: Address, period: u64, reason_hash: BytesN<32>) {
         revoke::revoke_wrap(e, user, period, reason_hash);
-        decrement_total_wrap_count(&e);
     }
 
     pub fn burn_wrap(e: Env, user: Address, period: u64) {
         burn::burn_wrap(e, user, period);
-        decrement_total_wrap_count(&e);
     }
 
     /// Returns the total number of wraps that have been revoked globally.
@@ -894,12 +846,6 @@ impl token::TokenInterface for StellarWrapContract {
     fn balance_of(e: Env, user: Address) -> i128 {
         queries::balance_of(e, user)
     }
-}
-
-fn decrement_total_wrap_count(e: &Env) {
-    let key = DataKey::TotalWrapCount;
-    let count: u32 = e.storage().instance().get(&key).unwrap_or(0);
-    e.storage().instance().set(&key, &count.saturating_sub(1));
 }
 
 #[cfg(test)]
