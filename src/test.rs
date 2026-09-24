@@ -3979,3 +3979,49 @@ fn test_set_timelock_delay_validated_at_execute() {
     // Execute should fail with InvalidTimelockDelay even though it passed schedule validation
     client.timelock_execute(&operation_id);
 }
+
+#[test]
+#[should_panic(expected = "Error(Contract, #6)")]
+fn test_mint_wrap_invalid_period_year() {
+    let env = Env::default();
+    let contract_id = env.register(StellarWrapContract, ());
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let signing_key = SigningKey::from_bytes(&[21u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    env.mock_all_auths();
+    client.initialize(&admin, &admin_pubkey);
+
+    let archetype = symbol_short!("arch");
+    let data_hash = BytesN::from_array(&env, &[42u8; 32]);
+    let invalid_period = 202312u64; // year 2023 < 2024
+
+    let sig = BytesN::from_array(&env, &[0u8; 64]);
+    client.mint_wrap(&user, &invalid_period, &archetype, &data_hash, &1u32, &sig);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #6)")]
+fn test_mint_wrap_invalid_period_month() {
+    let env = Env::default();
+    let contract_id = env.register(StellarWrapContract, ());
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let signing_key = SigningKey::from_bytes(&[21u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    env.mock_all_auths();
+    client.initialize(&admin, &admin_pubkey);
+
+    let archetype = symbol_short!("arch");
+    let data_hash = BytesN::from_array(&env, &[42u8; 32]);
+    let invalid_period = 202413u64; // month 13 > 12
+
+    let sig = BytesN::from_array(&env, &[0u8; 64]);
+    client.mint_wrap(&user, &invalid_period, &archetype, &data_hash, &1u32, &sig);
+}
