@@ -386,7 +386,10 @@ fn test_initialize_sets_storage_schema_version() {
 
     assert_eq!(client.storage_schema_version(), 0);
     client.initialize(&admin, &pubkey);
-    assert_eq!(client.storage_schema_version(), 1);
+    assert_eq!(
+        client.storage_schema_version(),
+        CURRENT_STORAGE_SCHEMA_VERSION
+    );
 }
 
 #[test]
