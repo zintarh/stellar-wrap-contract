@@ -69,6 +69,8 @@ the version constant moved before assuming key compromise or a client bug.
 
 The semantic meaning is irrelevant to the cryptographic encoding — it is signed as a plain `u64`. Valid range: `202401`–`210012` (enforced by `validate_period` in `src/mint.rs`, returning `Error(Contract, #6)` otherwise).
 
+`u64::MAX` is a representable, XDR-serializable value, but it is outside the valid range and is rejected with `ContractError::InvalidPeriod` before a wrap is stored. It is therefore not acceptable as a production period.
+
 #### Non-Monthly Periods
 Because the contract validation logic enforces a strict month check (`period % 100` must be between `1` and `12`) and year check (`period / 100` must be between `2024` and `2100`), non-monthly periods (e.g. daily, weekly, or quarterly periods) are not natively supported by the contract constraints. 
 

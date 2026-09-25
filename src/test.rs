@@ -1205,8 +1205,7 @@ fn test_invalid_period_one_fails() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #6)")]
-fn test_invalid_period_max_fails() {
+fn test_invalid_period_max_fails_without_storage_changes() {
     let env = Env::default();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
@@ -1232,7 +1231,32 @@ fn test_invalid_period_max_fails() {
         &hash,
     );
 
-    client.mint_wrap(&user, &period, &archetype, &hash, &1u32, &signature);
+    let storage_bytes_before = client.storage_bytes();
+    let result = client.try_mint_wrap(&user, &period, &archetype, &hash, &1u32, &signature);
+
+    assert_eq!(
+        result.unwrap_err(),
+        Ok(ContractError::InvalidPeriod),
+        "u64::MAX must fail period validation"
+    );
+    assert!(!client.has_wrap(&user, &period));
+    assert!(client.get_wrap(&user, &period).is_none());
+    assert!(client.get_latest_wrap(&user).is_none());
+    assert_eq!(client.balance_of(&user), 0);
+    assert_eq!(client.total_wrap_count(), 0);
+    assert_eq!(client.storage_bytes(), storage_bytes_before);
+
+    env.as_contract(&contract_id, || {
+        assert!(!env
+            .storage()
+            .persistent()
+            .has(&DataKey::LatestPeriod(user.clone())));
+        assert!(!env
+            .storage()
+            .persistent()
+            .has(&DataKey::UserPeriods(user.clone())));
+        assert!(!env.storage().persistent().has(&DataKey::WrapPeriods(user)));
+    });
 }
 
 #[test]

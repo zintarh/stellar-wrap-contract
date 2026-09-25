@@ -9,6 +9,7 @@
 //! - **Canonical Format**: `YYYYMM` (e.g. `202512` for December 2025).
 //! - **Validation**: Enforced on-chain to have year between `2024` and `2100`, and month between `01` and `12`.
 //! - **Non-Monthly Periods**: Not natively supported by the validation rules. Integrations must map non-monthly periods (weekly, daily, quarterly) to a valid `YYYYMM` value.
+//! - **Production Use**: Although `u64::MAX` is representable and serializable, it is not a valid period: its implied year is outside the permitted range, so minting rejects it with `ContractError::InvalidPeriod`. Extreme `u64` values must not be used as production periods.
 //!
 //! ## Security
 //!
