@@ -18,6 +18,7 @@ timelock_schedule(action) ──► TimelockOp(id) { action, eta, scheduled_at }
         ▼                              ▼
 timelock_execute(id)  ◄── only when ledger timestamp >= eta
 timelock_cancel(id)   ◄── admin may drop it at any point before execution
+timelock_sweep_expired(id) ◄── anyone may remove expired ops (now > eta + GRACE_PERIOD)
 ```
 
 Two pieces of state, both introduced in `DataKey`:
@@ -26,6 +27,32 @@ Two pieces of state, both introduced in `DataKey`:
   enables the timelock.** Absent ⇒ controller disabled.
 - `TimelockOp(id)` (persistent, ~1 year TTL) — one scheduled operation.
   `TimelockOps` (instance) holds the id list for enumeration.
+
+### Grace period
+
+Every scheduled operation has a **grace period** of `GRACE_PERIOD` (14 days,
+1,209,600 seconds) after its ETA. The operation must be executed within this
+window:
+
+```
+scheduled_at ──delay──► ETA ──GRACE_PERIOD──► expiry
+                            │
+                            ├── execute()   (eta ≤ now ≤ expiry)
+                            └── sweep_expired()  (now > expiry)
+```
+
+- `timelock_execute` succeeds only while `now ≤ eta + GRACE_PERIOD`.
+- After `now > eta + GRACE_PERIOD` the operation is **expired** and can no
+  longer be executed. It remains in storage until someone calls
+  `timelock_sweep_expired` to remove it from the pending list.
+- The grace period bounds the execution window, preventing stale operations
+  (e.g. a `SetAdmin` to a retired key, or an `Upgrade` to a superseded WASM
+  hash) from being executed months later by an unsuspecting admin.
+
+The constants are defined in [`src/timelock.rs`](../src/timelock.rs):
+- `MIN_DELAY = 1 hour`
+- `MAX_DELAY = 30 days`
+- `GRACE_PERIOD = 14 days`
 
 ### Operation ids
 
@@ -138,3 +165,5 @@ timelock_cancel --id <id>
 | 20 | `InvalidTimelockDelay` | Delay out of bounds, or timelock not enabled. |
 | 21 | `TimelockRequired` | Direct admin call attempted while enabled. |
 | 22 | `TimelockAlreadyEnabled` | `enable_timelock` called twice. |
+| 23 | `TimelockOperationExpired` | Operation past ETA + GRACE_PERIOD. |
+| 24 | `TimelockOperationNotExpired` | Sweep attempted before grace period elapsed. |

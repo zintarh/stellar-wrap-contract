@@ -64,4 +64,7 @@ pub enum ContractError {
     /// The admin signing key provided to `initialize` is invalid (e.g. all-zero).
     InvalidAdminPubKey = 52,
     InvalidThreshold = 53,
+    // Timelock grace period
+    TimelockOperationExpired = 54,
+    TimelockOperationNotExpired = 55,
 }
