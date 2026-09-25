@@ -239,6 +239,23 @@ pub(crate) fn bridge_wrap_in(
                 storage_accounting::estimate_userperiods_bytes_new(),
             );
         }
+
+        let wrap_periods_key = DataKey::WrapPeriods(recipient.clone());
+        let mut wrap_periods: soroban_sdk::Vec<u64> = e
+            .storage()
+            .persistent()
+            .get(&wrap_periods_key)
+            .unwrap_or(soroban_sdk::Vec::new(&e));
+
+        if !wrap_periods.contains(period) {
+            wrap_periods.push_back(period);
+            e.storage()
+                .persistent()
+                .set(&wrap_periods_key, &wrap_periods);
+            e.storage()
+                .persistent()
+                .extend_ttl(&wrap_periods_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
+        }
     } else {
         let mut existing_record: WrapRecord = e.storage().persistent().get(&wrap_key).unwrap();
         existing_record.fsm.state = WrapState::Active;

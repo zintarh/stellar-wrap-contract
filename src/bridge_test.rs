@@ -376,3 +376,104 @@ fn test_mint_wrap_and_bridge_wrap_in_period_validation_parity() {
         }
     }
 }
+
+#[test]
+fn test_bridge_wrap_in_mint_and_transfer_invariants() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _admin, relayer, signing_key) = setup_test_env(&env);
+    client.set_bridge_relayer(&relayer);
+    let source_chain = 1u32;
+    client.set_chain_status(&source_chain, &true);
+
+    let recipient = Address::generate(&env);
+    let other_user = Address::generate(&env);
+    let period1 = 202607u64;
+    let period2 = 202608u64;
+    let archetype = symbol_short!("arch");
+    let data_hash = BytesN::from_array(&env, &[99u8; 32]);
+
+    // 1. bridge_wrap_in for a fresh recipient
+    client.bridge_wrap_in(
+        &source_chain,
+        &1u64,
+        &recipient,
+        &period1,
+        &archetype,
+        &data_hash,
+    );
+
+    // Verify index invariant after bridge-in: WrapCount == WrapPeriods.len() == UserPeriods.len()
+    env.as_contract(&client.address, || {
+        let count: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::WrapCount(recipient.clone()))
+            .unwrap();
+        let user_periods: soroban_sdk::Vec<u64> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::UserPeriods(recipient.clone()))
+            .unwrap();
+        let wrap_periods: soroban_sdk::Vec<u64> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::WrapPeriods(recipient.clone()))
+            .expect("WrapPeriods must exist after bridge_wrap_in");
+
+        assert_eq!(count as usize, wrap_periods.len() as usize);
+        assert_eq!(wrap_periods.len() as usize, user_periods.len() as usize);
+    });
+
+    // 2. mint_wrap for a different period for the same recipient succeeds
+    let sig2 = sign_mint_payload(
+        &env,
+        &signing_key,
+        &client.address,
+        &recipient,
+        period2,
+        &archetype,
+        &data_hash,
+    );
+    client.mint_wrap(&recipient, &period2, &archetype, &data_hash, &1, &sig2);
+
+    // 3. transfer_wrap of the bridged-in record succeeds
+    client.transfer_wrap(&recipient, &other_user, &period1);
+
+    // 4. bridge_wrap_in for an existing period updates rather than duplicating the index entry
+    let recipient_bytes = Bytes::from_array(&env, b"dest");
+    let _nonce = client.bridge_wrap_out(&recipient, &source_chain, &recipient_bytes, &period2);
+
+    client.bridge_wrap_in(
+        &source_chain,
+        &2u64,
+        &recipient,
+        &period2,
+        &archetype,
+        &data_hash,
+    );
+
+    env.as_contract(&client.address, || {
+        let final_count: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::WrapCount(recipient.clone()))
+            .unwrap();
+        let final_user_periods: soroban_sdk::Vec<u64> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::UserPeriods(recipient.clone()))
+            .unwrap();
+        let final_wrap_periods: soroban_sdk::Vec<u64> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::WrapPeriods(recipient.clone()))
+            .unwrap();
+
+        assert_eq!(final_count, 1);
+        assert_eq!(final_wrap_periods.len(), 1);
+        assert_eq!(final_user_periods.len(), 2);
+    });
+}
+
