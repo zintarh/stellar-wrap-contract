@@ -1,3 +1,10 @@
+Searched for "insert_wrap_record"
+Viewed bridge.rs:240-311
+Viewed bridge.rs:160-265
+
+Here is the resolved, complete code for **`stellar-wrap-contract/src/bridge.rs`**:
+
+```rust
 use soroban_sdk::{panic_with_error, symbol_short, Address, Bytes, BytesN, Env, Symbol};
 
 use crate::{
@@ -309,7 +316,88 @@ pub(crate) fn bridge_wrap_in(
             image_url: None,
         };
 
-        crate::mint::insert_wrap_record(&e, &recipient, period, &record);
+        e.storage().persistent().set(&wrap_key, &record);
+        e.storage()
+            .persistent()
+            .extend_ttl(&wrap_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
+
+        storage_accounting::add_storage_bytes(&e, storage_accounting::estimate_wrap_bytes_new());
+
+        let count_key = DataKey::WrapCount(recipient.clone());
+        let current_count: u32 = e.storage().persistent().get(&count_key).unwrap_or(0);
+        let next_count = current_count + 1;
+        e.storage().persistent().set(&count_key, &next_count);
+        e.storage()
+            .persistent()
+            .extend_ttl(&count_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
+
+        let total_key = DataKey::TotalWrapCount;
+        let current_total: u32 = e.storage().persistent().get(&total_key).unwrap_or(0);
+        let next_total = current_total + 1;
+        e.storage().persistent().set(&total_key, &next_total);
+        e.storage()
+            .persistent()
+            .extend_ttl(&total_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
+
+        if current_count == 0 {
+            storage_accounting::add_storage_bytes(
+                &e,
+                storage_accounting::estimate_wrapcount_bytes_new(),
+            );
+        }
+
+        let latest_key = DataKey::LatestPeriod(recipient.clone());
+        let current_latest: u64 = e.storage().persistent().get(&latest_key).unwrap_or(0);
+        if period > current_latest {
+            let was_missing = current_latest == 0;
+            e.storage().persistent().set(&latest_key, &period);
+            e.storage()
+                .persistent()
+                .extend_ttl(&latest_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
+            if was_missing {
+                storage_accounting::add_storage_bytes(
+                    &e,
+                    storage_accounting::estimate_latest_bytes_new(),
+                );
+            }
+        }
+
+        let user_periods_key = DataKey::UserPeriods(recipient.clone());
+        let mut periods: soroban_sdk::Vec<u64> = e
+            .storage()
+            .persistent()
+            .get(&user_periods_key)
+            .unwrap_or(soroban_sdk::Vec::new(&e));
+
+        if !periods.contains(period) {
+            periods.push_back(period);
+            e.storage().persistent().set(&user_periods_key, &periods);
+            e.storage()
+                .persistent()
+                .extend_ttl(&user_periods_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
+
+            storage_accounting::add_storage_bytes(
+                &e,
+                storage_accounting::estimate_userperiods_bytes_new(),
+            );
+        }
+
+        let wrap_periods_key = DataKey::WrapPeriods(recipient.clone());
+        let mut wrap_periods: soroban_sdk::Vec<u64> = e
+            .storage()
+            .persistent()
+            .get(&wrap_periods_key)
+            .unwrap_or(soroban_sdk::Vec::new(&e));
+
+        if !wrap_periods.contains(period) {
+            wrap_periods.push_back(period);
+            e.storage()
+                .persistent()
+                .set(&wrap_periods_key, &wrap_periods);
+            e.storage()
+                .persistent()
+                .extend_ttl(&wrap_periods_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
+        }
     } else {
         let mut existing_record: WrapRecord = e.storage().persistent().get(&wrap_key).unwrap();
         if !existing_record.fsm.restore_from_bridge(now) {
@@ -368,3 +456,4 @@ pub(crate) fn get_outbound_nonce(e: &Env) -> u64 {
     let key = DataKey::OutboundBridgeNonce;
     e.storage().instance().get(&key).unwrap_or(0)
 }
+```
