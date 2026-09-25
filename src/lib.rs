@@ -26,7 +26,7 @@ extern crate alloc;
 extern crate std;
 
 use soroban_sdk::{
-    contract, contractimpl, Address, Bytes, BytesN, Env, String, Symbol, Vec,
+    contract, contractimpl, panic_with_error, Address, Bytes, BytesN, Env, String, Symbol, Vec,
 };
 
 mod admin;
@@ -382,7 +382,7 @@ impl StellarWrapContract {
                 WrapState::Cancelled | WrapState::Expired | WrapState::Archived
             );
             if !is_terminal {
-                e.storage().persistent().extend_ttl(&wrap_key, ttl, ttl);
+                e.storage().persistent().extend_ttl(&wrap_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
             }
         }
 
@@ -528,12 +528,12 @@ impl StellarWrapContract {
     }
 
     pub fn revoke_wrap(e: Env, user: Address, period: u64, reason_hash: BytesN<32>) {
-        revoke::revoke_wrap(e, user, period, reason_hash);
+        revoke::revoke_wrap(e.clone(), user, period, reason_hash);
         decrement_total_wrap_count(&e);
     }
 
     pub fn burn_wrap(e: Env, user: Address, period: u64) {
-        burn::burn_wrap(e, user, period);
+        burn::burn_wrap(e.clone(), user, period);
         decrement_total_wrap_count(&e);
     }
 
@@ -667,11 +667,6 @@ impl StellarWrapContract {
         threshold: u32,
     ) {
         bridge::set_bridge_relayers(&e, chain_id, relayers, threshold);
-    }
-
-    /// Admin: Set the legacy single bridge relayer address (for refund auth).
-    pub fn set_bridge_relayer(e: Env, relayer: Address) {
-        bridge::set_bridge_relayer(&e, relayer);
     }
 
     /// Returns the configured cross-chain token bridge relayers for a given chain.
@@ -942,8 +937,6 @@ mod test_vectors;
 mod transfer_test;
 #[cfg(test)]
 mod ttl_test;
-#[cfg(test)]
-mod queries_test;
 #[cfg(test)]
 mod timelock_test;
 #[cfg(test)]

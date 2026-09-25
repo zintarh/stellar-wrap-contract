@@ -1,7 +1,8 @@
-use soroban_sdk::{panic_with_error, symbol_short, Address, Env, Vec};
+use soroban_sdk::{symbol_short, Address, Env, Vec};
 
+use crate::constants::TTL_ONE_YEAR;
 use crate::storage_accounting;
-use crate::{ContractError, DataKey, WrapRecord, WrapState};
+use crate::{DataKey};
 use crate::remove_wrap::remove_wrap_record;
 
 /// Burns (permanently deletes) a wrap record owned by the caller.
@@ -39,18 +40,9 @@ pub(crate) fn burn_wrap(e: Env, user: Address, period: u64) {
     user.require_auth();
 
     // Remove the wrap record and unwind all per-user bookkeeping.
-    // The helper also enforces WrapNotFound and the Bridged-state guard.
+    // The helper also enforces WrapNotFound and the Bridged-state guard, and
+    // reclaims the accounted storage bytes for the wrap entry.
     crate::wrap_record_helpers::remove_wrap_record(&e, &user, period);
-
-    let record: WrapRecord = e.storage().persistent().get(&wrap_key).unwrap();
-    if record.fsm.state == WrapState::Bridged {
-        panic_with_error!(e, ContractError::InvalidStateTransition);
-    }
-
-    // 3. Delete the wrap record from storage and reclaim its accounted bytes
-    //    (mirrors revoke_wrap — see tests/storage_fee.rs::burn_matches_revoke_delta)
-    e.storage().persistent().remove(&wrap_key);
-    storage_accounting::sub_storage_bytes(&e, storage_accounting::estimate_wrap_bytes_new());
 
     // 4. Update WrapPeriods ownership index (used by transfer_wrap / read_periods).
     //    This MUST stay in sync with WrapCount or every subsequent transfer panics.

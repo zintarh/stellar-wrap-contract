@@ -20,6 +20,12 @@
 /// effectively never expire for active participants.
 pub(crate) const TTL_ONE_YEAR: u32 = 17_280 * 365;
 
+/// Maximum number of timelock operations that may be queued at once.
+///
+/// Guards the `TimelockOps` index vector against unbounded growth (see
+/// `timelock::schedule` and `timelock::MAX_PENDING_OPERATIONS`).
+pub(crate) const MAX_PENDING_OPERATIONS: u32 = 10;
+
 /// Persistent-storage TTL representing approximately one calendar day.
 ///
 /// Used for short-lived, non-critical data that is migrated from Instance
