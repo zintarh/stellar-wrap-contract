@@ -18,3 +18,5 @@ jobs:
           components: clippy
       - name: Run cargo clippy
         run: cargo clippy --workspace --all-targets --all-features --no-deps -- -D warnings
+        env:
+          RUSTFLAGS: "-C overflow-checks=yes"

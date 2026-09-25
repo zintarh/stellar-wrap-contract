@@ -9,7 +9,7 @@ use ed25519_dalek::{Signer, SigningKey};
 use soroban_sdk::{
     symbol_short,
     testutils::{Address as _, Ledger, MockAuth, MockAuthInvoke},
-    Address, BytesN, Env, IntoVal, Symbol,
+    Address, Bytes, BytesN, Env, IntoVal, Symbol,
 };
 
 use super::*;
@@ -1277,4 +1277,77 @@ fn test_all_mutating_entrypoints_honor_pause() {
 
     let res = client.try_bridge_wrap_in(&1, &1, &user, &202401, &archetype, &data_hash);
     assert!(res.is_err(), "bridge_wrap_in should fail when paused");
+}
+
+#[test]
+fn test_create_admin_proposal_duration_overflow_asserts_arithmetic_overflow() {
+    let env = Env::default();
+    let contract_id = env.register(StellarWrapContract, ());
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let pubkey = BytesN::from_array(&env, &[14u8; 32]);
+
+    env.mock_all_auths();
+    client.initialize(&admin, &pubkey);
+
+    env.ledger().with_mut(|li| {
+        li.timestamp = 1;
+    });
+
+    let result = client.try_create_admin_proposal(&u64::MAX);
+    assert_eq!(
+        result.err().unwrap().contract_error(),
+        Some(ContractError::ArithmeticOverflow as u32)
+    );
+}
+
+#[test]
+fn test_bridge_wrap_out_nonce_overflow_asserts_arithmetic_overflow() {
+    let env = Env::default();
+    let contract_id = env.register(StellarWrapContract, ());
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let signing_key = SigningKey::from_bytes(&[15u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    env.mock_all_auths();
+    client.initialize(&admin, &admin_pubkey);
+
+    let archetype = symbol_short!("architect");
+    let data_hash = BytesN::from_array(&env, &[42u8; 32]);
+    let period = 202512u64;
+    let signature = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user,
+        period,
+        &archetype,
+        &data_hash,
+        CURRENT_PAYLOAD_VERSION,
+    );
+    client.mint_wrap(
+        &user,
+        &period,
+        &archetype,
+        &data_hash,
+        &CURRENT_PAYLOAD_VERSION,
+        &signature,
+    );
+
+    env.as_contract(&contract_id, || {
+        env.storage().instance().set(
+            &Symbol::new(&env, "outbound_nonce"),
+            &u32::MAX,
+        );
+    });
+
+    let result = client.try_bridge_wrap_out(&user, &1, &Bytes::new(&env), &period);
+    assert_eq!(
+        result.err().unwrap().contract_error(),
+        Some(ContractError::ArithmeticOverflow as u32)
+    );
 }

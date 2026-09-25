@@ -1,8 +1,10 @@
 name: fmt
 on: push
+env:
+  RUSTFLAGS: "-C overflow-checks=on"
 jobs:
   fmt:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: cargo fmt --check
+      - run: cargo fmt --all -- --check
