@@ -22,9 +22,22 @@ Hook behavior in this repository:
 - `pre-commit` stage runs `cargo fmt --check`
 - `pre-push` stage runs `cargo clippy --all-targets -- -D warnings`
 
+These hooks match CI enforcement:
+- CI `Check format` step runs `cargo fmt --check` (same as pre-commit hook)
+- CI `Run clippy` step runs `cargo clippy --all-targets -- -D warnings` (same as pre-push hook)
+
 You can also run hooks manually:
 - `pre-commit run --all-files`
 - `pre-commit run --hook-stage pre-push --all-files`
+
+**CI checks** (independent of pre-commit, run on every PR):
+- `cargo test` — all unit and integration tests
+- `cargo doc --no-deps` with `-D warnings` — documentation compiles
+- `./scripts/check_wasm_size.sh` — WASM size within 200 KB budget
+- `docker build -t stellar-wrap-contract .` — Docker build works
+- `cargo audit` — no security advisories at or above medium severity
+- `cargo tarpaulin --config tarpaulin.toml` — line coverage ≥ 90%
+- `python3 scripts/check_readme_entrypoints.py` — all contract entrypoints documented in README
 
 **Step 2.2: Pull Request Checklist**
 
@@ -36,6 +49,8 @@ Before opening a PR, confirm every item below:
 - [ ] `cargo fmt --check` passes with no formatting differences.
 - [ ] `cargo clippy --all-targets -- -D warnings` passes with zero warnings.
 - [ ] `cargo test` passes and the full output is included in the PR description.
+- [ ] Docker build passes (`docker build -t stellar-wrap-contract .`).
+- [ ] Line coverage meets the ≥ 90% threshold (`cargo tarpaulin --config tarpaulin.toml`).
 - [ ] If the PR adds or changes a public function, the "Read methods" or "Write methods" documentation in `README.md` is updated.
 - [ ] If the PR changes contributor-facing workflow, `CONTRIBUTING.md` is updated.
 - [ ] No `unwrap()` or `expect()` in production code paths (test code is exempt).
