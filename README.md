@@ -39,6 +39,8 @@ Each wrap record stores:
 - Year (`period / 100`) must be between `2024` and `2100`.
 - Month (`period % 100`) must be between `01` and `12`.
 
+Although `period` is encoded as a `u64`, only the `202401`–`210012` range is valid. Values such as `u64::MAX` serialize as unsigned 64-bit integers but are rejected with `InvalidPeriod` and are not acceptable for production use.
+
 #### Non-Monthly Periods
 On-chain validation strictly enforces the `YYYYMM` format. Therefore, non-monthly periods (such as weekly, daily, or quarterly wraps) are not natively supported by the contract validation logic. Integrations requiring non-monthly periods must map their descriptors to a canonical `YYYYMM` `u64` value (e.g., mapping Q1 2025 to `202503` or a specific week to the month in which it ends) before initiating a mint.
 
