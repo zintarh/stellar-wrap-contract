@@ -306,6 +306,7 @@ fn test_bridged_wrap_blocks_escape_routes_and_supports_refund() {
     );
     client.mint_wrap(&user, &period, &archetype, &data_hash, &1, &signature);
 
+    let destination_chain = 1u32;
     client.set_chain_status(&destination_chain, &true);
     let destination = Bytes::from_array(&env, b"destination");
     let outbound_nonce = client.bridge_wrap_out(&user, &destination_chain, &destination, &period);
@@ -1248,4 +1249,178 @@ fn test_bridge_wrap_in_legacy_index_invariant_guard() {
         &archetype,
         &data_hash2,
     );
+}
+
+#[test]
+fn test_bridge_wrap_out_rejects_transfer_wrap() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _admin, _relayer, signing_key) = setup_test_env(&env);
+    let user = Address::generate(&env);
+    let period = 202607u64;
+    let archetype = symbol_short!("arch");
+    let data_hash = BytesN::from_array(&env, &[12u8; 32]);
+
+    let signature = sign_mint_payload(
+        &env,
+        &signing_key,
+        &client.address,
+        &user,
+        period,
+        &archetype,
+        &data_hash,
+    );
+    client.mint_wrap(&user, &period, &archetype, &data_hash, &1, &signature);
+
+    let destination_chain = 1u32;
+    client.set_chain_status(&destination_chain, &true);
+    let recipient_bytes = Bytes::from_array(&env, b"recipient_eth");
+    client.bridge_wrap_out(&user, &destination_chain, &recipient_bytes, &period);
+
+    let recipient2 = Address::generate(&env);
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        client.transfer_wrap(&user, &recipient2, &period);
+    }));
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_bridge_wrap_out_rejects_burn_wrap() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _admin, _relayer, signing_key) = setup_test_env(&env);
+    let user = Address::generate(&env);
+    let period = 202607u64;
+    let archetype = symbol_short!("arch");
+    let data_hash = BytesN::from_array(&env, &[12u8; 32]);
+
+    let signature = sign_mint_payload(
+        &env,
+        &signing_key,
+        &client.address,
+        &user,
+        period,
+        &archetype,
+        &data_hash,
+    );
+    client.mint_wrap(&user, &period, &archetype, &data_hash, &1, &signature);
+
+    let destination_chain = 1u32;
+    client.set_chain_status(&destination_chain, &true);
+    let recipient_bytes = Bytes::from_array(&env, b"recipient_eth");
+    client.bridge_wrap_out(&user, &destination_chain, &recipient_bytes, &period);
+
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        client.burn_wrap(&user, &period);
+    }));
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_bridge_wrap_out_rejects_second_bridge_wrap_out() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _admin, _relayer, signing_key) = setup_test_env(&env);
+    let user = Address::generate(&env);
+    let period = 202607u64;
+    let archetype = symbol_short!("arch");
+    let data_hash = BytesN::from_array(&env, &[12u8; 32]);
+
+    let signature = sign_mint_payload(
+        &env,
+        &signing_key,
+        &client.address,
+        &user,
+        period,
+        &archetype,
+        &data_hash,
+    );
+    client.mint_wrap(&user, &period, &archetype, &data_hash, &1, &signature);
+
+    let destination_chain = 1u32;
+    client.set_chain_status(&destination_chain, &true);
+    let recipient_bytes = Bytes::from_array(&env, b"recipient_eth");
+    client.bridge_wrap_out(&user, &destination_chain, &recipient_bytes, &period);
+
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        client.bridge_wrap_out(&user, &destination_chain, &recipient_bytes, &period);
+    }));
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_bridge_wrap_out_rejects_transition_to_active() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _admin, _relayer, signing_key) = setup_test_env(&env);
+    let user = Address::generate(&env);
+    let period = 202607u64;
+    let archetype = symbol_short!("arch");
+    let data_hash = BytesN::from_array(&env, &[12u8; 32]);
+
+    let signature = sign_mint_payload(
+        &env,
+        &signing_key,
+        &client.address,
+        &user,
+        period,
+        &archetype,
+        &data_hash,
+    );
+    client.mint_wrap(&user, &period, &archetype, &data_hash, &1, &signature);
+
+    let destination_chain = 1u32;
+    client.set_chain_status(&destination_chain, &true);
+    let recipient_bytes = Bytes::from_array(&env, b"recipient_eth");
+    client.bridge_wrap_out(&user, &destination_chain, &recipient_bytes, &period);
+
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        client.transition_wrap_state(&user, &period, &WrapState::Active);
+    }));
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_get_outbound_bridge_request_fields() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _admin, _relayer, signing_key) = setup_test_env(&env);
+    let user = Address::generate(&env);
+    let period = 202607u64;
+    let archetype = symbol_short!("arch");
+    let data_hash = BytesN::from_array(&env, &[12u8; 32]);
+
+    let signature = sign_mint_payload(
+        &env,
+        &signing_key,
+        &client.address,
+        &user,
+        period,
+        &archetype,
+        &data_hash,
+    );
+    client.mint_wrap(&user, &period, &archetype, &data_hash, &1, &signature);
+
+    let destination_chain = 1u32;
+    client.set_chain_status(&destination_chain, &true);
+    let recipient_bytes = Bytes::from_array(&env, b"recipient_eth_address_string");
+    let nonce = client.bridge_wrap_out(&user, &destination_chain, &recipient_bytes, &period);
+
+    let request = client
+        .get_outbound_bridge_request(&nonce)
+        .expect("outbound request exists");
+
+    assert_eq!(request.nonce, nonce);
+    assert_eq!(request.sender, user);
+    assert_eq!(request.destination_chain, destination_chain);
+    assert_eq!(request.recipient_address, recipient_bytes);
+    assert_eq!(request.period, period);
+    assert_eq!(request.archetype, archetype);
+    assert_eq!(request.data_hash, data_hash);
+    assert!(request.timestamp > 0);
 }
