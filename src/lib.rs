@@ -476,8 +476,9 @@ impl StellarWrapContract {
 
     /// Return the contract semantic version (`MAJOR.MINOR.PATCH`).
     ///
-    /// Bump this string whenever a WASM upgrade changes the public interface or
-    /// storage semantics so clients can detect the live contract revision.
+    /// Derived from `Cargo.toml` package version at compile time. Bump the
+    /// version in `Cargo.toml` whenever a WASM upgrade changes the public
+    /// interface or storage semantics so clients can detect the live contract revision.
     pub fn version(e: Env) -> String {
         queries::version(e)
     }

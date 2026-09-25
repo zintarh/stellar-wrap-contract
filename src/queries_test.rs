@@ -92,8 +92,8 @@ fn test_version_format() {
         "Patch version must be an integer"
     );
 
-    // Make sure it matches the current crate version (if needed)
-    assert_eq!(version_str, "0.1.0"); // from Cargo.toml / queries.rs
+    // Make sure it matches Cargo.toml package version (compile-time derived)
+    assert_eq!(version_str, env!("CARGO_PKG_VERSION"));
 }
 
 #[test]

@@ -232,11 +232,12 @@ pub(crate) fn get_admin_pubkey(e: Env) -> Option<BytesN<32>> {
 
 /// Return the contract semantic version string (`MAJOR.MINOR.PATCH`).
 ///
-/// Keep this in sync with `Cargo.toml` package version. Bump it in the same
-/// release that ships a WASM upgrade so clients can detect which interface they
-/// are talking to after `upgrade()`.
+/// Derived from `Cargo.toml` package version at compile time via
+/// `CARGO_PKG_VERSION`, so this value can never drift from the package version.
+/// Bump it in the same release that ships a WASM upgrade so clients can detect
+/// which interface they are talking to after `upgrade()`.
 pub(crate) fn version(e: Env) -> String {
-    String::from_str(&e, "0.1.0")
+    String::from_str(&e, env!("CARGO_PKG_VERSION"))
 }
 
 /// Cheap existence check for `(user, period)` without loading a `WrapRecord`.

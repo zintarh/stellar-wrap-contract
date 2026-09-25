@@ -6,7 +6,7 @@ Soroban contract for storing non-transferable Stellar Wrap records by wallet and
 
 ## Changelog and client migration notes
 
-The current contract interface for version 0.1.0 is documented in [CHANGELOG.md](CHANGELOG.md). Backend and frontend consumers should review the migration notes there before updating integrations, especially around the versioned mint-signature payload and the expanded query surface.
+The current contract interface is documented in [CHANGELOG.md](CHANGELOG.md). Backend and frontend consumers should review the migration notes there before updating integrations, especially around the versioned mint-signature payload and the expanded query surface.
 
 ## Contract layout
 
