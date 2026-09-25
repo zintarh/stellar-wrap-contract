@@ -257,3 +257,188 @@ fn test_direct_paths_succeed_without_timelock() {
     client.update_admin(&new_admin_2);
     assert_eq!(client.get_admin(), Some(new_admin_2));
 }
+
+/// Tests for the grace period and sweep functionality.
+mod grace_period_tests {
+    use super::*;
+    use crate::storage_types::TimelockAction;
+    use crate::timelock;
+    use soroban_sdk::{
+        testutils::{Address as _, Ledger},
+        Address, BytesN, Env,
+    };
+
+    fn setup_with_timelock(env: &Env) -> (StellarWrapContractClient<'_>, Address) {
+        let contract_id = env.register(StellarWrapContract, ());
+        let client = StellarWrapContractClient::new(env, &contract_id);
+        let admin = Address::generate(env);
+        let pubkey = BytesN::from_array(env, &[1u8; 32]);
+
+        client.initialize(&admin, &pubkey);
+        env.mock_all_auths();
+        client.enable_timelock(&timelock::MIN_DELAY);
+
+        (client, admin)
+    }
+
+    #[test]
+    fn test_execute_at_exact_grace_period_boundary_succeeds() {
+        // Execute at exactly eta + GRACE_PERIOD should succeed (boundary is inclusive)
+        let env = Env::default();
+        let (client, _admin) = setup_with_timelock(&env);
+
+        // Schedule an operation
+        let new_admin = Address::generate(&env);
+        let action = TimelockAction::SetAdmin(new_admin.clone());
+        let id = client.timelock_schedule(&action);
+
+        let op = client.timelock_operation(&id).unwrap();
+        let eta = op.eta;
+        let grace_expiry = eta.saturating_add(timelock::GRACE_PERIOD);
+
+        // Advance to exactly the grace period boundary
+        env.ledger().set_timestamp(grace_expiry);
+        env.mock_all_auths();
+        client.timelock_execute(&id);
+
+        // Should have succeeded and removed from pending
+        assert!(!client.timelock_pending().contains(&id));
+        assert_eq!(client.get_admin().unwrap(), new_admin);
+    }
+
+    #[test]
+    fn test_execute_just_inside_grace_period_succeeds() {
+        // Execute at eta + GRACE_PERIOD - 1 should succeed
+        let env = Env::default();
+        let (client, _admin) = setup_with_timelock(&env);
+
+        let new_admin = Address::generate(&env);
+        let action = TimelockAction::SetAdmin(new_admin.clone());
+        let id = client.timelock_schedule(&action);
+
+        let op = client.timelock_operation(&id).unwrap();
+        let eta = op.eta;
+        let just_inside = eta.saturating_add(timelock::GRACE_PERIOD).saturating_sub(1);
+
+        env.ledger().set_timestamp(just_inside);
+        env.mock_all_auths();
+        client.timelock_execute(&id);
+
+        assert!(!client.timelock_pending().contains(&id));
+        assert_eq!(client.get_admin().unwrap(), new_admin);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #54)")]
+    fn test_execute_just_outside_grace_period_fails() {
+        // Execute at eta + GRACE_PERIOD + 1 should fail with TimelockOperationExpired
+        let env = Env::default();
+        let (client, _admin) = setup_with_timelock(&env);
+
+        let new_admin = Address::generate(&env);
+        let action = TimelockAction::SetAdmin(new_admin.clone());
+        let id = client.timelock_schedule(&action);
+
+        let op = client.timelock_operation(&id).unwrap();
+        let eta = op.eta;
+        let just_outside = eta.saturating_add(timelock::GRACE_PERIOD).saturating_add(1);
+
+        env.ledger().set_timestamp(just_outside);
+        env.mock_all_auths();
+        client.timelock_execute(&id);
+    }
+
+    #[test]
+    fn test_sweep_expired_removes_from_pending() {
+        // Anyone can sweep an expired operation from the pending list
+        let env = Env::default();
+        let (client, _admin) = setup_with_timelock(&env);
+
+        let new_admin = Address::generate(&env);
+        let action = TimelockAction::SetAdmin(new_admin.clone());
+        let id = client.timelock_schedule(&action);
+
+        let op = client.timelock_operation(&id).unwrap();
+        let eta = op.eta;
+        let after_grace = eta.saturating_add(timelock::GRACE_PERIOD).saturating_add(1);
+
+        // Advance past grace period
+        env.ledger().set_timestamp(after_grace);
+
+        // Verify operation is still in pending (but expired)
+        assert!(client.timelock_pending().contains(&id));
+
+        // Clear auths to test permissionless sweep
+        env.set_auths(&[]);
+        client.timelock_sweep_expired(&id);
+
+        // Operation should be removed from pending
+        assert!(!client.timelock_pending().contains(&id));
+        assert!(client.timelock_operation(&id).is_none());
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #55)")]
+    fn test_sweep_before_grace_period_fails() {
+        // Sweep before grace period ends should fail with TimelockOperationNotExpired
+        let env = Env::default();
+        let (client, _admin) = setup_with_timelock(&env);
+
+        let new_admin = Address::generate(&env);
+        let action = TimelockAction::SetAdmin(new_admin.clone());
+        let id = client.timelock_schedule(&action);
+
+        let op = client.timelock_operation(&id).unwrap();
+        let eta = op.eta;
+        let just_before_grace = eta.saturating_add(timelock::GRACE_PERIOD).saturating_sub(1);
+
+        env.ledger().set_timestamp(just_before_grace);
+        env.set_auths(&[]);
+        client.timelock_sweep_expired(&id);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #41)")]
+    fn test_sweep_nonexistent_operation_fails() {
+        // Sweeping a non-existent operation should fail with TimelockOperationNotFound
+        let env = Env::default();
+        let (client, _admin) = setup_with_timelock(&env);
+
+        let dummy_id = BytesN::from_array(&env, &[99u8; 32]);
+        env.set_auths(&[]);
+        client.timelock_sweep_expired(&dummy_id);
+    }
+
+    #[test]
+    fn test_sweep_expired_emits_event() {
+        // Verify sweep event is emitted
+        let env = Env::default();
+        let (client, _admin) = setup_with_timelock(&env);
+
+        let new_admin = Address::generate(&env);
+        let action = TimelockAction::SetAdmin(new_admin.clone());
+        let id = client.timelock_schedule(&action);
+
+        let op = client.timelock_operation(&id).unwrap();
+        let eta = op.eta;
+        let after_grace = eta.saturating_add(timelock::GRACE_PERIOD).saturating_add(1);
+
+        env.ledger().set_timestamp(after_grace);
+        env.set_auths(&[]);
+        client.timelock_sweep_expired(&id);
+
+        let events = env.events().all();
+        let mut sweep_found = false;
+        for (_contract_id, topics, _data) in events.into_iter() {
+            if topics.len() >= 2 {
+                if topics.get(0).unwrap().into_val(&env) == symbol_short!("timelock").into_val(&env) {
+                    let event_type = topics.get(1).unwrap().into_val(&env);
+                    if event_type == symbol_short!("sweep").into_val(&env) {
+                        sweep_found = true;
+                    }
+                }
+            }
+        }
+        assert!(sweep_found, "sweep event not found");
+    }
+}

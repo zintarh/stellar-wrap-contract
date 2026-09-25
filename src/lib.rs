@@ -654,6 +654,11 @@ impl StellarWrapContract {
         timelock::cancel(e, id);
     }
 
+    /// Permissionless: remove a timelock operation that has passed its grace period.
+    pub fn timelock_sweep_expired(e: Env, id: BytesN<32>) {
+        timelock::sweep_expired(e, id);
+    }
+
     /// Return a queued operation by id, or `None` if it is not queued.
     pub fn timelock_operation(e: Env, id: BytesN<32>) -> Option<TimelockOperation> {
         timelock::get_operation(&e, id)
