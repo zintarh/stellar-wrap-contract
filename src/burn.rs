@@ -102,7 +102,7 @@ pub(crate) fn burn_wrap(e: Env, user: Address, period: u64) {
             .extend_ttl(&count_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
 
         // Recompute LatestPeriod from the remaining periods
-        let mut latest: u64 = 0;
+        let mut latest = remaining_wrap_periods.get(0).unwrap();
         for p in remaining_wrap_periods.iter() {
             if p > latest {
                 latest = p;

@@ -3162,6 +3162,38 @@ fn test_update_latest_period_option_storage_accounting() {
     assert_eq!(unchanged_period, Some(10));
 }
 
+#[test]
+fn test_storage_accounting_lowest_valid_period_first() {
+    use crate::{
+        mint::update_latest_period,
+        storage_accounting::{estimate_latest_bytes_new, get_storage_bytes},
+    };
+
+    let env = Env::default();
+    let contract_id = env.register(StellarWrapContract, ());
+    let _client = StellarWrapContractClient::new(&env, &contract_id);
+    let user = Address::generate(&env);
+
+    let initial_bytes = env.as_contract(&contract_id, || get_storage_bytes(&env));
+
+    // First-ever period is the lowest valid period (202401)
+    env.as_contract(&contract_id, || {
+        update_latest_period(&env, &user, 202401);
+    });
+
+    let bytes_after = env.as_contract(&contract_id, || get_storage_bytes(&env));
+    assert_eq!(
+        bytes_after - initial_bytes,
+        estimate_latest_bytes_new(),
+        "storage accounting must correctly account for latest period when first-ever period is the lowest valid period (202401)"
+    );
+
+    let latest_key = DataKey::LatestPeriod(user.clone());
+    let stored_period: Option<u64> =
+        env.as_contract(&contract_id, || env.storage().persistent().get(&latest_key));
+    assert_eq!(stored_period, Some(202401));
+}
+
 // ── Batch opt-out regression tests (issue #631) ─────────────────────────────
 
 /// Helper: build and sign a `BatchWrapItem` with an individual signature.
