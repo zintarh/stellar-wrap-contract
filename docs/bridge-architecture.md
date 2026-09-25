@@ -29,11 +29,21 @@ The Generic Token Bridge Interface allows `stellar-wrap-contract` to interact se
    - Destination chain ID must be enabled.
    - Recipient address payload must be non-empty.
 3. **State Transition**:
-   - The user's local wrap record transitions from `Active` to `Pending` using the Wrap Lifecycle FSM.
+   - The user's local wrap record transitions from `Active` to terminal `Bridged` using the Wrap Lifecycle FSM.
+   - `Bridged` records cannot be transferred, burned, re-bridged, or reactivated by the user.
 4. **Nonce & Storage**:
    - Monotonically increasing `OutboundBridgeNonce` counter is incremented.
    - An `OutboundBridgeRequest` record is written to persistent storage.
 5. **Event Emission**: Emits `br_out` event containing user, destination chain, nonce, recipient address, and wrap period.
+
+### 3a. Outbound Refund
+
+- If the destination chain rejects an outbound request, the configured bridge
+   relayer calls `bridge_wrap_refund(outbound_nonce)`.
+- The request must identify an existing `Bridged` record; the relayer restores
+   it to `Active` and the contract emits `br_refund`.
+- The public `transition_wrap_state` entry point cannot exit `Bridged`, so only
+   this relayer-authorized settlement path can unlock the wrap.
 
 ### 3. Inbound Cross-Chain Wrap (`bridge_wrap_in`)
 
@@ -45,7 +55,8 @@ The Generic Token Bridge Interface allows `stellar-wrap-contract` to interact se
 3. **Wrap Minting / Activation**:
    - Validates period structure (`YYYYMM` format, between `MIN_PERIOD_YEAR = 2024` and `MAX_PERIOD_YEAR = 2100` with months `01..=12`, enforced by shared `validate_period`).
    - If wrap record does not exist on Stellar, creates a new active wrap record for `recipient` and updates wrap counts and latest period metadata.
-   - If wrap record already exists, transitions state to `Active`.
+    - If wrap record already exists, transitions state to `Active` through the
+       FSM; illegal transitions fail with `InvalidStateTransition`.
 4. **Record & Event**:
    - Stores `InboundBridgeRecord(source_chain, source_nonce)` in persistent storage.
    - Emits `br_in` event with recipient address, source chain, source nonce, and period.

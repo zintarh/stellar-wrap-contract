@@ -1,7 +1,8 @@
 #![cfg(test)]
 
-use super::{StellarWrapContract, StellarWrapContractClient};
 use soroban_sdk::{testutils::Address as _, Address, Env};
+
+use super::{StellarWrapContract, StellarWrapContractClient};
 
 #[test]
 fn test_balance_of_starts_at_zero() {

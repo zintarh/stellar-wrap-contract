@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 resolver = "2"
 
+
 [lib]
 crate-type = ["cdylib", "rlib"]
 path = "src/lib.rs"
@@ -11,14 +12,19 @@ path = "src/lib.rs"
 [features]
 # Enables SorobanArbitrary / testutils codegen required by cargo-fuzz targets.
 testutils = ["soroban-sdk/testutils"]
+# Enables the proxy contract for batching mint_wrap calls atomically.
+proxy = []
 
 [dependencies]
 soroban-sdk = "=27.0.3"
+# In-guest Ed25519 verification dependency (see SIGNATURE_VERIFICATION_DECISION.md).
+# default-features = false is required to prevent pulling in std on no_std targets (wasm32v1-none / wasm32-unknown-unknown).
 # ed25519-dalek is a direct dependency (not just dev) to force Cargo version
 # unification across the dependency tree. soroban-env-host transitively depends
-# on ed25519-dalek and would otherwise resolve to an incompatible v3.0 without
-# a Cargo.lock (which is gitignored). Keep this pin synced.
-ed25519-dalek = { version = "=3.0.0", features = ["rand_core"] }
+# on ed25519-dalek and would otherwise resolve to an incompatible v3.0.
+# Cargo.lock is committed to ensure reproducible builds; keep this pin synched
+# whenever the lockfile is regenerated.
+ed25519-dalek = { version = "=3.0.0", default-features = false, features = ["rand_core"] }
 
 [dev-dependencies]
 # Main Soroban SDK with test utilities (required for Address::generate, mock_auths, etc.)
@@ -27,7 +33,7 @@ soroban-sdk = { version = "=27.0.3", features = ["testutils"] }
 # Property-based testing
 proptest = { version = "1", default-features = false, features = ["alloc"] }
 
-[profile.release]
+[Profile.release]
 opt-level = "z"
 lto = true
 panic = "abort"

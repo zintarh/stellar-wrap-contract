@@ -2,14 +2,15 @@
 
 extern crate std;
 
-use super::*;
-use crate::test_utils::sign_payload;
 use ed25519_dalek::SigningKey;
 use soroban_sdk::{
     symbol_short,
     testutils::{Address as _, Ledger},
     Address, BytesN, Env,
 };
+
+use super::*;
+use crate::test_utils::sign_payload;
 
 /// Helper: mint one wrap for `user` at the current ledger time using the
 /// contract admin key.
@@ -40,8 +41,9 @@ fn setup(env: &Env, client: &StellarWrapContractClient) -> (SigningKey, Address,
     let admin_pubkey = BytesN::from_array(env, &signing_key.verifying_key().to_bytes());
     let admin = Address::generate(env);
     let user = Address::generate(env);
-    client.initialize(&admin, &admin_pubkey);
     env.mock_all_auths();
+    env.mock_all_auths();
+    client.initialize(&admin, &admin_pubkey);
     (signing_key, admin, user)
 }
 

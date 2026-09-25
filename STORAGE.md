@@ -10,6 +10,10 @@ This document defines the storage architecture, storage tier assignments, time-t
 > **Instance storage is for bounded configuration only.**
 >
 > Unbounded collections, user-generated data, per-operation records, and growing datasets must **never** be stored in instance storage. Unbounded instance entries increase the base footprint for every contract invocation, bloat transaction resource footprints, and risk exceeding ledger write limits. Any unbounded or per-user data must be placed in **Persistent storage** with active TTL management. Ephemeral locks and reentrancy guards belong in **Temporary storage**.
+>
+> **TTL constants are defined once in `src/constants.rs`:**
+> - `TTL_ONE_YEAR` (~1 year / 6,307,200 ledgers) for persistent storage.
+> - `TTL_TEMP` (~1 day / 17,280 ledgers) for short-lived persistent entries.
 
 ### Storage Tiers Overview
 Soroban provides three storage tiers with distinct persistence, TTL, and rent properties:
@@ -22,7 +26,7 @@ Soroban provides three storage tiers with distinct persistence, TTL, and rent pr
 2. **Persistent Storage (`e.storage().persistent()`)**:
    - User data, wrap records, governance proposals, staking records, and cross-chain bridge records.
    - Individual entries require explicit TTL extension (`extend_ttl`) to remain live on-chain.
-   - Baseline renewal policy: Extended to **~1 year** (`17,280 * 365 = 6,307,200` ledgers) on creation and modification.
+   - Baseline renewal policy: Extended to **~1 year** (`TTL_ONE_YEAR` from `constants.rs` = 6,307,200 ledgers) on creation and modification.
 
 3. **Temporary Storage (`e.storage().temporary()`)**:
    - Ephemeral reentrancy guards (`MintGuard`, `TransferGuard`).
@@ -62,7 +66,7 @@ Every variant of the `DataKey` enum is documented below with its assigned storag
 | `WhitelistRoot` | Instance | `BytesN<32>` | Contract Instance Lifetime | 32 bytes | Merkle root for off-chain allowlist validation. |
 | `TimelockDelay` | Instance | `u64` | Contract Instance Lifetime | 8 bytes | Mandatory delay (seconds) between scheduling and execution. |
 | `TimelockOp(BytesN<32>)` | Persistent | `TimelockOperation` | 1 Year (`6,307,200` ledgers) | ~80 bytes | Scheduled timelock operation record keyed by deterministic op ID. |
-| `TimelockOps` | Instance | `Vec<BytesN<32>>` | Contract Instance Lifetime | Bounded queue | List of active timelock operation IDs queued for execution. |
+| `TimelockOps` | Persistent | `Vec<BytesN<32>>` | 1 Year (`6,307,200` ledgers) | ≤ `MAX_PENDING_OPERATIONS` × 32 bytes (≤ 2 048 bytes) | List of active timelock operation IDs queued for execution. Capped at `MAX_PENDING_OPERATIONS = 64` to bound size; stored in persistent storage to avoid inflating the instance footprint on every unrelated invocation. |
 | `BridgeRelayer` | Instance | `Address` | Contract Instance Lifetime | 32 bytes | Authorized relayer address for cross-chain wrap bridge. |
 | `BridgeChainStatus(u32)` | Instance | `bool` | Contract Instance Lifetime | 1 byte | Enabled/disabled status for cross-chain destination chain ID. |
 | `OutboundBridgeNonce` | Instance | `u64` | Contract Instance Lifetime | 8 bytes | Monotonically increasing sequence counter for outbound bridge requests. |
@@ -73,6 +77,7 @@ Every variant of the `DataKey` enum is documented below with its assigned storag
 | `AdminProposal(u64)` | Persistent | `AdminProposal` | 1 Year (`6,307,200` ledgers) | ~112 bytes | Governance proposal record keyed by proposal ID. |
 | `AdminProposalVote(u64, Address)` | Persistent | `bool` | 1 Year (`6,307,200` ledgers) | 1 byte | Vote record for `(proposal_id, voter)` preventing double-voting. |
 | `ContractVersion` | Instance | `u32` | Contract Instance Lifetime | 4 bytes | Monotonic counter incremented on contract WASM upgrades. |
+| `SchemaVersion` | Instance | `u32` | Contract Instance Lifetime | 4 bytes | Storage schema version established at initialization. |
 | `Stake(Address)` | Persistent | `StakeRecord` | 1 Year (`6,307,200` ledgers) | ~32 bytes | Staking balance, lock timestamp, and cooldown state for `user`. |
 | `StakeConfig` | Instance | `StakeConfig` | Contract Instance Lifetime | ~24 bytes | Staking parameters (`min_stake`, `cooldown_seconds`, `multiplier`, `max_bps`). |
 | `TotalStaked` | Instance | `i128` | Contract Instance Lifetime | 16 bytes | Global aggregate staked token balance across all users. |
@@ -83,9 +88,9 @@ Every variant of the `DataKey` enum is documented below with its assigned storag
 
 The contract has been audited for compliance with the "Instance storage is for bounded configuration only" rule. The following keys require special architectural consideration:
 
-1. **`TimelockOps` (Instance)**:
-   - *Current state:* Stored as `Vec<BytesN<32>>` in instance storage.
-   - *Analysis:* Acceptable under normal operational bounds since pending admin actions are infrequent and low-volume. However, if governance proposals grow, the active ID list should be migrated to persistent storage or indexed off-chain.
+1. **`TimelockOps` (Persistent)**:
+   - *Current state:* Stored as `Vec<BytesN<32>>` in persistent storage, capped at `MAX_PENDING_OPERATIONS = 64` entries.
+   - *Analysis:* Previously stored in instance storage, which caused the instance footprint to grow with every queued admin operation — an unrelated cost paid by all contract invocations. Migrated to persistent storage with an explicit cap so that unrelated entrypoints (e.g. `mint_wrap`) are not affected by the number of pending operations.
 
 2. **`BridgeChainStatus(u32)` (Instance)**:
    - *Current state:* Stored per chain ID in instance storage.
@@ -105,6 +110,24 @@ The contract has been audited for compliance with the "Instance storage is for b
 
 ---
 
+## 5. Storage Schema Versioning & Upgrade Guidelines
+
+The contract tracks the active storage schema version via `DataKey::SchemaVersion`, initialized to `1` upon contract initialization. This version is exposed via the `schema_version()` read method, allowing off-chain tooling and future contract logic to determine the active storage layout.
+
+### How Upgrades Should Migrate or Preserve Schema Versions
+
+1. **Preserving Schema Version**  
+   When performing a WASM upgrade that does **not** alter the storage layout, data structures (such as `WrapRecord`), or key namespaces, the upgrade should **preserve** the existing `SchemaVersion` (leave it unchanged). The `contract_version` counter will still increment via `upgrade()`, but `SchemaVersion` remains the same, signaling to clients that the on-chain data format is compatible.
+
+2. **Migrating Schema Version**  
+   When performing a WASM upgrade that introduces breaking storage layout changes (e.g., adding/removing fields in core structs, altering how keys are structured, or moving data between storage tiers), the upgrade must:
+   - Update `DataKey::SchemaVersion` to the next sequential integer (e.g., from `1` to `2`).
+   - Invoke `migrate(version)` to record the applied storage migration version (which increments `MigrationVersion`).
+   - Execute the necessary data transformation logic in the `migrate` call or a dedicated migration entrypoint.
+
+Clients and off-chain indexers can read `schema_version()` to inspect the active schema layout and apply appropriate decoding rules. The combination of `SchemaVersion` (semantic schema version) and `MigrationVersion` (applied migration cursor) provides a complete picture of the storage state for upgrade safety.
+
+
 ## 4. Algorithmic Fee & Storage Accounting
 
 The contract maintains a conservative estimate of persistent storage bytes in `DataKey::StorageBytes` (instance storage) to price operations fairly based on on-chain state rent consumption.
@@ -116,3 +139,6 @@ $$\text{fee} = \min\left(\text{max\_fee},\, \text{base\_fee} + \text{per\_kib\_f
 - `mint_wrap()`: Computes new entries created (`Wrap`, `WrapCount`, `LatestPeriod`, `UserPeriods`, `LastUpdated`) and increments `StorageBytes`.
 - `revoke_wrap()`: Decrements `StorageBytes` by the estimated size of the removed `Wrap` and any cleared indexes.
 - `extend_ttl()`: Renews TTL for persistent entries without altering byte accounting.
+
+
+

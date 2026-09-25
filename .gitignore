@@ -29,3 +29,16 @@ pipeline/node_modules/
 /frontend/.env
 /frontend/.env.local
 /frontend/*.tsbuildinfo
+
+# Scratch / temporary files (see issue #714)
+temp_*.rs
+*.patch
+*_results.txt
+merge*.log
+fix_*.py
+patch_*.py
+safe_patch.py
+strict_patch.py
+merge_*.sh
+process_prs.sh
+run_merge.sh

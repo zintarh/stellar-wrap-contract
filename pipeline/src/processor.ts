@@ -37,12 +37,20 @@ export function classifyEvent(event: ContractEvent): TypedEvent {
         event_type: 'init',
         parsed: { admin: event.topics[1]?.value },
       };
-    case 'pause':
+    case 'pause': {
+      // Direction is encoded as a sub-topic: "paused" vs "unpaused". The
+      // payload carries the acting admin, so pause signals no longer need to
+      // be decoded from a boolean payload to know their direction.
+      const direction = event.topics[1];
       return {
         raw: event,
         event_type: 'pause',
-        parsed: { paused: event.data.value },
+        parsed: {
+          paused: direction.type === 'symbol' && direction.value === 'paused',
+          admin: event.data.value,
+        },
       };
+    }
     case 'upgrade':
       return {
         raw: event,

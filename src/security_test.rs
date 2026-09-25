@@ -5,14 +5,15 @@
 //! fails safely when attacked. We test replay attacks, identity theft,
 //! cross-contract replay protection, and resource consumption.
 
-use super::*;
-use crate::signature::construct_mint_payload;
 use ed25519_dalek::{Signer, SigningKey};
 use soroban_sdk::{
     symbol_short,
     testutils::{Address as _, Ledger, MockAuth, MockAuthInvoke},
-    Address, BytesN, Env, IntoVal, Symbol,
+    Address, Bytes, BytesN, Env, IntoVal, Symbol,
 };
+
+use super::*;
+use crate::signature::construct_mint_payload;
 
 /// Test 1: Replay Attack Simulation
 /// Ensures that a valid signature cannot be reused for the same period
@@ -57,8 +58,8 @@ fn test_replay_attack_same_period_fails() {
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
 
-    client.initialize(&admin, &admin_pubkey);
     env.mock_all_auths();
+    client.initialize(&admin, &admin_pubkey);
 
     let data_hash = BytesN::from_array(&env, &[42u8; 32]);
     let archetype = symbol_short!("architect");
@@ -87,7 +88,7 @@ fn test_replay_attack_same_period_fails() {
 
     // Verify the wrap was created
     let wrap = client.get_wrap(&user, &period);
-    assert!(wrap.is_some(), "First mint should succeed");
+    assert!(wrap.is_some(), "First mint should succeed.");
 
     // Replay attack: Try to mint again with the exact same parameters
     // This should PANIC with WrapAlreadyExists error (#4)
@@ -115,8 +116,8 @@ fn test_replay_attack_different_hash_same_period_fails() {
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
 
-    client.initialize(&admin, &admin_pubkey);
     env.mock_all_auths();
+    client.initialize(&admin, &admin_pubkey);
 
     let data_hash_1 = BytesN::from_array(&env, &[42u8; 32]);
     let data_hash_2 = BytesN::from_array(&env, &[99u8; 32]);
@@ -180,8 +181,8 @@ fn test_multiple_periods_for_same_user_success() {
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
 
-    client.initialize(&admin, &admin_pubkey);
     env.mock_all_auths();
+    client.initialize(&admin, &admin_pubkey);
 
     let data_hash_1 = BytesN::from_array(&env, &[42u8; 32]);
     let data_hash_2 = BytesN::from_array(&env, &[99u8; 32]);
@@ -273,8 +274,8 @@ fn test_signature_cannot_be_stolen_by_another_user() {
     let user_a = Address::generate(&env);
     let user_b = Address::generate(&env);
 
-    client.initialize(&admin, &admin_pubkey);
     env.mock_all_auths();
+    client.initialize(&admin, &admin_pubkey);
 
     // Admin creates a signature for User A
     let data_hash_for_a = BytesN::from_array(&env, &[42u8; 32]);
@@ -304,7 +305,7 @@ fn test_signature_cannot_be_stolen_by_another_user() {
 
     // Verify User A has the wrap
     let wrap_a = client.get_wrap(&user_a, &period);
-    assert!(wrap_a.is_some(), "User A should have the wrap");
+    assert!(wrap_a.is_some(), "User A should have the wrap.");
 
     // User B tries to mint with their own period (this is allowed)
     let data_hash_for_b = BytesN::from_array(&env, &[99u8; 32]);
@@ -341,7 +342,7 @@ fn test_signature_cannot_be_stolen_by_another_user() {
     let user_b_period_dec = client.get_wrap(&user_b, &period);
     assert!(
         user_b_period_dec.is_none(),
-        "User B should not have User A's period"
+        "User B should not have User A's period."
     );
 }
 
@@ -395,7 +396,7 @@ fn test_cross_contract_replay_protection() {
 
     // Verify the wrap exists on V1
     let wrap_v1 = client_v1.get_wrap(&user, &period);
-    assert!(wrap_v1.is_some(), "Wrap should exist on contract V1");
+    assert!(wrap_v1.is_some(), "Wrap should exist on contract V1.");
 
     // NOTE: For full cross-contract replay protection, the signature
     // verification should include the contract address in the signed payload.
@@ -438,11 +439,11 @@ fn test_cross_contract_replay_protection() {
 
     assert!(
         result.is_err(),
-        "A signature from V1 should not be replayable on V2"
+        "A signature from V1 should not be replayable on V2."
     );
     assert!(
         client_v2.get_wrap(&user, &period).is_none(),
-        "the replay attempt must not create a wrap on V2"
+        "The replay attempt must not create a wrap on V2."
     );
 
     // The same user can mint on V2 (they are independent contracts)
@@ -487,8 +488,8 @@ fn test_gas_analysis_mint_operation() {
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
 
-    client.initialize(&admin, &admin_pubkey);
     env.mock_all_auths();
+    client.initialize(&admin, &admin_pubkey);
 
     let data_hash = BytesN::from_array(&env, &[42u8; 32]);
     let archetype = symbol_short!("architect");
@@ -533,10 +534,14 @@ fn test_gas_analysis_mint_operation() {
     // For mainnet deployment, you want these to be as low as possible
     assert!(
         cpu_insns < 10_000_000,
-        "CPU instructions too high: {}",
+        "CPU instructions are too high: {}",
         cpu_insns
     );
-    assert!(mem_bytes < 200_000, "Memory usage too high: {}", mem_bytes);
+    assert!(
+        mem_bytes < 200_000,
+        "Memory usage is too high: {}",
+        mem_bytes
+    );
 
     // Gas analysis results:
     // CPU Instructions: Check assertion output
@@ -559,8 +564,8 @@ fn test_gas_analysis_multiple_mints() {
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
 
-    client.initialize(&admin, &admin_pubkey);
     env.mock_all_auths();
+    client.initialize(&admin, &admin_pubkey);
 
     env.cost_estimate().budget().reset_default();
 
@@ -604,8 +609,16 @@ fn test_gas_analysis_multiple_mints() {
 
     // Gas analysis for 5 mints - results tracked in budget
     // Verify resource usage is within reasonable bounds for batch operations
-    assert!(cpu_insns < 50_000_000, "Batch CPU too high: {}", cpu_insns);
-    assert!(mem_bytes < 500_000, "Batch memory too high: {}", mem_bytes);
+    assert!(
+        cpu_insns < 50_000_000,
+        "Batch CPU usage is too high: {}",
+        cpu_insns
+    );
+    assert!(
+        mem_bytes < 500_000,
+        "Batch memory usage is too high: {}",
+        mem_bytes
+    );
 }
 
 /// Test 8: Timestamp Manipulation Resistance
@@ -621,8 +634,8 @@ fn test_timestamp_is_from_ledger_not_user() {
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
 
-    client.initialize(&admin, &admin_pubkey);
     env.mock_all_auths();
+    client.initialize(&admin, &admin_pubkey);
 
     // Set specific ledger timestamp
     env.ledger().with_mut(|li| {
@@ -656,7 +669,10 @@ fn test_timestamp_is_from_ledger_not_user() {
     let wrap = client.get_wrap(&user, &period).unwrap();
 
     // Verify timestamp matches ledger, not any user-provided value
-    assert_eq!(wrap.timestamp, 1000000, "Timestamp should come from ledger");
+    assert_eq!(
+        wrap.timestamp, 1000000,
+        "Timestamp should come from the ledger."
+    );
 
     // Advance ledger time and mint another period
     env.ledger().with_mut(|li| {
@@ -687,7 +703,7 @@ fn test_timestamp_is_from_ledger_not_user() {
     let wrap_2 = client.get_wrap(&user, &period_2).unwrap();
     assert_eq!(
         wrap_2.timestamp, 2000000,
-        "Second timestamp should match new ledger time"
+        "Second timestamp should match the new ledger time."
     );
 }
 
@@ -704,8 +720,8 @@ fn test_edge_case_long_symbols() {
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
 
-    client.initialize(&admin, &admin_pubkey);
     env.mock_all_auths();
+    client.initialize(&admin, &admin_pubkey);
 
     let data_hash = BytesN::from_array(&env, &[42u8; 32]);
 
@@ -734,7 +750,10 @@ fn test_edge_case_long_symbols() {
     );
 
     let wrap = client.get_wrap(&user, &period);
-    assert!(wrap.is_some(), "Should handle reasonably long symbols");
+    assert!(
+        wrap.is_some(),
+        "Wrap should exist for reasonably long symbols."
+    );
 }
 
 /// Test 10: Unauthorized Access - Non-Admin Cannot Mint
@@ -819,8 +838,8 @@ fn test_two_step_admin_transfer_success() {
     let new_admin = Address::generate(&env);
     let pubkey = BytesN::from_array(&env, &[1u8; 32]);
 
-    client.initialize(&admin, &pubkey);
     env.mock_all_auths();
+    client.initialize(&admin, &pubkey);
 
     // Step 1: Current admin proposes new_admin
     client.propose_admin(&new_admin);
@@ -851,8 +870,8 @@ fn test_admin_cancel_proposed_admin() {
     let new_admin = Address::generate(&env);
     let pubkey = BytesN::from_array(&env, &[2u8; 32]);
 
-    client.initialize(&admin, &pubkey);
     env.mock_all_auths();
+    client.initialize(&admin, &pubkey);
 
     // Admin proposes
     client.propose_admin(&new_admin);
@@ -922,8 +941,8 @@ fn test_accept_admin_no_proposal_fails() {
     let admin = Address::generate(&env);
     let pubkey = BytesN::from_array(&env, &[4u8; 32]);
 
-    client.initialize(&admin, &pubkey);
     env.mock_all_auths();
+    client.initialize(&admin, &pubkey);
 
     // No proposal exists - should panic with NoAdminTransferProposal
     client.accept_admin();
@@ -943,8 +962,8 @@ fn test_propose_admin_when_proposal_exists_fails() {
     let new_admin_2 = Address::generate(&env);
     let pubkey = BytesN::from_array(&env, &[5u8; 32]);
 
-    client.initialize(&admin, &pubkey);
     env.mock_all_auths();
+    client.initialize(&admin, &pubkey);
 
     // First proposal
     client.propose_admin(&new_admin_1);
@@ -966,8 +985,8 @@ fn test_cancel_no_proposal_fails() {
     let admin = Address::generate(&env);
     let pubkey = BytesN::from_array(&env, &[6u8; 32]);
 
-    client.initialize(&admin, &pubkey);
     env.mock_all_auths();
+    client.initialize(&admin, &pubkey);
 
     // No proposal exists - should panic with NoAdminTransferProposal
     client.cancel_proposed_admin();
@@ -1045,8 +1064,15 @@ fn test_non_admin_cannot_cancel_proposal() {
 }
 
 /// Test 19: update_admin (Single-Step) Clears Pending Proposal - Backward Compatibility
-/// Verifies that the legacy single-step update_admin clears any pending proposal
-/// and successfully transfers admin rights.
+/// Regression test for pending admin clearing behavior.
+///
+/// Verifies that when update_admin is called while a PendingAdmin proposal exists:
+/// 1. The pending proposal is cleared (no orphaned state)
+/// 2. The newly assigned admin is correctly set
+/// 3. No stale pending-admin state remains after the transition
+///
+/// This hardening test locks down the current behavior before enhancing the
+/// event system to emit a distinct "pending proposal cleared" event.
 #[test]
 fn test_update_admin_clears_pending_proposal() {
     let env = Env::default();
@@ -1058,21 +1084,55 @@ fn test_update_admin_clears_pending_proposal() {
     let direct_new_admin = Address::generate(&env);
     let pubkey = BytesN::from_array(&env, &[9u8; 32]);
 
-    client.initialize(&admin, &pubkey);
     env.mock_all_auths();
+    client.initialize(&admin, &pubkey);
 
-    // Admin proposes a transfer
+    // === SETUP: Establish initial state with a pending proposal ===
     client.propose_admin(&proposed_admin);
-    assert_eq!(client.get_pending_admin().unwrap(), proposed_admin);
-    assert_eq!(client.get_admin().unwrap(), admin);
 
-    // Admin bypasses two-step flow using update_admin (legacy)
+    // BEFORE update_admin: Verify pending proposal exists
+    assert_eq!(client.get_pending_admin().unwrap(), proposed_admin,
+               "pending proposal should exist before update_admin");
+
+    // BEFORE update_admin: Verify current admin is unchanged
+    assert_eq!(client.get_admin().unwrap(), admin,
+               "current admin should be unchanged before update_admin");
+
+    // === ACTION: Bypass two-step flow using single-step update_admin ===
+    // This one-step call should clear any in-flight PendingAdmin proposal
     client.update_admin(&direct_new_admin);
 
-    // Verify direct_new_admin is now the admin
-    assert_eq!(client.get_admin().unwrap(), direct_new_admin);
-    // Verify pending proposal was cleared
-    assert!(client.get_pending_admin().is_none());
+    // === VERIFICATION: Verify all expected state changes ===
+
+    // 1. NEWLY ASSIGNED ADMIN IS CORRECT
+    assert_eq!(client.get_admin().unwrap(), direct_new_admin,
+               "admin should be updated to the new admin");
+
+    // 2. PENDING PROPOSAL IS CLEARED (no orphaned state)
+    assert!(client.get_pending_admin().is_none(),
+            "pending proposal should be cleared after update_admin");
+
+    // 3. NO STALE PENDING-ADMIN STATE REMAINS
+    // Verify by attempting to actually retrieve and confirm absence
+    let pending_after = client.get_pending_admin();
+    assert!(pending_after.is_none(),
+            "no stale pending-admin state should remain; storage should be clean");
+
+    // 4. VERIFY BYPASSED PROPOSED ADMIN CANNOT ACCEPT
+    // The proposed_admin who was bypassed should NOT be able to call accept_admin
+    // since there is no longer any pending proposal
+    let accept_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        client.accept_admin();
+    }));
+    assert!(accept_result.is_err(),
+            "accept_admin should fail when no pending proposal exists");
+
+    // 5. VERIFY NEW ADMIN CAN MAKE NEW PROPOSALS
+    // The new admin should be able to create a fresh proposal
+    let another_admin = Address::generate(&env);
+    client.propose_admin(&another_admin);
+    assert_eq!(client.get_pending_admin().unwrap(), another_admin,
+               "new admin should be able to propose a new transfer");
 }
 
 /// Test 20: get_pending_admin Returns None When No Proposal
@@ -1105,8 +1165,8 @@ fn test_propose_cancel_repropose() {
     let second_proposal = Address::generate(&env);
     let pubkey = BytesN::from_array(&env, &[11u8; 32]);
 
-    client.initialize(&admin, &pubkey);
     env.mock_all_auths();
+    client.initialize(&admin, &pubkey);
 
     // First proposal
     client.propose_admin(&first_proposal);
@@ -1140,8 +1200,8 @@ fn test_new_admin_can_propose_further_transfers() {
     let admin_3 = Address::generate(&env);
     let pubkey = BytesN::from_array(&env, &[12u8; 32]);
 
-    client.initialize(&admin_1, &pubkey);
     env.mock_all_auths();
+    client.initialize(&admin_1, &pubkey);
 
     // Admin1 -> Admin2 via two-step
     client.propose_admin(&admin_2);
@@ -1156,4 +1216,138 @@ fn test_new_admin_can_propose_further_transfers() {
     // Final state
     assert_eq!(client.get_admin().unwrap(), admin_3);
     assert!(client.get_pending_admin().is_none());
+}
+
+#[test]
+fn test_all_mutating_entrypoints_honor_pause() {
+    let env = Env::default();
+    let contract_id = env.register(StellarWrapContract, ());
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+    let pubkey = BytesN::from_array(&env, &[11u8; 32]);
+
+    env.mock_all_auths();
+    client.initialize(&admin, &admin_pubkey);
+
+    client.pause();
+
+    let archetype = Symbol::new(&env, "some_archetype");
+    let data_hash = BytesN::from_array(&env, &[0u8; 32]);
+    let signature = BytesN::from_array(&env, &[0u8; 64]);
+
+    let res = client.try_mint_wrap(&user, &202401, &archetype, &data_hash, &1u32, &signature);
+    assert!(res.is_err(), "mint_wrap should fail when paused");
+
+    // Attacker submits hash B together with the signature that was made for hash A.
+    // The contract must detect the mismatch and panic with InvalidSignature (#5).
+    client.mint_wrap(
+        &user,
+        &period,
+        &archetype,
+        &data_hash_b, // tampered: different from what was signed
+        &CURRENT_PAYLOAD_VERSION,
+        &signature,
+    );
+
+    let res = client.try_transfer_wrap(&user, &admin, &202401);
+    assert!(res.is_err(), "transfer_wrap should fail when paused");
+
+    let res = client.try_backfill_wrap_periods(&user, &soroban_sdk::vec![&env, 202401]);
+    assert!(res.is_err(), "backfill_wrap_periods should fail when paused");
+
+    let res = client.try_transition_wrap_state(&user, &202401, &crate::storage_types::WrapState::Expired);
+    assert!(res.is_err(), "transition_wrap_state should fail when paused");
+
+    let res = client.try_expire_wrap(&user, &202401);
+    assert!(res.is_err(), "expire_wrap should fail when paused");
+
+    let res = client.try_stake(&user, &1000);
+    assert!(res.is_err(), "stake should fail when paused");
+
+    let res = client.try_unstake(&user);
+    assert!(res.is_err(), "unstake should fail when paused");
+
+    let res = client.try_withdraw_stake(&user);
+    assert!(res.is_err(), "withdraw_stake should fail when paused");
+
+    let res = client.try_bridge_wrap_out(&user, &1, &Bytes::new(&env), &202401);
+    assert!(res.is_err(), "bridge_wrap_out should fail when paused");
+
+    let res = client.try_bridge_wrap_in(&1, &1, &user, &202401, &archetype, &data_hash);
+    assert!(res.is_err(), "bridge_wrap_in should fail when paused");
+}
+
+#[test]
+fn test_create_admin_proposal_duration_overflow_asserts_arithmetic_overflow() {
+    let env = Env::default();
+    let contract_id = env.register(StellarWrapContract, ());
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let pubkey = BytesN::from_array(&env, &[14u8; 32]);
+
+    env.mock_all_auths();
+    client.initialize(&admin, &pubkey);
+
+    env.ledger().with_mut(|li| {
+        li.timestamp = 1;
+    });
+
+    let result = client.try_create_admin_proposal(&u64::MAX);
+    assert_eq!(
+        result.err().unwrap().contract_error(),
+        Some(ContractError::ArithmeticOverflow as u32)
+    );
+}
+
+#[test]
+fn test_bridge_wrap_out_nonce_overflow_asserts_arithmetic_overflow() {
+    let env = Env::default();
+    let contract_id = env.register(StellarWrapContract, ());
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let signing_key = SigningKey::from_bytes(&[15u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    env.mock_all_auths();
+    client.initialize(&admin, &admin_pubkey);
+
+    let archetype = symbol_short!("architect");
+    let data_hash = BytesN::from_array(&env, &[42u8; 32]);
+    let period = 202512u64;
+    let signature = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user,
+        period,
+        &archetype,
+        &data_hash,
+        CURRENT_PAYLOAD_VERSION,
+    );
+    client.mint_wrap(
+        &user,
+        &period,
+        &archetype,
+        &data_hash,
+        &CURRENT_PAYLOAD_VERSION,
+        &signature,
+    );
+
+    env.as_contract(&contract_id, || {
+        env.storage().instance().set(
+            &Symbol::new(&env, "outbound_nonce"),
+            &u32::MAX,
+        );
+    });
+
+    let result = client.try_bridge_wrap_out(&user, &1, &Bytes::new(&env), &period);
+    assert_eq!(
+        result.err().unwrap().contract_error(),
+        Some(ContractError::ArithmeticOverflow as u32)
+    );
 }

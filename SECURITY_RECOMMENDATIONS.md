@@ -617,6 +617,76 @@ All persistent storage entries are created with a TTL of **~1 year** (17280 × 3
 | `test_renew_all_ttls_before_init_fails` | Verifies failure before initialization |
 
 ---
+
+## 🔒 Issue #124: `extend_ttl` Griefing Analysis
+
+### Question 1 — Does `extend_ttl` on a non-existent wrap cause side effects?
+**No.** Every key touched by `extend_ttl` (`Wrap`, `WrapCount`, `LatestPeriod`) is
+guarded by an existence check (`get`/`has`) before any `extend_ttl` call is made
+on it. Calling the function for a `(user, period)` pair that was never minted is
+a safe no-op for those three keys — only the contract instance TTL is
+unconditionally extended, which is intentional and harmless (see Question 4).
+Confirmed by `test_extend_ttl_on_nonexistent_wrap_is_noop`.
+
+### Question 2 — Can an attacker keep expired/revoked data alive?
+Two different "death" mechanisms exist in this contract, and they behave
+differently under `extend_ttl`:
+
+- **`revoke_wrap` (admin-only):** deletes the `Wrap` entry from storage
+  entirely. There is nothing left to extend — `extend_ttl` on a revoked
+  `(user, period)` is a no-op today, with no code change required. Confirmed
+  by `test_extend_ttl_after_revoke_is_noop`.
+- **`transition_wrap_state` / `expire_wrap` (#95):** these move a wrap's
+  `WrapLifecycleFSM.state` to `Cancelled`, `Expired`, or `Archived` but leave
+  the storage entry in place. Before this fix, `extend_ttl` had no awareness
+  of this state and would happily reset a dead wrap's TTL to ~1 year,
+  indefinitely, defeating the purpose of the state machine — the ledger entry
+  would never become eligible for archival. **Fixed:** `extend_ttl` now reads
+  the record's `fsm.state` and only renews the wrap's own TTL when the state
+  is non-terminal (`Draft`, `Pending`, `Active`, `Bridged`). Terminal-state
+  wraps are left alone so they can be archived naturally. Confirmed by
+  `test_extend_ttl_skips_terminal_wrap_state`.
+
+### Question 3 — Is the gas/resource cost borne by the caller?
+**Yes — document this explicitly.** Extending a Soroban persistent entry's TTL
+requires paying the ledger's rent-bump resource fee as part of the submitted
+transaction; that fee comes out of the fee-paying account that submits the
+`extend_ttl` call, not from any balance held by the contract itself. This means
+the "griefing" vector is self-funded: a caller who wants to keep some other
+user's *active* wrap alive pays for that renewal themselves. There is no way
+to make the contract (or another party) foot the bill for a single
+`extend_ttl` call.
+
+### Question 4 — Can `extend_ttl` be looped to DoS the contract?
+**No meaningful amplification.** Each call touches at most four storage keys
+for one `(user, period)` pair, and the caller pays the resource fee for every
+call. Looping the call only multiplies the attacker's own cost linearly; it
+does not create a cheap way to bloat storage or drain the contract's own
+funds, since the contract holds no balance that pays for TTL extension.
+Unconditionally extending the **instance** TTL on every call is intentional —
+the contract instance is shared infrastructure, not tied to any one user's
+wrap lifecycle, and keeping it alive whenever *any* legitimate renewal
+activity happens is desirable, not a terminal-state concern.
+
+### Decision: guard by state, not by auth
+Adding `require_auth()` to `extend_ttl` was considered and rejected — the
+function is deliberately permissionless so off-chain renewal bots (or any
+community member) can keep active users' data alive without holding a signing
+key, as already documented above under "TTL Lifecycle & Data Freshness." The
+actual gap was the missing terminal-state check, not missing authorization;
+gating on `WrapState` closes the griefing/expiry-defeat vector while
+preserving the intended permissionless renewal design.
+
+### New Test Coverage (#124)
+
+| Test | Purpose |
+|------|---------|
+| `test_extend_ttl_on_nonexistent_wrap_is_noop` | Confirms no panic and no state is created for a wrap that was never minted |
+| `test_extend_ttl_after_revoke_is_noop` | Confirms `extend_ttl` after `revoke_wrap` does not resurrect the deleted record |
+| `test_extend_ttl_repeated_calls_no_side_effects` | Confirms calling `extend_ttl` repeatedly on an active wrap is idempotent (no data drift, no double-counted balance) |
+| `test_extend_ttl_skips_terminal_wrap_state` | Confirms a wrap in `Archived`/`Expired`/`Cancelled` state does *not* get its TTL reset, while an active wrap does |
+
+---
 ## 📚 Additional Security Best Practices
 
 ### Invariant Testing

@@ -1,6 +1,5 @@
 #![cfg(test)]
 
-use super::*;
 use soroban_sdk::{
     symbol_short,
     testutils::{Address as _, Events, Ledger},
@@ -8,6 +7,7 @@ use soroban_sdk::{
     Address, BytesN, Env, Symbol, TryIntoVal, Val,
 };
 
+use super::*;
 use crate::storage_types::{WrapLifecycleFSM, WrapRecord, WrapState};
 
 // ─── FSM transition unit tests ──────────────────────────────────────────
@@ -112,6 +112,7 @@ fn test_expire_draft_wrap_after_deadline_succeeds() {
     let period = 202501u64;
     let insertion_time = 1000000u64;
 
+    env.mock_all_auths();
     client.initialize(&admin, &pubkey);
 
     // Insert a Draft wrap directly with a known timestamp.
@@ -587,9 +588,86 @@ fn test_set_expiration_duration_zero_fails() {
     let admin = Address::generate(&env);
     let pubkey = BytesN::from_array(&env, &[15u8; 32]);
 
+    env.mock_all_auths();
+    client.initialize(&admin, &pubkey);
+    client.set_expiration_duration(&0);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #47)")]
+fn test_set_expiration_duration_below_min_fails() {
+    let env = Env::default();
+    let contract_id = env.register(StellarWrapContract, ());
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let pubkey = BytesN::from_array(&env, &[23u8; 32]);
+
     client.initialize(&admin, &pubkey);
     env.mock_all_auths();
-    client.set_expiration_duration(&0);
+    client.set_expiration_duration(&3599u64);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #47)")]
+fn test_set_expiration_duration_above_max_fails() {
+    let env = Env::default();
+    let contract_id = env.register(StellarWrapContract, ());
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let pubkey = BytesN::from_array(&env, &[24u8; 32]);
+
+    client.initialize(&admin, &pubkey);
+    env.mock_all_auths();
+    client.set_expiration_duration(&(30 * 24 * 60 * 60 + 1));
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #47)")]
+fn test_set_expiration_duration_u64_max_fails() {
+    let env = Env::default();
+    let contract_id = env.register(StellarWrapContract, ());
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let pubkey = BytesN::from_array(&env, &[25u8; 32]);
+
+    client.initialize(&admin, &pubkey);
+    env.mock_all_auths();
+    client.set_expiration_duration(&u64::MAX);
+}
+
+#[test]
+fn test_set_expiration_duration_min_succeeds() {
+    let env = Env::default();
+    let contract_id = env.register(StellarWrapContract, ());
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let pubkey = BytesN::from_array(&env, &[26u8; 32]);
+
+    client.initialize(&admin, &pubkey);
+    env.mock_all_auths();
+    let min_duration: u64 = 60 * 60;
+    client.set_expiration_duration(&min_duration);
+    assert_eq!(client.expiration_duration(), min_duration);
+}
+
+#[test]
+fn test_set_expiration_duration_max_succeeds() {
+    let env = Env::default();
+    let contract_id = env.register(StellarWrapContract, ());
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let pubkey = BytesN::from_array(&env, &[27u8; 32]);
+
+    client.initialize(&admin, &pubkey);
+    env.mock_all_auths();
+    let max_duration: u64 = 30 * 24 * 60 * 60;
+    client.set_expiration_duration(&max_duration);
+    assert_eq!(client.expiration_duration(), max_duration);
 }
 
 #[test]
@@ -602,9 +680,10 @@ fn test_set_expiration_duration_non_admin_fails() {
     let admin = Address::generate(&env);
     let pubkey = BytesN::from_array(&env, &[16u8; 32]);
 
+    env.mock_all_auths();
     client.initialize(&admin, &pubkey);
 
-    // Do NOT mock auths — require_auth will panic for non-admin.
+    env.set_auths(&[]);
     client.set_expiration_duration(&3600);
 }
 

@@ -7,14 +7,15 @@
 
 use soroban_sdk::{panic_with_error, symbol_short, Address, Env};
 
-use crate::storage_types::{StakeConfig, StakeRecord};
-use crate::{ContractError, DataKey};
+use crate::{
+    storage_types::{StakeConfig, StakeRecord},
+    ContractError, DataKey,
+};
 
 const DEFAULT_MIN_STAKE: i128 = 100;
 const DEFAULT_COOLDOWN_SECONDS: u64 = 7 * 24 * 60 * 60; // 7 days
 const DEFAULT_PRIORITY_MULTIPLIER_BPS: u32 = 1_000; // 10% per min_stake unit above minimum
 const DEFAULT_MAX_PRIORITY_BPS: u32 = 5_000; // 50% max discount
-const TTL_ONE_YEAR: u32 = 17_280 * 365; // ~1 year in ledgers
 
 // ── Config helpers ──────────────────────────────────────────────────────────
 
@@ -239,15 +240,11 @@ pub(crate) fn get_stake_priority(e: &Env, user: Address) -> u32 {
         return 0;
     }
 
-    // Calculate how many multiples of min_stake the user has staked.
-    let multiples = (record.amount / config.min_stake) as u32;
-    let priority = multiples.saturating_mul(config.priority_multiplier_bps);
-
-    if priority > config.max_priority_bps {
-        config.max_priority_bps
-    } else {
-        priority
-    }
+    // Stay in i128 until the final cast to avoid truncating large stakes.
+    let multiples: i128 = record.amount / config.min_stake;
+    let priority: i128 = multiples.saturating_mul(config.priority_multiplier_bps as i128);
+    let capped: i128 = priority.min(config.max_priority_bps as i128);
+    capped as u32
 }
 
 /// Return the total amount staked across all users.

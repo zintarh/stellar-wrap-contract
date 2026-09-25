@@ -21,11 +21,14 @@
 
 extern crate std;
 
-use super::*;
-use crate::mint::CURRENT_PAYLOAD_VERSION;
-use crate::signature::{construct_mint_payload, verify_mint_signature, MINT_DOMAIN_SEPARATOR};
 use ed25519_dalek::{Signer, SigningKey};
 use soroban_sdk::{symbol_short, testutils::Address as _, Address, Bytes, BytesN, Env, Symbol};
+
+use super::*;
+use crate::{
+    mint::CURRENT_PAYLOAD_VERSION,
+    signature::{construct_mint_payload, verify_mint_signature, MINT_DOMAIN_SEPARATOR},
+};
 
 /// Fixed Ed25519 secret-key seed (tests only).
 pub const FIXTURE_SECRET_SEED: [u8; 32] = [0x42; 32];
@@ -110,8 +113,9 @@ fn test_deterministic_fixture_used_in_contract_mint() {
 
     let client = StellarWrapContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
-    client.initialize(&admin, &pubkey);
     env.mock_all_auths();
+    env.mock_all_auths();
+    client.initialize(&admin, &pubkey);
 
     client.mint_wrap(
         &user,

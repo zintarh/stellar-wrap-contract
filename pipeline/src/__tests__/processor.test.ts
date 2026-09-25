@@ -81,14 +81,32 @@ describe('classifyEvent', () => {
     expect(typed.parsed.admin).toBe('GADMIN');
   });
 
-  it('classifies pause event', () => {
+  it('classifies pause event with paused direction and admin', () => {
     const event = makeMockEvent({
-      topics: [{ type: 'symbol', value: 'pause' }],
-      data: { type: 'bool', value: true },
+      topics: [
+        { type: 'symbol', value: 'pause' },
+        { type: 'symbol', value: 'paused' },
+      ],
+      data: { type: 'address', value: 'GADMIN' },
     });
     const typed = classifyEvent(event);
     expect(typed.event_type).toBe('pause');
     expect(typed.parsed.paused).toBe(true);
+    expect(typed.parsed.admin).toBe('GADMIN');
+  });
+
+  it('classifies unpause event with unpaused direction and admin', () => {
+    const event = makeMockEvent({
+      topics: [
+        { type: 'symbol', value: 'pause' },
+        { type: 'symbol', value: 'unpaused' },
+      ],
+      data: { type: 'address', value: 'GADMIN' },
+    });
+    const typed = classifyEvent(event);
+    expect(typed.event_type).toBe('pause');
+    expect(typed.parsed.paused).toBe(false);
+    expect(typed.parsed.admin).toBe('GADMIN');
   });
 
   it('classifies slash report event', () => {

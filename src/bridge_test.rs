@@ -1,3 +1,8 @@
+Viewed bridge_test.rs:1-480
+
+Here is the complete, resolved code to copy and paste into **`stellar-wrap-contract/src/bridge_test.rs`**:
+
+```rust
 #![cfg(test)]
 
 extern crate std;
@@ -476,4 +481,4 @@ fn test_bridge_wrap_in_mint_and_transfer_invariants() {
         assert_eq!(final_user_periods.len(), 2);
     });
 }
-
+```

@@ -2,16 +2,17 @@
  * Merkle tree helper for Stellar Wrap batch claims.
  *
  * Leaf encoding (must match on-chain `compute_merkle_leaf`):
- *   SHA-256( XDR(user) || XDR(period) || XDR(archetype) || XDR(data_hash) )
+ *   SHA-256( 0x00 || XDR(user) || XDR(period) || XDR(archetype) || XDR(data_hash) )
  *
  * Internal nodes:
- *   SHA-256( min(left,right) || max(left,right) )  — lexicographic byte order
+ *   SHA-256( 0x01 || min(left,right) || max(left,right) )  — lexicographic byte order
+ *
+ * Proof depth is bounded by MAX_PROOF_DEPTH (32) to prevent unbounded proofs.
  *
  * Usage:
  *   npm install @stellar/stellar-sdk @noble/hashes
- *   npx ts-node scripts/merkle.ts
- */
-
+ *   nxp ts-node scripts/merkle.ts
+"/
 import { createHash } from "crypto";
 import {
   Address,
@@ -27,6 +28,8 @@ export type ClaimLeaf = {
   dataHash: Buffer; // 32 bytes
 };
 
+const MAX_PROOF_DEPTH = 32;
+
 function sha256(buf: Buffer): Buffer {
   return createHash("sha256").update(buf).digest();
 }
@@ -39,6 +42,7 @@ function toXdrBytes(val: xdr.ScVal): Buffer {
 export function encodeMerkleLeaf(leaf: ClaimLeaf, networkPassphrase: string): Buffer {
   const userAddr = Address.fromString(leaf.user);
   const parts = [
+    Buffer.from([0x00]),
     toXdrBytes(userAddr.toScVal()),
     toXdrBytes(nativeToScVal(leaf.period, { type: "u64" })),
     toXdrBytes(nativeToScVal(leaf.archetype, { type: "symbol" })),
@@ -49,7 +53,7 @@ export function encodeMerkleLeaf(leaf: ClaimLeaf, networkPassphrase: string): Bu
 
 function hashPair(a: Buffer, b: Buffer): Buffer {
   const [left, right] = Buffer.compare(a, b) <= 0 ? [a, b] : [b, a];
-  return sha256(Buffer.concat([left, right]));
+  return sha256(Buffer.concat([Buffer.from([0x01]), left, right]));
 }
 
 /** Build a binary merkle root from pre-encoded 32-byte leaves. */
@@ -79,6 +83,9 @@ export function buildMerkleProof(leaves: Buffer[], index: number): Buffer[] {
     const siblingIdx = idx % 2 === 0 ? idx + 1 : idx - 1;
     if (siblingIdx < layer.length) {
       proof.push(layer[siblingIdx]);
+      if (proof.length > MAX_PROOF_DEPTH) {
+        throw new Error("proof depth exceeds MAX_PROOF_DEPTH");
+      }
     }
     const next: Buffer[] = [];
     for (let i = 0; i < layer.length; i += 2) {
@@ -108,7 +115,7 @@ export function buildClaimTree(
 if (require.main === module) {
   const demo: ClaimLeaf[] = [
     {
-      user: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+      user: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
       period: 202512n,
       archetype: "builder",
       dataHash: Buffer.alloc(32, 1),

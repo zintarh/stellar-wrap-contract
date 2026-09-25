@@ -6,50 +6,57 @@ jobs:
   audit:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
+    - name: Install cargo-audit
+      uses: taiki-e/install-action@cargo-audit
     - name: Run cargo audit
-      uses: rustsec/audit-check@v2
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
+      run: cargo audit
 
   test:
     runs-on: ubuntu-latest
     env:
-      RUSTFLAGS: "-D warnings"
+      RUSTFLAGS: "-D warnings -C overflow-checks=on"
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
       with:
         targets: wasm32-unknown-unknown
+        components: clippy, rustfmt
     - name: Check format
-      run: cargo fmt --check
+      run: cargo fmt --all -- --check
     - name: Run clippy
-      run: cargo clippy --all-targets -- -D warnings
+      run: cargo clippy --workspace --all-targets
     - name: Check doc compilation
-      run: RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
+      run: RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
     - name: Run tests
-      run: cargo test
+      run: cargo test --workspace
+    - name: Track WASM size budget
+      run: ./scripts/check_wasm_size.sh
+    - name: Check README documents all entrypoints
+      run: python3 scripts/check_readme_entrypoints.py
     - name: Clean test snapshots
       run: rm -rf test_snapshots/
 
   coverage:
     runs-on: ubuntu-latest
-    # RUSTFLAGS is intentionally NOT set here.
+    # RUSTFLAGS intentionally avoids -D warnings but enables overflow-checks.
     # The test job sets "-D warnings" job-wide; tarpaulin instruments code
     # under its own cargo invocation and may emit warnings from proc-macros
     # or generated code that would otherwise fail CI.  Keeping this job free
     # of -D warnings isolates any tarpaulin-side noise from the test/lint gate.
+    env:
+      RUSTFLAGS: "-C overflow-checks=on"
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
     - name: Install Rust (native only — no wasm32 target needed for tarpaulin)
       uses: dtolnay/rust-toolchain@stable
 
     - name: Cache cargo registry
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: |
           ~/.cargo/registry
@@ -60,25 +67,19 @@ jobs:
           ${{ runner.os }}-cargo-tarpaulin-
 
     - name: Install cargo-tarpaulin
-      # Only install if not already cached.  --locked ensures the exact
-      # version published in Cargo.lock (or the tarpaulin registry entry) is
-      # used, giving reproducible installs across runs.
       run: |
         if ! command -v cargo-tarpaulin &>/dev/null; then
           cargo install cargo-tarpaulin --locked
         fi
 
     - name: Run coverage
-      # tarpaulin.toml configures: --lib, Html+Xml output, coverage/ dir,
-      # fail-under=90, and file exclusions.  Passing --config makes the
-      # location explicit so this job is not sensitive to working-directory.
       run: cargo tarpaulin --config tarpaulin.toml
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v4
       with:
         files: coverage/cobertura.xml
-        fail_ci_if_error: false   # don't block CI on codecov outages
+        fail_ci_if_error: false
         token: ${{ secrets.CODECOV_TOKEN }}
 
     - name: Upload HTML coverage report as artifact

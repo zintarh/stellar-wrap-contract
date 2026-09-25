@@ -9,8 +9,10 @@
 
 use soroban_sdk::{panic_with_error, symbol_short, xdr::ToXdr, Bytes, BytesN, Env, Vec};
 
-use crate::storage_types::{TimelockAction, TimelockOperation};
-use crate::{ContractError, DataKey};
+use crate::{
+    storage_types::{TimelockAction, TimelockOperation},
+    ContractError, DataKey,
+};
 
 /// Smallest delay the timelock accepts (1 hour). A shorter window would not
 /// give observers a realistic chance to react.
@@ -18,10 +20,15 @@ pub const MIN_DELAY: u64 = 3_600;
 /// Largest delay the timelock accepts (30 days). Prevents bricking the contract
 /// with an effectively infinite delay.
 pub const MAX_DELAY: u64 = 30 * 24 * 3_600;
-
-/// Persistent TTL for scheduled operations (~1 year in ledgers), matching the
-/// TTL used for wrap records elsewhere in the contract.
-const TTL_ONE_YEAR: u32 = 17_280 * 365;
+/// Maximum number of pending operations allowed in the queue.
+/// Prevents unbounded growth of the pending list.
+pub const MAX_PENDING_OPERATIONS: u32 = 64;
+/// Grace period after ETA during which an operation may still be executed.
+///
+/// Once `now > eta + GRACE_PERIOD`, the operation is considered expired and
+/// can no longer be executed. It must be swept from the queue by anyone.
+/// Standard value: 14 days (1,209,600 seconds).
+pub const GRACE_PERIOD: u64 = 14 * 24 * 3_600;
 
 /// Returns the configured delay in seconds, or `None` while the timelock is
 /// disabled.
@@ -86,33 +93,47 @@ pub(crate) fn operation_id(e: &Env, action: &TimelockAction) -> BytesN<32> {
         TimelockAction::SetAdmin(addr) => {
             data.append(&Bytes::from_array(e, &[1u8]));
             data.append(&addr.clone().to_xdr(e));
-        }
+        },
         TimelockAction::SetAdminPubKey(key) => {
             data.append(&Bytes::from_array(e, &[2u8]));
             data.append(&key.clone().to_xdr(e));
-        }
+        },
         TimelockAction::Upgrade(hash) => {
             data.append(&Bytes::from_array(e, &[3u8]));
             data.append(&hash.clone().to_xdr(e));
-        }
+        },
         TimelockAction::SetWhitelistRoot(root) => {
             data.append(&Bytes::from_array(e, &[4u8]));
             data.append(&root.clone().to_xdr(e));
-        }
+        },
         TimelockAction::SetTimelockDelay(seconds) => {
             data.append(&Bytes::from_array(e, &[5u8]));
             data.append(&(*seconds).to_xdr(e));
-        }
+        },
+        TimelockAction::SetBridgeRelayers(chain_id, relayers) => {
+            data.append(&Bytes::from_array(e, &[6u8]));
+            data.append(&(*chain_id).to_xdr(e));
+            data.append(&relayers.clone().to_xdr(e));
+        },
     }
     let hash = e.crypto().sha256(&data);
     BytesN::from_array(e, &hash.to_array())
 }
 
 fn read_op_ids(e: &Env) -> Vec<BytesN<32>> {
+    let key = DataKey::TimelockOps;
     e.storage()
-        .instance()
-        .get(&DataKey::TimelockOps)
+        .persistent()
+        .get(&key)
         .unwrap_or_else(|| Vec::new(e))
+}
+
+fn write_op_ids(e: &Env, ids: &Vec<BytesN<32>>) {
+    let key = DataKey::TimelockOps;
+    e.storage().persistent().set(&key, ids);
+    e.storage()
+        .persistent()
+        .extend_ttl(&key, TTL_ONE_YEAR, TTL_ONE_YEAR);
 }
 
 fn remove_op(e: &Env, id: &BytesN<32>) {
@@ -127,9 +148,7 @@ fn remove_op(e: &Env, id: &BytesN<32>) {
             remaining.push_back(existing);
         }
     }
-    e.storage()
-        .instance()
-        .set(&DataKey::TimelockOps, &remaining);
+    write_op_ids(e, &remaining);
 }
 
 /// Admin-only: queue `action` for execution once the delay has elapsed.
@@ -172,8 +191,11 @@ pub(crate) fn schedule(e: Env, action: TimelockAction) -> BytesN<32> {
         .extend_ttl(&key, TTL_ONE_YEAR, TTL_ONE_YEAR);
 
     let mut ids = read_op_ids(&e);
+    if ids.len() >= MAX_PENDING_OPERATIONS {
+        panic_with_error!(e, ContractError::TimelockOperationExists);
+    }
     ids.push_back(id.clone());
-    e.storage().instance().set(&DataKey::TimelockOps, &ids);
+    write_op_ids(&e, &ids);
 
     e.events().publish(
         (symbol_short!("timelock"), symbol_short!("sched")),
@@ -212,6 +234,8 @@ pub(crate) fn cancel(e: Env, id: BytesN<32>) {
 /// # Panics
 /// - [`ContractError::TimelockOperationNotFound`] if `id` is not queued.
 /// - [`ContractError::TimelockNotReady`] if the ETA has not been reached.
+/// - [`ContractError::TimelockOperationExpired`] if the operation is past its
+///   grace period (`now > eta + GRACE_PERIOD`).
 #[allow(deprecated)] // TODO(#718): migrate to #[contractevent]
 pub(crate) fn execute(e: Env, id: BytesN<32>) {
     let admin = crate::admin::read_admin(&e);
@@ -223,8 +247,14 @@ pub(crate) fn execute(e: Env, id: BytesN<32>) {
         .get(&DataKey::TimelockOp(id.clone()))
         .unwrap_or_else(|| panic_with_error!(e, ContractError::TimelockOperationNotFound));
 
-    if e.ledger().timestamp() < op.eta {
+    let now = e.ledger().timestamp();
+    if now < op.eta {
         panic_with_error!(e, ContractError::TimelockNotReady);
+    }
+    // Check if the operation has expired (past grace period).
+    let expiry = op.eta.saturating_add(GRACE_PERIOD);
+    if now > expiry {
+        panic_with_error!(e, ContractError::TimelockOperationExpired);
     }
 
     remove_op(&e, &id);
@@ -238,28 +268,58 @@ pub(crate) fn execute(e: Env, id: BytesN<32>) {
                 (symbol_short!("admin"), symbol_short!("updated")),
                 (admin, new_admin),
             );
-        }
+        },
         TimelockAction::SetAdminPubKey(key) => {
             e.storage().instance().set(&DataKey::AdminPubKey, &key);
-        }
+        },
         TimelockAction::SetWhitelistRoot(root) => {
             e.storage().instance().set(&DataKey::WhitelistRoot, &root);
-        }
+        },
         TimelockAction::SetTimelockDelay(seconds) => {
             validate_delay(&e, seconds);
             e.storage()
                 .instance()
                 .set(&DataKey::TimelockDelay, &seconds);
-        }
+        },
         TimelockAction::Upgrade(wasm_hash) => {
             e.events()
                 .publish((symbol_short!("upgrade"),), wasm_hash.clone());
             e.deployer().update_current_contract_wasm(wasm_hash);
-        }
+        },
+        TimelockAction::SetBridgeRelayers(chain_id, relayers) => {
+            crate::bridge::set_bridge_relayers(&e, chain_id, relayers.relayers, relayers.threshold);
+        },
     }
 
     e.events()
         .publish((symbol_short!("timelock"), symbol_short!("exec")), id);
+}
+
+/// Permissionless: remove a timelock operation that has passed its grace
+/// period. Keeps the pending list clean.
+///
+/// # Panics
+/// - [`ContractError::TimelockOperationNotFound`] if `id` is not queued.
+/// - [`ContractError::TimelockOperationNotExpired`] if the operation's
+///   grace period has not yet elapsed (`now <= eta + GRACE_PERIOD`).
+#[allow(deprecated)] // TODO(#718): migrate to #[contractevent]
+pub(crate) fn sweep_expired(e: Env, id: BytesN<32>) {
+    let op: TimelockOperation = e
+        .storage()
+        .persistent()
+        .get(&DataKey::TimelockOp(id.clone()))
+        .unwrap_or_else(|| panic_with_error!(e, ContractError::TimelockOperationNotFound));
+
+    let now = e.ledger().timestamp();
+    let expiry = op.eta.saturating_add(GRACE_PERIOD);
+    if now <= expiry {
+        panic_with_error!(e, ContractError::TimelockOperationNotExpired);
+    }
+
+    remove_op(&e, &id);
+
+    e.events()
+        .publish((symbol_short!("timelock"), symbol_short!("sweep")), id);
 }
 
 /// Return a scheduled operation by id, or `None` if it is not queued.

@@ -1,8 +1,7 @@
 use soroban_sdk::{Address, BytesN, Env};
 
+use crate::constants::TTL_ONE_YEAR;
 use crate::DataKey;
-
-const TTL_ONE_YEAR: u32 = 17_280 * 365;
 
 /// Store a 32-byte alias hash for the calling user.
 ///

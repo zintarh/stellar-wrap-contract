@@ -1,5 +1,6 @@
-use super::{StellarWrapContract, StellarWrapContractClient};
 use soroban_sdk::{contract, contractimpl, testutils::Address as _, Address, BytesN, Env};
+
+use super::{StellarWrapContract, StellarWrapContractClient};
 
 const APPROVED_HASH: [u8; 32] = [7; 32];
 

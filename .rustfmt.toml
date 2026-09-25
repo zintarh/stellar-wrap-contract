@@ -1,0 +1,16 @@
+edition = "2021"
+max_width = 100
+use_small_heuristics = "Default"
+imports_granularity = "Crate"
+group_imports = "StdExternalCrate"
+reorder_imports = true
+reorder_modules = true
+use_field_init_shorthand = true
+use_try_shorthand = true
+format_strings = false
+tab_spaces = 4
+hard_tabs = false
+newline_style = "Unix"
+trailing_comma = "Vertical"
+trailing_semicolon = true
+match_block_trailing_comma = true

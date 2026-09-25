@@ -18,6 +18,7 @@ timelock_schedule(action) ──► TimelockOp(id) { action, eta, scheduled_at }
         ▼                              ▼
 timelock_execute(id)  ◄── only when ledger timestamp >= eta
 timelock_cancel(id)   ◄── admin may drop it at any point before execution
+timelock_sweep_expired(id) ◄── anyone may remove expired ops (now > eta + GRACE_PERIOD)
 ```
 
 Two pieces of state, both introduced in `DataKey`:
@@ -26,6 +27,32 @@ Two pieces of state, both introduced in `DataKey`:
   enables the timelock.** Absent ⇒ controller disabled.
 - `TimelockOp(id)` (persistent, ~1 year TTL) — one scheduled operation.
   `TimelockOps` (instance) holds the id list for enumeration.
+
+### Grace period
+
+Every scheduled operation has a **grace period** of `GRACE_PERIOD` (14 days,
+1,209,600 seconds) after its ETA. The operation must be executed within this
+window:
+
+```
+scheduled_at ──delay──► ETA ──GRACE_PERIOD──► expiry
+                            │
+                            ├── execute()   (eta ≤ now ≤ expiry)
+                            └── sweep_expired()  (now > expiry)
+```
+
+- `timelock_execute` succeeds only while `now ≤ eta + GRACE_PERIOD`.
+- After `now > eta + GRACE_PERIOD` the operation is **expired** and can no
+  longer be executed. It remains in storage until someone calls
+  `timelock_sweep_expired` to remove it from the pending list.
+- The grace period bounds the execution window, preventing stale operations
+  (e.g. a `SetAdmin` to a retired key, or an `Upgrade` to a superseded WASM
+  hash) from being executed months later by an unsuspecting admin.
+
+The constants are defined in [`src/timelock.rs`](../src/timelock.rs):
+- `MIN_DELAY = 1 hour`
+- `MAX_DELAY = 30 days`
+- `GRACE_PERIOD = 14 days`
 
 ### Operation ids
 
@@ -55,18 +82,41 @@ The delay is bounded to `MIN_DELAY` (1 hour) … `MAX_DELAY` (30 days).
 so an out-of-range value can never sit in the queue waiting to brick the
 controller.
 
-## What the timelock closes off
+## Privileged entrypoint coverage
 
-Once enabled, the direct paths panic with `TimelockRequired` (21):
+Once enabled, entrypoints marked **Yes** reject direct calls with
+`TimelockRequired` and must be reached through `timelock_schedule` plus
+`timelock_execute`. Entry points marked **No** remain direct admin calls by
+design and are not represented by a `TimelockAction` variant.
 
-- `update_admin`
-- `propose_admin` and `accept_admin` — the two-step handover is also blocked,
-  because a proposal that can be accepted immediately would bypass the delay.
-  `cancel_proposed_admin` stays open so a stale proposal can still be cleared.
-- `upgrade`
+| Entrypoint | Timelocked? | Rationale |
+| --- | --- | --- |
+| `initialize` | No | Deployment bootstrap is single-use and must be signed by the configured admin account. |
+| `update_admin` | Yes | Ownership changes need an observable delay. |
+| `propose_admin` / `accept_admin` | Yes | Two-step handover must not bypass the delay. |
+| `cancel_proposed_admin` | No | Clearing a stale handover does not grant access or change ownership. |
+| `upgrade` | Yes | WASM changes need an observable delay. |
+| `set_whitelist_root` / `clear_whitelist_root` | Yes | Whitelist access-control changes need an observable delay. |
+| `TimelockAction::SetAdminPubKey` | Yes | Mint-signing key rotation needs an observable delay; it has no direct entrypoint. |
+| `migrate` | No | No corresponding timelock action exists; retained as a direct admin migration operation. |
+| `set_name` / `set_symbol` | No | No corresponding timelock action exists; retained as direct admin metadata configuration. |
+| `backfill_wrap_periods` | No | No corresponding timelock action exists; retained as a direct admin migration operation. |
+| `pause` / `unpause` | No | An emergency stop must remain immediately available. |
+| `set_transfer_fee` | No | No corresponding timelock action exists; retained as a direct admin configuration. |
+| `set_expiration_duration` | No | No corresponding timelock action exists; retained as a direct admin configuration. |
+| `set_fee_params` | No | No corresponding timelock action exists; retained as a direct admin configuration. |
+| `set_stake_config` | No | No corresponding timelock action exists; retained as a direct admin configuration. |
+| `set_bridge_relayer` | No | No corresponding timelock action exists; retained as a direct admin configuration. |
+| `set_chain_status` | No | No corresponding timelock action exists; retained as a direct admin configuration. |
 
-Deliberately **not** timelocked: `pause` / `unpause`. An emergency stop is only
-useful if it is immediate, and pausing cannot move value or change ownership.
+The **No** entries are an explicit scope decision: they remain admin-only, but
+the current closed `TimelockAction` enum provides no delayed operation for them.
+
+DAO governance is also subject to the delay. When the timelock is disabled, a
+passing `execute_admin_proposal` updates the admin immediately. When it is
+enabled, the current admin must authorize proposal execution, and the passing
+proposal queues `TimelockAction::SetAdmin`; the admin remains unchanged until
+that queued operation reaches its ETA and is executed.
 
 ## Guarantees and caveats
 
@@ -115,3 +165,5 @@ timelock_cancel --id <id>
 | 20 | `InvalidTimelockDelay` | Delay out of bounds, or timelock not enabled. |
 | 21 | `TimelockRequired` | Direct admin call attempted while enabled. |
 | 22 | `TimelockAlreadyEnabled` | `enable_timelock` called twice. |
+| 23 | `TimelockOperationExpired` | Operation past ETA + GRACE_PERIOD. |
+| 24 | `TimelockOperationNotExpired` | Sweep attempted before grace period elapsed. |
