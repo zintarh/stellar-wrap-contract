@@ -77,6 +77,7 @@ Every variant of the `DataKey` enum is documented below with its assigned storag
 | `AdminProposal(u64)` | Persistent | `AdminProposal` | 1 Year (`6,307,200` ledgers) | ~112 bytes | Governance proposal record keyed by proposal ID. |
 | `AdminProposalVote(u64, Address)` | Persistent | `bool` | 1 Year (`6,307,200` ledgers) | 1 byte | Vote record for `(proposal_id, voter)` preventing double-voting. |
 | `ContractVersion` | Instance | `u32` | Contract Instance Lifetime | 4 bytes | Monotonic counter incremented on contract WASM upgrades. |
+| `SchemaVersion` | Instance | `u32` | Contract Instance Lifetime | 4 bytes | Storage schema version established at initialization. |
 | `Stake(Address)` | Persistent | `StakeRecord` | 1 Year (`6,307,200` ledgers) | ~32 bytes | Staking balance, lock timestamp, and cooldown state for `user`. |
 | `StakeConfig` | Instance | `StakeConfig` | Contract Instance Lifetime | ~24 bytes | Staking parameters (`min_stake`, `cooldown_seconds`, `multiplier`, `max_bps`). |
 | `TotalStaked` | Instance | `i128` | Contract Instance Lifetime | 16 bytes | Global aggregate staked token balance across all users. |
@@ -108,6 +109,24 @@ The contract has been audited for compliance with the "Instance storage is for b
    - *Analysis:* Could technically reside in instance storage as a single scalar, but storing in persistent storage isolates counter writes from the shared instance entry.
 
 ---
+
+## 5. Storage Schema Versioning & Upgrade Guidelines
+
+The contract tracks the active storage schema version via `DataKey::SchemaVersion`, initialized to `1` upon contract initialization. This version is exposed via the `schema_version()` read method, allowing off-chain tooling and future contract logic to determine the active storage layout.
+
+### How Upgrades Should Migrate or Preserve Schema Versions
+
+1. **Preserving Schema Version**  
+   When performing a WASM upgrade that does **not** alter the storage layout, data structures (such as `WrapRecord`), or key namespaces, the upgrade should **preserve** the existing `SchemaVersion` (leave it unchanged). The `contract_version` counter will still increment via `upgrade()`, but `SchemaVersion` remains the same, signaling to clients that the on-chain data format is compatible.
+
+2. **Migrating Schema Version**  
+   When performing a WASM upgrade that introduces breaking storage layout changes (e.g., adding/removing fields in core structs, altering how keys are structured, or moving data between storage tiers), the upgrade must:
+   - Update `DataKey::SchemaVersion` to the next sequential integer (e.g., from `1` to `2`).
+   - Invoke `migrate(version)` to record the applied storage migration version (which increments `MigrationVersion`).
+   - Execute the necessary data transformation logic in the `migrate` call or a dedicated migration entrypoint.
+
+Clients and off-chain indexers can read `schema_version()` to inspect the active schema layout and apply appropriate decoding rules. The combination of `SchemaVersion` (semantic schema version) and `MigrationVersion` (applied migration cursor) provides a complete picture of the storage state for upgrade safety.
+
 
 ## 4. Algorithmic Fee & Storage Accounting
 

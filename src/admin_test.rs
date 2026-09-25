@@ -84,3 +84,14 @@ fn test_pause_and_unpause_are_distinguishable_by_topic_and_carry_admin() {
     assert_eq!(unpause_direction, symbol_short!("unpaused"));
     assert_eq!(unpause_admin, admin);
 }
+
+#[test]
+fn test_schema_version_initialized_at_one() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _admin) = setup(&env);
+
+    // Schema version should be 1 after initialization
+    let schema_version = client.schema_version();
+    assert_eq!(schema_version, 1, "schema version should be 1 after initialization");
+}

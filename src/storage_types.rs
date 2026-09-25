@@ -296,6 +296,9 @@ pub enum DataKey {
     AdminProposalVote(u64, Address),
     /// Tracks the contract version number, incremented on each `upgrade`.
     ContractVersion,
+    /// Tracks the storage schema version, set at initialization.
+    /// Used by future upgrades to determine which storage layout is active.
+    SchemaVersion,
     // Staking storage keys:
     /// Individual stake record keyed by user (persistent).
     Stake(Address),
@@ -393,4 +396,3 @@ pub struct WrapSummary {
     /// The latest (largest) period the user has an active wrap in.
     pub latest_period: u64,
 }
-
