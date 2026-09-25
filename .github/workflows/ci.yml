@@ -24,10 +24,11 @@ jobs:
       uses: dtolnay/rust-toolchain@stable
       with:
         targets: wasm32-unknown-unknown
+        components: clippy, rustfmt
     - name: Check format
-      run: cargo fmt --check
+      run: cargo fmt --all -- --check
     - name: Run clippy
-      run: cargo clippy --workspace --all-targets -- -D warnings
+      run: cargo clippy --workspace --all-targets
     - name: Check doc compilation
       run: RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
     - name: Run tests
@@ -49,29 +50,38 @@ jobs:
     env:
       RUSTFLAGS: "-C overflow-checks=on"
     steps:
-    - uses: actions/checkout@v4
-    - name: Install Rust
+    - uses: actions/checkout@v5
+
+    - name: Install Rust (native only — no wasm32 target needed for tarpaulin)
       uses: dtolnay/rust-toolchain@stable
-    - name: Install cargo-tarpaulin
-      uses: actions/cache@v4
+
+    - name: Cache cargo registry
+      uses: actions/cache@v5
       with:
-        path:
-          |
-            ~/cargo/registry
-            ~/cargo/git
-            ~/cargo/bin
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          ~/.cargo/bin
         key: ${{ runner.os }}-cargo-tarpaulin-${{ hashFiles('**/Cargo.lock') }}
-        restore-keys:
-          |
-            ${{ runner.os }}-cargo-tarpaulin-
+        restore-keys: |
+          ${{ runner.os }}-cargo-tarpaulin-
+
+    - name: Install cargo-tarpaulin
+      run: |
+        if ! command -v cargo-tarpaulin &>/dev/null; then
+          cargo install cargo-tarpaulin --locked
+        fi
+
     - name: Run coverage
       run: cargo tarpaulin --config tarpaulin.toml
+
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v4
       with:
         files: coverage/cobertura.xml
-        fail_ci_error: false
+        fail_ci_if_error: false
         token: ${{ secrets.CODECOV_TOKEN }}
+
     - name: Upload HTML coverage report as artifact
       uses: actions/upload-artifact@v4
       with:

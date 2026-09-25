@@ -1,10 +1,22 @@
-name: fmt
-on: push
+name: Cargo Fmt
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
 env:
   RUSTFLAGS: "-C overflow-checks=on"
+
 jobs:
   fmt:
+    name: Cargo Format Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - run: cargo fmt --all -- --check
+      - uses: actions/checkout@v5
+      - name: Install Rst
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Run cargo fmt
+        run: cargo fmt --all -- --check
