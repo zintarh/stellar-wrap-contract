@@ -879,6 +879,10 @@ impl StellarWrapContract {
 /// and `balance_of` directly.
 #[contractimpl]
 impl token::TokenInterface for StellarWrapContract {
+    /// Returns the display name stored for the wrap registry.
+    ///
+    /// If the administrator has not configured a name, this query returns
+    /// `"Stellar Wrap Registry"` as the contract's default display name.
     fn name(e: Env) -> String {
         queries::name(e)
     }
