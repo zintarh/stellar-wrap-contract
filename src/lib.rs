@@ -60,7 +60,7 @@ pub use oracle::DataHashOracle;
 pub use storage_types::{
     AdminProposal, BatchWrapItem, ContractHealth, DataKey, InboundBridgeRecord, InvariantReport,
     OutboundBridgeRequest, ProposalStatus, StakeConfig, StakeRecord, TimelockAction,
-    TimelockOperation, TransferFeeConfig, WrapLifecycleFSM, WrapRecord, WrapState,
+    TimelockOperation, TransferFeeConfig, WrapLifecycleFSM, WrapRecord, WrapState, WrapSummary,
 };
 pub use token::TokenInterface;
 
@@ -327,6 +327,20 @@ impl StellarWrapContract {
     /// function currently still requests all records in one call.
     pub fn get_all_wraps_for_user(e: Env, user: Address) -> soroban_sdk::Vec<WrapRecord> {
         queries::get_all_wraps_for_user(e, user)
+    }
+
+    /// Returns an aggregate summary of a user's active wraps across all periods.
+    ///
+    /// Returns `None` if the user has no active wraps.
+    ///
+    /// The summary includes:
+    /// - `total_wraps`: count of active wrap records
+    /// - `periods`: all period IDs (YYYYMM) for active wraps
+    /// - `archetypes`: unique archetype symbols across all active wraps
+    /// - `first_period`: the earliest period with an active wrap
+    /// - `latest_period`: the latest period with an active wrap
+    pub fn get_wrap_summary(e: Env, user: Address) -> Option<WrapSummary> {
+        queries::get_wrap_summary(e, user)
     }
 
     /// Extend the TTL (time-to-live) for all persistent storage entries belonging to a user.

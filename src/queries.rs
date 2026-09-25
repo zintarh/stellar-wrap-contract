@@ -1,6 +1,6 @@
-use soroban_sdk::{Address, Bytes, BytesN, Env, String};
+use soroban_sdk::{Address, Bytes, BytesN, Env, String, Symbol, Vec};
 
-use crate::{ContractHealth, DataKey, TransferFeeConfig, WrapRecord};
+use crate::{ContractHealth, DataKey, TransferFeeConfig, WrapRecord, WrapSummary};
 
 pub(crate) fn get_wrap(e: Env, user: Address, period: u64) -> Option<WrapRecord> {
     e.storage().persistent().get(&DataKey::Wrap(user, period))
@@ -136,6 +136,68 @@ pub(crate) fn get_wraps(
 pub(crate) fn get_all_wraps_for_user(e: Env, user: Address) -> soroban_sdk::Vec<WrapRecord> {
     // Fetch all wraps by using the maximum possible range.
     get_wraps(e, user, 0, u32::MAX)
+}
+
+/// Returns an aggregate summary of a user's active wraps across all periods.
+///
+/// Returns `None` if the user has no active wraps.
+///
+/// The summary includes:
+/// - `total_wraps`: count of active wrap records
+/// - `periods`: all period IDs (YYYYMM) for active wraps
+/// - `archetypes`: unique archetype symbols across all active wraps
+/// - `first_period`: the earliest period with an active wrap
+/// - `latest_period`: the latest period with an active wrap
+pub(crate) fn get_wrap_summary(e: Env, user: Address) -> Option<WrapSummary> {
+    let wrap_periods_key = DataKey::WrapPeriods(user.clone());
+    let periods: soroban_sdk::Vec<u64> = e
+        .storage()
+        .persistent()
+        .get(&wrap_periods_key)?;
+
+    if periods.is_empty() {
+        return None;
+    }
+
+    let mut total_wraps: u32 = 0;
+    let mut archetypes: Vec<Symbol> = Vec::new(&e);
+    let mut first_period: u64 = u64::MAX;
+    let mut latest_period: u64 = 0;
+
+    for i in 0..periods.len() {
+        if let Some(period) = periods.get(i) {
+            if let Some(wrap) = e
+                .storage()
+                .persistent()
+                .get::<_, WrapRecord>(&DataKey::Wrap(user.clone(), period))
+            {
+                total_wraps += 1;
+
+                if period < first_period {
+                    first_period = period;
+                }
+                if period > latest_period {
+                    latest_period = period;
+                }
+
+                if !archetypes.contains(&wrap.archetype) {
+                    archetypes.push_back(wrap.archetype);
+                }
+            }
+        }
+    }
+
+    if total_wraps == 0 {
+        return None;
+    }
+
+    Some(WrapSummary {
+        total_wraps,
+        periods,
+        archetypes,
+        first_period,
+        latest_period,
+    })
 }
 
 /// Return the configured transfer-fee configuration, or `None` if unset.

@@ -376,3 +376,21 @@ pub struct InvariantReport {
     pub balance: u32,
 }
 
+/// Aggregate summary of a user's active wraps across all periods.
+/// Returned by [`queries::get_wrap_summary`] and exposed as
+/// `get_wrap_summary` on the contract.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WrapSummary {
+    /// Total number of active wrap records for the user.
+    pub total_wraps: u32,
+    /// All period IDs (YYYYMM) for which the user has an active wrap.
+    pub periods: Vec<u64>,
+    /// Unique archetype symbols across all of the user's active wraps.
+    pub archetypes: Vec<Symbol>,
+    /// The earliest (smallest) period the user has an active wrap in.
+    pub first_period: u64,
+    /// The latest (largest) period the user has an active wrap in.
+    pub latest_period: u64,
+}
+
