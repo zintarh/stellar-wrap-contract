@@ -220,6 +220,19 @@ pub(crate) fn contract_version(e: Env) -> u32 {
         .unwrap_or(0)
 }
 
+/// Returns the storage schema version.
+///
+/// The schema version is set at contract initialization and indicates which
+/// storage layout/schema is active. It starts at `1` for the initial schema.
+/// Future upgrades that change the storage layout should increment this version
+/// as part of their migration logic (see `admin::migrate`).
+pub(crate) fn schema_version(e: Env) -> u32 {
+    e.storage()
+        .instance()
+        .get(&DataKey::SchemaVersion)
+        .unwrap_or(0)
+}
+
 pub const MAX_QUERY_RESULTS: u32 = 100;
 
 pub(crate) fn check_user_invariants(e: Env, user: Address) -> InvariantReport {

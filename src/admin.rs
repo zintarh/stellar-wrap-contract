@@ -38,6 +38,10 @@ pub(crate) fn initialize(e: Env, admin: Address, admin_pubkey: BytesN<32>) {
     e.storage()
         .instance()
         .set(&DataKey::AdminPubKey, &admin_pubkey);
+    // Store the initial storage schema version (v1).
+    e.storage()
+        .instance()
+        .set(&DataKey::SchemaVersion, &1u32);
     crate::events::publish_event(&e, crate::events::Event::AdminInit(admin));
 }
 

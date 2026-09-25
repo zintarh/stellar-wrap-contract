@@ -527,6 +527,16 @@ impl StellarWrapContract {
         queries::contract_version(e)
     }
 
+    /// Return the storage schema version.
+    ///
+    /// The schema version is set at contract initialization and indicates which
+    /// storage layout/schema is active. It starts at `1` for the initial schema.
+    /// Future upgrades that change the storage layout should increment this version
+    /// as part of their migration logic (see `migrate`).
+    pub fn schema_version(e: Env) -> u32 {
+        queries::schema_version(e)
+    }
+
     pub fn revoke_wrap(e: Env, user: Address, period: u64, reason_hash: BytesN<32>) {
         revoke::revoke_wrap(e, user, period, reason_hash);
         decrement_total_wrap_count(&e);
