@@ -3,7 +3,9 @@ name = "stellar_wrap_contract"
 version = "0.1.0"
 edition = "2021"
 resolver = "2"
-
+# Not published to crates.io. cargo-deny skips this crate's missing SPDX
+# license via [licenses.private] in deny.toml; third-party crates are still checked.
+publish = false
 
 [lib]
 crate-type = ["cdylib", "rlib"]

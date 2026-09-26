@@ -36,6 +36,7 @@ You can also run hooks manually:
 - `./scripts/check_wasm_size.sh` — WASM size within 200 KB budget
 - `docker build -t stellar-wrap-contract .` — Docker build works
 - `cargo audit` — no security advisories at or above medium severity
+- `cargo deny check` — licenses, duplicate crates, and advisories match `deny.toml` (exceptions are documented there)
 - `cargo tarpaulin --config tarpaulin.toml` — line coverage ≥ 90%
 - `python3 scripts/check_readme_entrypoints.py` — all contract entrypoints documented in README
 
