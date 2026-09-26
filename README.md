@@ -1281,3 +1281,7 @@ The contract includes a DAO governance module for updating the contract's admin 
 3. **Execute Proposal:** After `duration_seconds` elapses, call `execute_admin_proposal(proposal_id)`. If `votes_for > votes_against`, the contract admin updates to `proposed_admin`.
 4. **Cancel Proposal:** Proposer or current admin can cancel active proposals via `cancel_admin_proposal(caller, proposal_id)`.
 
+## Handsoff notes
+
+<!-- handsoff-issue-437 -->
+- #437: [Docs] Document `update_admin` function in `lib.rs` with # Examples
