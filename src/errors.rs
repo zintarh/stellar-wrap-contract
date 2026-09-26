@@ -1,3 +1,9 @@
+//! Contract error codes returned by Stellar Wrap entrypoints.
+//!
+//! Soroban exposes these numeric values to clients as contract errors, so the
+//! discriminants are part of the public contract interface. Preserve existing
+//! assignments when adding errors; do not renumber deployed variants.
+
 use soroban_sdk::contracterror;
 
 #[contracterror]
