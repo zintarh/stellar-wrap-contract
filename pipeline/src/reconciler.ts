@@ -23,6 +23,43 @@ export interface ReconciliationReport {
 }
 
 /**
+ * Per-counter tolerance thresholds. Exceeding a threshold is a failure, not an
+ * observation. `total_wraps` is zero-tolerance: any divergence is a bug.
+ */
+export const RECONCILIATION_TOLERANCE: Record<string, number> = {
+  total_wraps: 0,
+  total_wrap_count: 0,
+  total_revoked: 0,
+  admin: 0,
+  admin_pubkey: 0,
+  storage_bytes: 0,
+  slash_threshold: 0,
+  is_paused: 0,
+};
+
+/**
+ * A single recorded reconciliation run, persisted so drift appearing between
+ * two runs can be bisected to a ledger range.
+ */
+export interface ReconciliationRun {
+  contract_id: string;
+  /** Ledger sequence the on-chain snapshot was taken at. */
+  ledger_seq: number;
+  /** Highest ledger the indexer had processed when the run started. */
+  indexed_ledger_seq: number;
+  /** Chain head at the time of the run, used to detect indexer lag. */
+  chain_head_ledger: number;
+  /** True when the indexer is behind chain head and drift may be lag. */
+  indexer_lagging: boolean;
+  /** True when drift cannot be explained by indexer lag. */
+  genuine_divergence: boolean;
+  /** Counters that exceeded their tolerance. */
+  affected_counters: string[];
+  is_consistent: boolean;
+  timestamp: string;
+}
+
+/**
  * Reconcile indexed state against current on-chain storage.
  * Fetches all current storage entries and compares with the database.
  */
@@ -57,6 +94,10 @@ export async function reconcile(
     compareFields('is_paused', indexedState.is_paused ? true : false, onChainState.paused, mismatches);
   }
 
+  // total_wraps is zero-tolerance: compare the indexed wrap count against the
+  // on-chain counter explicitly so a seeded divergence is always reported.
+  compareFields('total_wraps', indexedWrapCount, onChainState.totalWrapCount, mismatches);
+
   const isConsistent = mismatches.length === 0;
 
   return {
@@ -74,6 +115,54 @@ export async function reconcile(
     mismatches,
     is_consistent: isConsistent,
   };
+}
+
+/**
+ * Extract the counter names that exceeded their tolerance from a report.
+ */
+export function affectedCounters(report: ReconciliationReport): string[] {
+  const counters = new Set<string>();
+  for (const mismatch of report.mismatches) {
+    const field = mismatch.split(':')[0]?.trim();
+    if (field) counters.add(field);
+  }
+  return [...counters];
+}
+
+/**
+ * Decide whether a report represents a failure. Any mismatch on a counter with
+ * a defined tolerance that is exceeded counts as drift.
+ */
+export function hasDrift(report: ReconciliationReport): boolean {
+  return !report.is_consistent;
+}
+
+/**
+ * Record a reconciliation run and its outcome. Persists the run so drift
+ * appearing between two runs can be bisected to a ledger range, and
+ * distinguishes indexer lag from genuine divergence.
+ */
+export function recordReconciliationRun(
+  db: IndexerDB,
+  report: ReconciliationReport,
+  chainHeadLedger: number,
+  indexedLedgerSeq: number,
+): ReconciliationRun {
+  const indexerLagging = indexedLedgerSeq < chainHeadLedger;
+  const drift = hasDrift(report);
+  const run: ReconciliationRun = {
+    contract_id: report.contract_id,
+    ledger_seq: report.ledger_seq,
+    indexed_ledger_seq: indexedLedgerSeq,
+    chain_head_ledger: chainHeadLedger,
+    indexer_lagging: indexerLagging,
+    genuine_divergence: drift && !indexerLagging,
+    affected_counters: affectedCounters(report),
+    is_consistent: report.is_consistent,
+    timestamp: new Date().toISOString(),
+  };
+  db.recordReconciliationRun(run);
+  return run;
 }
 
 function compareFields(field: string, a: unknown, b: unknown, mismatches: string[]): void {
