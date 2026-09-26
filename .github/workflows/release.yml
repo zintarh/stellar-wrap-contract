@@ -6,7 +6,35 @@ on:
       - 'v*.*.*'
 
 jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Run test suite
+        run: cargo test --all-features
+
+      - name: Optimized build
+        run: cargo build --release --target wasm32-unknown-unknown
+
+      - name: Verify CHANGELOG updated against tag
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          if ! grep -q "$VERSION" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md does not mention $VERSION for tag $TAG"
+            exit 1
+          fi
+
   release:
+    needs: preflight
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -28,9 +56,6 @@ jobs:
           SHA=$(sha256sum "$WASM_FILE" | awk '{print $1}')
           echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
           echo "$SHA  stellar_wrap_contract.wasm" > stellar_wrap_contract.wasm.sha256
-
-      - name: Reminder: update CHANGELOG before tagging
-        run: echo "Reminder: update CHANGELOG.md with this version details before tagging." 
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

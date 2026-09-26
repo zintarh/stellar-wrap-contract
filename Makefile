@@ -1,4 +1,4 @@
-.PHONY: build test fuzz fuzz-build fmt fmt-check lint doc clean deploy-testnet wasm-build wasm-size check-wasm-size docker-build docker-build-verify coverage
+.PHONY: build test fuzz fuzz-build fmt fmt-check lint doc clean deploy-testnet wasm-build wasm-size check-wasm-size docker-build docker-build-verify coverage verify-release release-gate
 
 # ── Build ────────────────────────────────────────────────────────────────────
 
@@ -101,6 +101,23 @@ deploy-testnet: wasm-build
 			--network testnet \
 			--source "$(STELLAR_DEPLOYER_SECRET)"; \
 	fi
+
+# ── Release ──────────────────────────────────────────────────────────────────
+
+## verify-release: Download a release artifact + its SHA256 and verify the hash.
+##   Usage: make verify-release TAG=v1.2.3
+##   Optional: REPO=owner/name (defaults to the current git remote), ASSET=<name>
+##   Requires: gh CLI (authenticated) and sha256sum.
+verify-release:
+	@if [ -z "$(TAG)" ]; then echo "usage: make verify-release TAG=v1.2.3" >&2; exit 2; fi
+	./scripts/verify_release_artifact.sh "$(TAG)"
+
+## release-gate: Pre-flight checks that must pass before a mainnet release.
+##   Runs the test suite, the optimized WASM build, and confirms the changelog
+##   is updated against the tag. Usage: make release-gate TAG=v1.2.3
+release-gate:
+	@if [ -z "$(TAG)" ]; then echo "usage: make release-gate TAG=v1.2.3" >&2; exit 2; fi
+	./scripts/release_gate.sh "$(TAG)"
 
 # ── Clean ────────────────────────────────────────────────────────────────────
 
