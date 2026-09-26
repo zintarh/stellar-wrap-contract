@@ -1285,3 +1285,6 @@ The contract includes a DAO governance module for updating the contract's admin 
 
 <!-- handsoff-issue-437 -->
 - #437: [Docs] Document `update_admin` function in `lib.rs` with # Examples
+
+<!-- handsoff-issue-440 -->
+- #440: [Docs] Document `balance_of` function in `lib.rs`
