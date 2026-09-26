@@ -170,6 +170,22 @@ function classifySlashThresholdEvent(event: ContractEvent): TypedEvent {
   };
 }
 
+// ─── Event identity (idempotency key) ──────────────────────────────────
+
+/**
+ * Derive a stable identity for an event so that replaying the same event
+ * (after a restart, a backfill, or a retry) can be detected and applied at
+ * most once. The identity is built from the ledger/transaction coordinates
+ * plus the event index within the transaction, which uniquely identifies an
+ * event on-chain regardless of how many times it is fetched.
+ */
+export function eventId(event: ContractEvent): string {
+  const ledger = (event as any).ledger ?? (event as any).ledger_seq ?? 0;
+  const tx = (event as any).tx_hash ?? (event as any).transaction_hash ?? '';
+  const idx = (event as any).event_index ?? (event as any).index ?? 0;
+  return `${ledger}:${tx}:${idx}`;
+}
+
 // ─── State derivation from events ──────────────────────────────────────
 
 export function createEmptyState(contractId: string, ledgerSeq: number): DerivedState {
@@ -195,6 +211,27 @@ export function createEmptyState(contractId: string, ledgerSeq: number): Derived
     name: null,
     symbol: null,
   };
+}
+
+/**
+ * Apply a stream of events to a fresh state, deduplicating by event identity.
+ * Applying the same stream twice (or a stream with duplicates) yields the
+ * same derived state as applying the deduplicated stream once.
+ */
+export function applyEventStream(
+  contractId: string,
+  ledgerSeq: number,
+  events: TypedEvent[],
+): DerivedState {
+  const state = createEmptyState(contractId, ledgerSeq);
+  const seen = new Set<string>();
+  for (const event of events) {
+    const id = eventId(event.raw);
+    if (seen.has(id)) continue;
+    seen.add(id);
+    applyEventToState(state, event);
+  }
+  return state;
 }
 
 export function applyEventToState(state: DerivedState, event: TypedEvent): void {
@@ -259,12 +296,18 @@ function applyMintEvent(state: DerivedState, event: TypedEvent): void {
     userWraps = new Map();
     state.wraps.set(user, userWraps);
   }
+
+  // Idempotent at the key level: only count a wrap the first time this
+  // (user, period) key is observed. Re-applying the same mint must not
+  // inflate the derived counts.
+  const isNew = !userWraps.has(period);
   userWraps.set(period, record);
 
-  // Increment wrap count
-  const currentCount = state.userCounts.get(user) ?? 0;
-  state.userCounts.set(user, currentCount + 1);
-  state.totalWrapCount += 1;
+  if (isNew) {
+    const currentCount = state.userCounts.get(user) ?? 0;
+    state.userCounts.set(user, currentCount + 1);
+    state.totalWrapCount += 1;
+  }
 
   // Update latest period
   const currentLatest = state.userLatestPeriods.get(user) ?? 0;
@@ -289,223 +332,6 @@ function applyRevokeEvent(state: DerivedState, event: TypedEvent): void {
   if (userWraps) {
     userWraps.delete(period);
     if (userWraps.size === 0) {
-      state.wraps.delete(user);
-    }
-  }
+      state.wraps
 
-  const currentCount = state.userCounts.get(user) ?? 0;
-  if (currentCount > 0) {
-    state.userCounts.set(user, currentCount - 1);
-  }
-  state.totalRevoked += 1;
-
-  // Remove from periods list
-  const periods = state.userPeriods.get(user) ?? [];
-  const idx = periods.indexOf(period);
-  if (idx !== -1) {
-    periods.splice(idx, 1);
-    state.userPeriods.set(user, periods);
-  }
-}
-
-function applyTransitionEvent(state: DerivedState, event: TypedEvent): void {
-  const user = String(event.parsed.user ?? '');
-  const period = Number(event.parsed.period ?? 0);
-  const nextState = Number(event.parsed.next_state ?? 0);
-
-  const userWraps = state.wraps.get(user);
-  if (userWraps) {
-    const record = userWraps.get(period);
-    if (record) {
-      record.fsm.state = nextState as WrapRecord['fsm']['state'];
-      record.fsm.updated_at = event.raw.ledger;
-    }
-  }
-}
-
-// ─── Apply storage entries to state ────────────────────────────────────
-
-export function applyStorageEntryToState(state: DerivedState, entry: StorageEntry): void {
-  switch (entry.key.variant) {
-    case DataKeyVariant.Admin:
-      state.admin = entry.value.type === 'address' ? entry.value.value : null;
-      break;
-    case DataKeyVariant.AdminPubKey:
-      state.adminPubKey = entry.value.type === 'bytes32' ? entry.value.value : null;
-      break;
-    case DataKeyVariant.PendingAdmin:
-      state.pendingAdmin = entry.value.type === 'address' ? entry.value.value : null;
-      break;
-    case DataKeyVariant.MigrationVersion:
-      state.migrationVersion = entry.value.type === 'u32' ? entry.value.value : 0;
-      break;
-    case DataKeyVariant.Paused:
-      state.paused = entry.value.type === 'bool' ? entry.value.value : false;
-      break;
-    case DataKeyVariant.Name:
-      state.name = entry.value.type === 'string' ? entry.value.value : null;
-      break;
-    case DataKeyVariant.Symbol:
-      state.symbol = entry.value.type === 'string' ? entry.value.value : null;
-      break;
-    case DataKeyVariant.StorageBytes:
-      state.storageBytes = entry.value.type === 'u64' ? entry.value.value : 0;
-      break;
-    case DataKeyVariant.TotalWrapCount:
-      state.totalWrapCount = entry.value.type === 'u32' ? entry.value.value : 0;
-      break;
-    case DataKeyVariant.TotalRevoked:
-      state.totalRevoked = entry.value.type === 'u64' ? entry.value.value : 0;
-      break;
-    case DataKeyVariant.SlashThreshold:
-      state.slashThreshold = entry.value.type === 'u32' ? entry.value.value : 3;
-      break;
-    case DataKeyVariant.Wrap: {
-      if (entry.value.type === 'wrap_record') {
-        const user = (entry.key as { user: string }).user;
-        const period = (entry.key as { period: number }).period;
-        let userWraps = state.wraps.get(user);
-        if (!userWraps) {
-          userWraps = new Map();
-          state.wraps.set(user, userWraps);
-        }
-        userWraps.set(period, entry.value.value);
-      }
-      break;
-    }
-    case DataKeyVariant.WrapCount: {
-      const user = (entry.key as { user: string }).user;
-      state.userCounts.set(user, entry.value.type === 'u32' ? entry.value.value : 0);
-      break;
-    }
-    case DataKeyVariant.LatestPeriod: {
-      const user = (entry.key as { user: string }).user;
-      state.userLatestPeriods.set(user, entry.value.type === 'u64' ? entry.value.value : 0);
-      break;
-    }
-    case DataKeyVariant.UserPeriods: {
-      const user = (entry.key as { user: string }).user;
-      state.userPeriods.set(user, entry.value.type === 'u64_vec' ? entry.value.value : []);
-      break;
-    }
-    case DataKeyVariant.AliasHash: {
-      const user = (entry.key as { user: string }).user;
-      state.userAliasHashes.set(user, entry.value.type === 'bytes32' ? entry.value.value : '');
-      break;
-    }
-    case DataKeyVariant.SlashCount: {
-      const user = (entry.key as { user: string }).user;
-      state.userSlashCounts.set(user, entry.value.type === 'u32' ? entry.value.value : 0);
-      break;
-    }
-    case DataKeyVariant.Slashed: {
-      const user = (entry.key as { user: string }).user;
-      state.userSlashed.set(user, entry.value.type === 'bool' ? entry.value.value : false);
-      break;
-    }
-  }
-}
-
-// ─── Persist derived state to DB ───────────────────────────────────────
-
-export function persistStateToDB(db: IndexerDB, state: DerivedState): void {
-  // Persist contract state
-  db.upsertContractState({
-    contract_id: state.contract_id,
-    admin: state.admin,
-    admin_pubkey: state.adminPubKey,
-    pending_admin: state.pendingAdmin,
-    migration_version: state.migrationVersion,
-    is_paused: state.paused,
-    total_wrap_count: state.totalWrapCount,
-    total_revoked: state.totalRevoked,
-    storage_bytes: state.storageBytes,
-    slash_threshold: state.slashThreshold,
-    ledger_seq: state.ledger_seq,
-  });
-
-  // Persist wraps
-  for (const [user, periodMap] of state.wraps.entries()) {
-    for (const [period, record] of periodMap.entries()) {
-      db.upsertWrap({
-        contract_id: state.contract_id,
-        user,
-        period,
-        timestamp: record.timestamp,
-        data_hash: record.data_hash,
-        archetype: record.archetype,
-        fsm_state: record.fsm.state,
-        fsm_updated_at: record.fsm.updated_at,
-        ledger_seq: state.ledger_seq,
-        tx_hash: '',
-      });
-    }
-  }
-
-  // Persist user state
-  const allUsers = new Set([
-    ...state.wraps.keys(),
-    ...state.userCounts.keys(),
-    ...state.userLatestPeriods.keys(),
-    ...state.userPeriods.keys(),
-    ...state.userAliasHashes.keys(),
-    ...state.userSlashCounts.keys(),
-    ...state.userSlashed.keys(),
-  ]);
-
-  for (const user of allUsers) {
-    db.upsertUserState({
-      contract_id: state.contract_id,
-      user,
-      wrap_count: state.userCounts.get(user) ?? 0,
-      latest_period: state.userLatestPeriods.get(user) ?? null,
-      alias_hash: state.userAliasHashes.get(user) ?? null,
-      slash_count: state.userSlashCounts.get(user) ?? 0,
-      is_slashed: state.userSlashed.get(user) ?? false,
-      periods: state.userPeriods.get(user) ?? [],
-      ledger_seq: state.ledger_seq,
-    });
-  }
-}
-
-// ─── Orchestration helper ──────────────────────────────────────────────
-
-/**
- * Process a batch of raw contract events: classify, apply to state, and persist.
- */
-export function processEventBatch(
-  db: IndexerDB,
-  state: DerivedState,
-  events: ContractEvent[],
-): number {
-  let processed = 0;
-
-  for (const event of events) {
-    if (event.failed_call) continue;
-
-    const typed = classifyEvent(event);
-    applyEventToState(state, typed);
-
-    // Persist the raw event
-    db.insertEvent({
-      id: event.id,
-      contract_id: event.contract_id,
-      event_type: typed.event_type,
-      ledger_seq: event.ledger,
-      tx_hash: event.tx_hash,
-      topics_json: JSON.stringify(event.topics),
-      data_json: JSON.stringify(event.data),
-      failed_call: event.failed_call,
-    });
-
-    processed++;
-  }
-
-  // Persist derived state after batch
-  state.ledger_seq = events.length > 0
-    ? events[events.length - 1].ledger
-    : state.ledger_seq;
-  persistStateToDB(db, state);
-
-  return processed;
-}
+/* … truncated 7137 chars — edit only what you need near the top … */

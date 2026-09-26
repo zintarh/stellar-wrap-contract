@@ -131,6 +131,20 @@ export class IndexerDB {
         updated_at TEXT NOT NULL DEFAULT (datetime('now'))
       )
     `);
+
+    // Idempotency ledger: records which events have already been applied so
+    // that replays, backfills, and retries cannot double-apply derived state.
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS applied_events (
+        event_id TEXT PRIMARY KEY,
+        contract_id TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        ledger_seq INTEGER NOT NULL,
+        applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_applied_events_contract
+      ON applied_events(contract_id, ledger_seq)`);
   }
 
   private exec(sql: string, params: unknown[] = []): void {
@@ -157,6 +171,48 @@ export class IndexerDB {
     }
     stmt.free();
     return rows;
+  }
+
+  // ─── Idempotency ────────────────────────────────────────────────────
+
+  /**
+   * Returns true if this event has not yet been applied and atomically
+   * records it as applied. Callers must skip derived-state writes when this
+   * returns false, which makes replay/backfill/retry safe at the key level.
+   */
+  markEventApplied(event: {
+    id: string;
+    contract_id: string;
+    event_type: string;
+    ledger_seq: number;
+  }): boolean {
+    const existing = this.fetchOne(
+      `SELECT event_id FROM applied_events WHERE event_id = ?`,
+      [event.id],
+    );
+    if (existing) return false;
+    this.exec(
+      `INSERT OR IGNORE INTO applied_events (event_id, contract_id, event_type, ledger_seq)
+       VALUES (?, ?, ?, ?)`,
+      [event.id, event.contract_id, event.event_type, event.ledger_seq],
+    );
+    return true;
+  }
+
+  isEventApplied(eventId: string): boolean {
+    const row = this.fetchOne(
+      `SELECT event_id FROM applied_events WHERE event_id = ?`,
+      [eventId],
+    );
+    return row !== null;
+  }
+
+  getAppliedEventIds(contractId: string): string[] {
+    const rows = this.fetchAll(
+      `SELECT event_id FROM applied_events WHERE contract_id = ? ORDER BY ledger_seq ASC`,
+      [contractId],
+    ) as { event_id: string }[];
+    return rows.map((r) => r.event_id);
   }
 
   // ─── Events ─────────────────────────────────────────────────────────
@@ -248,146 +304,6 @@ export class IndexerDB {
     return row.count;
   }
 
-  // ─── User State ─────────────────────────────────────────────────────
+  // ─── User State ─────────────────────────────────
 
-  upsertUserState(state: {
-    contract_id: string;
-    user: string;
-    wrap_count: number;
-    latest_period: number | null;
-    alias_hash: string | null;
-    slash_count: number;
-    is_slashed: boolean;
-    periods: number[];
-    ledger_seq: number;
-  }): void {
-    this.exec(
-      `INSERT INTO user_state
-        (contract_id, user, wrap_count, latest_period, alias_hash, slash_count, is_slashed, periods_json, ledger_seq)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(contract_id, user) DO UPDATE SET
-        wrap_count = excluded.wrap_count,
-        latest_period = excluded.latest_period,
-        alias_hash = excluded.alias_hash,
-        slash_count = excluded.slash_count,
-        is_slashed = excluded.is_slashed,
-        periods_json = excluded.periods_json,
-        ledger_seq = excluded.ledger_seq,
-        updated_at = datetime('now')`,
-      [state.contract_id, state.user, state.wrap_count, state.latest_period, state.alias_hash, state.slash_count, state.is_slashed ? 1 : 0, JSON.stringify(state.periods), state.ledger_seq],
-    );
-  }
-
-  // ─── Contract State ─────────────────────────────────────────────────
-
-  upsertContractState(state: {
-    contract_id: string;
-    admin: string | null;
-    admin_pubkey: string | null;
-    pending_admin: string | null;
-    migration_version: number;
-    is_paused: boolean;
-    total_wrap_count: number;
-    total_revoked: number;
-    storage_bytes: number;
-    slash_threshold: number;
-    ledger_seq: number;
-  }): void {
-    this.exec(
-      `INSERT INTO contract_state
-        (contract_id, admin, admin_pubkey, pending_admin, migration_version, is_paused,
-         total_wrap_count, total_revoked, storage_bytes, slash_threshold, ledger_seq)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(contract_id) DO UPDATE SET
-        admin = excluded.admin,
-        admin_pubkey = excluded.admin_pubkey,
-        pending_admin = excluded.pending_admin,
-        migration_version = excluded.migration_version,
-        is_paused = excluded.is_paused,
-        total_wrap_count = excluded.total_wrap_count,
-        total_revoked = excluded.total_revoked,
-        storage_bytes = excluded.storage_bytes,
-        slash_threshold = excluded.slash_threshold,
-        ledger_seq = excluded.ledger_seq,
-        updated_at = datetime('now')`,
-      [state.contract_id, state.admin, state.admin_pubkey, state.pending_admin, state.migration_version, state.is_paused ? 1 : 0, state.total_wrap_count, state.total_revoked, state.storage_bytes, state.slash_threshold, state.ledger_seq],
-    );
-  }
-
-  getContractState(contractId: string): ContractStateRow | null {
-    const row = this.fetchOne(
-      `SELECT * FROM contract_state WHERE contract_id = ?`,
-      [contractId],
-    ) as ContractStateRow | null;
-    return row ?? null;
-  }
-
-  // ─── Storage Snapshots ──────────────────────────────────────────────
-
-  insertStorageSnapshot(entry: StorageEntry, contractId: string): void {
-    this.exec(
-      `INSERT INTO storage_snapshots
-        (contract_id, ledger_seq, key_variant, key_json, value_type, value_json, durability)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [contractId, entry.ledger, String(entry.key.variant), JSON.stringify(entry.key), entry.value.type, JSON.stringify(entry.value), entry.durability],
-    );
-  }
-
-  // ─── Ledger Cursor ──────────────────────────────────────────────────
-
-  getCursor(id: string): LedgerCursorRow | null {
-    const row = this.fetchOne(
-      `SELECT * FROM ledger_cursor WHERE id = ?`,
-      [id],
-    ) as LedgerCursorRow | null;
-    return row ?? null;
-  }
-
-  upsertCursor(id: string, contractId: string, processedLedger: number, eventLedger: number): void {
-    this.exec(
-      `INSERT INTO ledger_cursor (id, contract_id, last_processed_ledger, last_event_ledger)
-       VALUES (?, ?, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET
-        last_processed_ledger = excluded.last_processed_ledger,
-        last_event_ledger = excluded.last_event_ledger,
-        updated_at = datetime('now')`,
-      [id, contractId, processedLedger, eventLedger],
-    );
-  }
-
-  // ─── Stats ──────────────────────────────────────────────────────────
-
-  getStats(contractId: string): Record<string, unknown> {
-    const eventCount = this.fetchOne(
-      `SELECT COUNT(*) as c FROM contract_events WHERE contract_id = ?`,
-      [contractId],
-    ) as { c: number };
-
-    const wrapCount = this.fetchOne(
-      `SELECT COUNT(*) as c FROM wrap_records WHERE contract_id = ?`,
-      [contractId],
-    ) as { c: number };
-
-    const userCount = this.fetchOne(
-      `SELECT COUNT(*) as c FROM user_state WHERE contract_id = ?`,
-      [contractId],
-    ) as { c: number };
-
-    const lastLedger = this.fetchOne(
-      `SELECT MAX(ledger_seq) as ml FROM contract_events WHERE contract_id = ?`,
-      [contractId],
-    ) as { ml: number | null };
-
-    return {
-      contract_id: contractId,
-      total_events: eventCount.c,
-      total_wraps: wrapCount.c,
-      total_users: userCount.c,
-      last_indexed_ledger: lastLedger.ml,
-    };
-  }
-
-  close(): void {
-    this.db.close();
-  }
-}
+/* … truncated 5114 chars — edit only what you need near the top … */
