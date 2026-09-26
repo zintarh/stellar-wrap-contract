@@ -72,7 +72,7 @@ The semantic meaning is irrelevant to the cryptographic encoding — it is signe
 `u64::MAX` is a representable, XDR-serializable value, but it is outside the valid range and is rejected with `ContractError::InvalidPeriod` before a wrap is stored. It is therefore not acceptable as a production period.
 
 #### Non-Monthly Periods
-Because the contract validation logic enforces a strict month check (`period % 100` must be between `1` and `12`) and year check (`period / 100` must be between `2024` and `2100`), non-monthly periods (e.g. daily, weekly, or quarterly periods) are not natively supported by the contract constraints. 
+Because the contract validation logic enforces a strict month check (`period % 100` must be between `1` and `12`) and year check (`period / 100` must be between `2024` and `2100`), non-monthly periods (e.g. daily, weekly, or quarterly periods) are not natively supported by the contract constraints.<br>
 
 To support non-monthly wraps, integrations and off-chain tools must map their custom period representation to a valid `YYYYMM` `u64` value before generating the signature and executing the mint transaction. For example:
 - **Quarterly Wraps**: Map Q1 (Jan-Mar) to `YYYY03`, Q2 to `YYYY06`, Q3 to `YYYY09`, Q4 to `YYYY12`.

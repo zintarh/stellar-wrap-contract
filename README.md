@@ -1004,6 +1004,8 @@ storage layout must ship as a numbered migration:
    rollbacks as well.
 ## Documentation
 
+Documentation contributions follow the manual Markdown formatting guidance in [CONTRIBUTING.md](CONTRIBUTING.md).
+
 - [Canonical signed payload encoding](docs/signing-payload.md) — exact field order, XDR encoding rules, and test vectors required by backend signing services (issue #213)
 - [Admin rotation procedure](docs/admin-rotation.md) — safe procedure for rotating the admin address and signing pubkey, including verification, event monitoring, and rollback plan
 - [Timelock controller](docs/timelock.md) — architecture and operator runbook for the admin timelock

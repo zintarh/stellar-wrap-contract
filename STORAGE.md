@@ -116,10 +116,10 @@ The contract tracks the active storage schema version via `DataKey::SchemaVersio
 
 ### How Upgrades Should Migrate or Preserve Schema Versions
 
-1. **Preserving Schema Version**  
+1. **Preserving Schema Version**<br>
    When performing a WASM upgrade that does **not** alter the storage layout, data structures (such as `WrapRecord`), or key namespaces, the upgrade should **preserve** the existing `SchemaVersion` (leave it unchanged). The `contract_version` counter will still increment via `upgrade()`, but `SchemaVersion` remains the same, signaling to clients that the on-chain data format is compatible.
 
-2. **Migrating Schema Version**  
+2. **Migrating Schema Version**<br>
    When performing a WASM upgrade that introduces breaking storage layout changes (e.g., adding/removing fields in core structs, altering how keys are structured, or moving data between storage tiers), the upgrade must:
    - Update `DataKey::SchemaVersion` to the next sequential integer (e.g., from `1` to `2`).
    - Invoke `migrate(version)` to record the applied storage migration version (which increments `MigrationVersion`).

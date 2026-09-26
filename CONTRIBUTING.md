@@ -11,6 +11,17 @@
 * **Code Style:** Ensure `cargo fmt` and `cargo clippy` pass before submitting.
 * **Doc Check:** Run `make doc` (or `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps`) to verify documentation compiles without warnings.
 
+### Markdown Formatting Decision
+
+The repository does not enforce a Markdown formatter or linter. Markdown is reviewed manually to avoid broad formatting churn in tables, diagrams, and documentation examples. When editing Markdown:
+
+- Use ATX headings (`#`, `##`, etc.) and leave a blank line around headings, lists, tables, and fenced code blocks.
+- Close every fenced code block and add a language identifier when the block contains code.
+- Use explicit `<br>` tags for intentional hard line breaks; do not leave trailing spaces.
+- Preserve a final newline and keep prose readable without reflowing tables, command output, or protocol examples.
+
+Before submitting documentation changes, review the rendered Markdown and check that fences are balanced, links resolve, and no accidental trailing whitespace was introduced. These checks are manual and are not currently part of CI.
+
 **Step 2.1: Install Git Hooks (Required)**
 1. Install pre-commit once on your machine:
 	- `pip install pre-commit`
