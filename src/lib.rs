@@ -151,6 +151,26 @@ impl StellarWrapContract {
         admin::set_symbol(e, symbol);
     }
 
+    /// Records an immutable wrap binding `user`, `period`, `archetype`, and `data_hash`.
+    ///
+    /// `user` must authorize the call. The configured admin key must sign the
+    /// canonical payload (contract ID, user, period, archetype, data hash, and
+    /// payload version).
+    ///
+    /// # Errors
+    /// - [`ContractError::Paused`] if the contract is paused.
+    /// - [`ContractError::InvalidPeriod`] if `period` is not a valid `YYYYMM`
+    ///   value (year 2024-2100, month 01-12).
+    /// - [`ContractError::InvalidSignature`] if `payload_version` is not the
+    ///   current version, or the admin signature does not verify.
+    /// - [`ContractError::NotInitialized`] if the admin public key has not been set.
+    /// - [`ContractError::UserOptedOut`] if `user` has opted out of wraps.
+    /// - [`ContractError::WrapAlreadyExists`] if a wrap already exists for
+    ///   `(user, period)`.
+    /// - [`ContractError::ArithmeticOverflow`] if a wrap counter or the accounted
+    ///   storage-byte counter would overflow.
+    /// - [`ContractError::StorageInvariantViolation`] if `user` already has wraps
+    ///   but is missing the `WrapPeriods` index.
     pub fn mint_wrap(
         e: Env,
         user: Address,
