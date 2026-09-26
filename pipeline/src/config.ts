@@ -22,5 +22,8 @@ export function loadConfig(): IndexerConfig {
     start_ledger: parseInt(process.env.START_LEDGER || '1', 10),
     backfill: process.argv.includes('--backfill'),
     reconcile_only: process.argv.includes('--reconcile-only'),
+    alert_webhook_url: process.env.ALERT_WEBHOOK_URL || '',
+    alert_min_severity: (process.env.ALERT_MIN_SEVERITY || 'warning') as IndexerConfig['alert_min_severity'],
+    expected_admin: process.env.EXPECTED_ADMIN || '',
   };
 }
