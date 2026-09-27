@@ -1,3 +1,44 @@
+//! Privileged administration: ownership, pausing, upgrades and contract-wide
+//! configuration.
+//!
+//! Every function here is admin-gated. [`read_admin`] panics with
+//! [`ContractError::NotInitialized`] when no admin is stored, so an
+//! uninitialized contract has no privileged surface rather than an open one.
+//!
+//! # Ownership
+//!
+//! [`update_admin`] replaces the admin in one transaction — fast, and
+//! unrecoverable if the address is wrong. Prefer the two-step handover:
+//! [`propose_admin`] then [`accept_admin`], where the incoming admin must
+//! authorize the acceptance and so proves control before gaining power.
+//! [`cancel_proposed_admin`] withdraws a pending proposal; only one may be
+//! outstanding.
+//!
+//! # Relationship to the timelock
+//!
+//! Once [`crate::timelock`] is enabled, [`update_admin`], [`upgrade`],
+//! [`propose_admin`] and [`accept_admin`] reject direct calls via
+//! [`crate::timelock::require_direct_call_allowed`]; the admin must schedule
+//! the equivalent [`crate::storage_types::TimelockAction`], wait out the delay
+//! and execute. [`accept_admin`] is blocked too, otherwise a proposal made
+//! before the timelock was enabled could be cashed in afterwards and skip the
+//! delay.
+//!
+//! Pausing, fee configuration, key rotation, metadata and migrations stay
+//! directly callable by design — they are incident response or reversible
+//! configuration.
+//!
+//! # Pausing, upgrades, migrations
+//!
+//! [`set_pause`] is the incident switch and [`require_not_paused`] the guard
+//! other modules call. Requesting the state already in effect is a silent
+//! no-op that emits nothing, so a double-pause is not reported twice.
+//!
+//! [`apply_upgrade`] is shared by [`upgrade`] and the timelocked path so both
+//! bump `ContractVersion` and emit the same audit event. [`migrate`] tracks
+//! storage schema versions separately and only moves forward, so a replayed
+//! migration cannot corrupt storage.
+
 use soroban_sdk::{panic_with_error, symbol_short, Address, BytesN, Env};
 
 use crate::{ttl::TTL_TEMP, ContractError, DataKey, TransferFeeConfig};
