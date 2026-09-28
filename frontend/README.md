@@ -1,74 +1,67 @@
-# Stellar Wrap dApp
+# Stellar Wrap — Frontend
 
-React and Freighter client for the deployed Stellar Wrap Soroban contract.
+The frontend is a Vite + React + TypeScript single-page app that talks to the
+`stellar-wrap` Soroban contract on Stellar testnet. This README walks you from a
+fresh clone to a running app connected to a deployed contract.
 
-## What it supports
+## Prerequisites
 
-- Freighter connection and active-network verification
-- configurable contract ID, RPC endpoint, and network passphrase
-- contract health, wallet wrap count, and latest-wrap queries
-- lookup by `YYYYMM` period
-- `mint_wrap` simulation, Freighter approval, submission, and confirmation
-- responsive and keyboard-accessible status, error, and empty states
+- **Node.js >= 20.19.0** (see `engines` in `package.json`).
+- **npm** (ships with Node).
+- **Freighter** browser extension — the app is unusable without it (see below).
 
-The mint form accepts only public commitment material: a SHA-256 data hash and
-the Ed25519 signature produced by the trusted wrap service. It never asks for an
-admin signing key or a wallet secret.
+## 1. Install Freighter and switch it to testnet
 
-## Local setup
+The app signs transactions through the [Freighter](https://www.freighter.app/)
+wallet extension. Without it, the app cannot connect or submit anything.
 
-Node.js 20.19 or later is required.
+1. Install Freighter for your browser from <https://www.freighter.app/>.
+2. Create or import an account.
+3. Open Freighter → **Settings → Network** and select **Testnet**.
+4. Fund the account on testnet (e.g. via the
+   [Stellar Laboratory friendbot](https://laboratory.stellar.org/#account-creator?network=testnet))
+   so it can pay fees.
+
+Keep Freighter on **Testnet** — the app is configured for testnet contract ids.
+
+## 2. Configure environment variables
+
+Copy the example file and fill in the values:
 
 ```bash
-cd frontend
 cp .env.example .env
-npm ci
-npm run dev
 ```
 
-Set `VITE_STELLAR_CONTRACT_ID` in `.env`, or paste a deployed contract ID in the
-app. The defaults point to Stellar testnet. If you change the RPC endpoint or
-passphrase, Freighter must be switched to the same network before the app will
-read or submit anything.
+| Variable | Required | Meaning | Where to get it |
+| --- | --- | --- | --- |
+| `VITE_CONTRACT_ID` | yes | The Soroban contract id (starts with `C…`) the app reads from and writes to. | Output of a testnet deployment — see [Deploying your own contract](#4-deploying-your-own-contract). |
+| `VITE_RPC_URL` | no | Soroban RPC endpoint used to simulate/submit transactions. Defaults to the public testnet RPC. | `https://soroban-testnet.stellar.org` for testnet. |
+| `VITE_NETWORK_PASSPHRASE` | no | Network passphrase the SDK signs against. Defaults to testnet. | `Test SDF Network ; September 2015` for testnet. |
 
-Configuration values are public frontend settings. Do not put secret keys,
-admin signing keys, or credentials in `.env`; all `VITE_` values are bundled
-into the browser build. Remote RPC endpoints must use HTTPS, and RPC URLs with
-embedded credentials are rejected. Plain HTTP is accepted only for loopback
-addresses during local development.
+Only variables prefixed with `VITE_` are exposed to the browser. Restart the dev
+server after changing `.env`.
 
-## Architecture
-
-```text
-React UI
-  ├── Freighter adapter ── wallet permission, network, transaction signature
-  └── Stellar adapter
-        ├── simulate read-only contract calls
-        └── simulate → assemble → sign → submit → confirm mint_wrap
-```
-
-- `src/App.tsx` owns the explicit configuration, wallet, query, and transaction
-  states.
-- `src/lib/freighter.ts` is the only module that calls the Freighter API.
-- `src/lib/stellar.ts` validates network configuration and owns Soroban RPC/XDR
-  conversion.
-- `src/lib/format.ts` validates user input and converts contract-native values
-  into display models.
-
-Read calls are simulated through RPC and decoded from `ScVal`. Minting first
-simulates the complete invocation, then assembles Soroban resource data, asks
-Freighter to sign the prepared XDR, submits it, and waits for a success result.
-The UI refreshes contract state only after confirmation.
-
-## Verification
+## 3. Run, test, and build
 
 ```bash
-npm run typecheck
-npm run lint
-npm test
-npm run build
-npm run audit
+npm install        # install dependencies
+npm run dev        # start the local dev server (Vite)
+npm run test       # run the unit tests (Vitest)
+npm run build      # type-check and produce a production build in dist/
 ```
 
-Tests mock wallet and network boundaries; they do not require Freighter,
-credentials, a funded account, or a live contract.
+Other useful scripts: `npm run lint`, `npm run typecheck`, `npm run a11y`.
+
+With Freighter on testnet and `VITE_CONTRACT_ID` set, open the dev server URL
+and the app will connect to your deployed contract.
+
+## 4. Deploying your own contract
+
+To point the app at your own contract, deploy it to testnet first. The
+repository ships a workflow for this:
+
+- [`.github/workflows/deploy-testnet.yml`](../.github/workflows/deploy-testnet.yml)
+  builds and deploys the contract to testnet and prints the resulting contract id.
+
+Copy that contract id into `VITE_CONTRACT_ID` in your `.env`, restart
+`npm run dev`, and the frontend will talk to your deployment.
