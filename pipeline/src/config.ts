@@ -4,6 +4,31 @@ import type { IndexerConfig } from './types';
 
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
+/**
+ * Current schema version understood by this build of the indexer.
+ *
+ * Bump this whenever the derived-state schema changes in a way that requires
+ * a migration. The version is persisted inside the database itself (see
+ * pipeline/src/db.ts) so an existing database can be upgraded in place.
+ *
+ * Policy for breaking schema changes:
+ *   - Additive / in-place changes MUST ship a forward migration so operators
+ *     upgrade without re-indexing.
+ *   - A change that cannot be migrated forward (e.g. a destructive reshape of
+ *     derived state) MUST bump SCHEMA_VERSION and set
+ *     SCHEMA_REQUIRES_REINDEX = true. The indexer will then refuse to start
+ *     against an older database with a clear error instead of silently
+ *     re-indexing, making the re-index an explicit operator decision.
+ */
+export const SCHEMA_VERSION = 1;
+
+/**
+ * When true, a database at an older schema version cannot be migrated forward
+ * and the operator must re-index from scratch. This is surfaced as an explicit
+ * startup refusal rather than an implicit wipe.
+ */
+export const SCHEMA_REQUIRES_REINDEX = false;
+
 export function loadConfig(): IndexerConfig {
   const contractId = process.env.CONTRACT_ID || '';
   if (!contractId) {

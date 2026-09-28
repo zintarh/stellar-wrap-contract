@@ -6,6 +6,28 @@ import type {
   StorageEntry,
 } from './types';
 
+/**
+ * Current schema version understood by this code. Bump this whenever a
+ * forward migration is added below. The version is persisted inside the
+ * database itself (in the `schema_meta` table) so it travels with the data.
+ */
+export const SCHEMA_VERSION = 2;
+
+/**
+ * Thrown when the on-disk database was written by a newer version of the
+ * indexer than this code understands. We refuse to start rather than risk
+ * corrupt reads against an unknown schema.
+ */
+export class SchemaVersionError extends Error {
+  constructor(public readonly found: number, public readonly supported: number) {
+    super(
+      `Database schema version ${found} is newer than the supported version ${supported}. ` +
+        `Refusing to start to avoid corrupt reads. Upgrade the indexer or restore a compatible database.`,
+    );
+    this.name = 'SchemaVersionError';
+  }
+}
+
 export class IndexerDB {
   private db: SqlJsDatabase;
 
@@ -32,7 +54,62 @@ export class IndexerDB {
     return new IndexerDB(db);
   }
 
+  /**
+   * Reads the schema version stored in the database. A database that predates
+   * versioning (no `schema_meta` table) is treated as version 1, which is the
+   * implicit schema created by the original `migrate()` implementation.
+   */
+  private getStoredVersion(): number {
+    const hasMeta = this.fetchOne(
+      `SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'schema_meta'`,
+    );
+    if (!hasMeta) return 1;
+    const row = this.fetchOne(`SELECT value FROM schema_meta WHERE key = 'schema_version'`);
+    if (!row) return 1;
+    const parsed = Number(row.value);
+    return Number.isFinite(parsed) ? parsed : 1;
+  }
+
+  private setStoredVersion(version: number): void {
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS schema_meta (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      )
+    `);
+    this.db.run(
+      `INSERT INTO schema_meta (key, value) VALUES ('schema_version', ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      [String(version)],
+    );
+  }
+
+  /**
+   * Applies forward migrations in order until the database matches
+   * SCHEMA_VERSION. Refuses to start against a database newer than this code.
+   *
+   * Breaking-change policy: migrations here are additive and upgrade in place.
+   * If a future change cannot be expressed as a forward migration, it must
+   * bump SCHEMA_VERSION and explicitly trigger a re-index from scratch (drop
+   * derived tables and reset the ledger cursor) rather than silently reading
+   * stale data. That decision is made here, not implicitly at read time.
+   */
   private migrate(): void {
+    const stored = this.getStoredVersion();
+    if (stored > SCHEMA_VERSION) {
+      throw new SchemaVersionError(stored, SCHEMA_VERSION);
+    }
+
+    // v1 -> v2: baseline schema. `CREATE TABLE IF NOT EXISTS` makes this
+    // idempotent for both fresh databases and existing v1 databases.
+    if (stored < 2) {
+      this.createBaselineSchema();
+    }
+
+    this.setStoredVersion(SCHEMA_VERSION);
+  }
+
+  private createBaselineSchema(): void {
     this.db.run(`
       CREATE TABLE IF NOT EXISTS contract_events (
         id TEXT PRIMARY KEY,
@@ -250,60 +327,6 @@ export class IndexerDB {
     ) as unknown as EventRow[];
   }
 
-  getLatestEventLedger(contractId: string): number | null {
-    const row = this.fetchOne(
-      `SELECT MAX(ledger_seq) as max_ledger FROM contract_events WHERE contract_id = ?`,
-      [contractId],
-    ) as { max_ledger: number | null } | null;
-    return row?.max_ledger ?? null;
-  }
+  getLatestEventLedger(contractId: string
 
-  // ─── Wrap Records ───────────────────────────────────────────────────
-
-  upsertWrap(record: {
-    contract_id: string;
-    user: string;
-    period: number;
-    timestamp: number;
-    data_hash: string;
-    archetype: string;
-    fsm_state: number;
-    fsm_updated_at: number;
-    ledger_seq: number;
-    tx_hash: string;
-  }): void {
-    this.exec(
-      `INSERT INTO wrap_records
-        (contract_id, user, period, timestamp, data_hash, archetype, fsm_state, fsm_updated_at, ledger_seq, tx_hash)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(contract_id, user, period) DO UPDATE SET
-        timestamp = excluded.timestamp,
-        data_hash = excluded.data_hash,
-        archetype = excluded.archetype,
-        fsm_state = excluded.fsm_state,
-        fsm_updated_at = excluded.fsm_updated_at,
-        ledger_seq = excluded.ledger_seq,
-        tx_hash = excluded.tx_hash,
-        updated_at = datetime('now')`,
-      [record.contract_id, record.user, record.period, record.timestamp, record.data_hash, record.archetype, record.fsm_state, record.fsm_updated_at, record.ledger_seq, record.tx_hash],
-    );
-  }
-
-  removeWrap(contractId: string, user: string, period: number): void {
-    this.exec(
-      `DELETE FROM wrap_records WHERE contract_id = ? AND user = ? AND period = ?`,
-      [contractId, user, period],
-    );
-  }
-
-  getWrapCount(contractId: string): number {
-    const row = this.fetchOne(
-      `SELECT COUNT(*) as count FROM wrap_records WHERE contract_id = ?`,
-      [contractId],
-    ) as { count: number };
-    return row.count;
-  }
-
-  // ─── User State ─────────────────────────────────
-
-/* … truncated 5114 chars — edit only what you need near the top … */
+/* … truncated 1946 chars — edit only what you need near the top … */

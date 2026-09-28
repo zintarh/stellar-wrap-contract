@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { IndexerDB } from '../db';
+import { IndexerDB, SCHEMA_VERSION } from '../db';
 
 describe('IndexerDB', () => {
   let db: IndexerDB;
@@ -262,5 +262,39 @@ describe('IndexerDB', () => {
     expect(stats.total_events).toBe(1);
     expect(stats.total_wraps).toBe(1);
     expect(stats.last_indexed_ledger).toBe(100);
+  });
+
+  it('stores the schema version in the database itself', () => {
+    expect(db.getSchemaVersion()).toBe(SCHEMA_VERSION);
+  });
+
+  it('upgrades a database populated by the previous schema in place', async () => {
+    // Simulate an existing database created by the previous schema version.
+    const legacy = await IndexerDB.create({ schemaVersion: SCHEMA_VERSION - 1 });
+    legacy.insertEvent({
+      id: 'legacy-evt',
+      contract_id: contractId,
+      event_type: 'mint',
+      ledger_seq: 42,
+      tx_hash: 'tx-legacy',
+      topics_json: '[]',
+      data_json: '{}',
+      failed_call: false,
+    });
+    expect(legacy.getSchemaVersion()).toBe(SCHEMA_VERSION - 1);
+    legacy.close();
+
+    // Reopening runs the forward migration in place and preserves data.
+    const upgraded = await IndexerDB.create();
+    expect(upgraded.getSchemaVersion()).toBe(SCHEMA_VERSION);
+    expect(upgraded.getLatestEventLedger(contractId)).toBe(42);
+    upgraded.close();
+  });
+
+  it('refuses to start against a database newer than the code understands', async () => {
+    const future = await IndexerDB.create({ schemaVersion: SCHEMA_VERSION + 1 });
+    future.close();
+
+    await expect(IndexerDB.create()).rejects.toThrow(/newer/i);
   });
 });
