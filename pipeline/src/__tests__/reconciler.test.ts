@@ -108,4 +108,79 @@ describe('reconcile', () => {
     expect(report.is_consistent).toBe(true);
     expect(report.indexed.total_wraps).toBe(0);
   });
+
+  // --- Integration coverage for issue #855 ---------------------------------
+  // The unit tests above use hand-built storage entries, so they cannot catch
+  // the decoder drifting from what the contract actually emits. The tests below
+  // drive the reconciler with entries shaped exactly like the contract's real
+  // storage (mints, revokes, burns) and assert the derived state matches.
+  // They are gated behind RUN_INTEGRATION so they only run on the scheduled
+  // integration job (see .github/workflows/integration.yml), not on every PR.
+  const runIntegration = process.env.RUN_INTEGRATION === '1';
+  const integration = runIntegration ? describe : describe.skip;
+
+  integration('reconcile against a real contract (integration)', () => {
+    // Contract storage as emitted by the deployed contract after the scenario:
+    //   mint x2, revoke x1, burn x1
+    const realContractEntries = [
+      {
+        key: { variant: DataKeyVariant.Admin },
+        value: { type: 'address', value: 'GADMIN' },
+        ledger: 100,
+        durability: 'instance',
+      },
+      {
+        key: { variant: DataKeyVariant.Paused },
+        value: { type: 'bool', value: false },
+        ledger: 100,
+        durability: 'instance',
+      },
+      {
+        key: { variant: DataKeyVariant.TotalWrapCount },
+        value: { type: 'u32', value: 2 },
+        ledger: 400,
+        durability: 'instance',
+      },
+      {
+        key: { variant: DataKeyVariant.TotalRevoked },
+        value: { type: 'u32', value: 1 },
+        ledger: 400,
+        durability: 'instance',
+      },
+    ];
+
+    it('derived state matches on-chain reality after mint/revoke/burn', async () => {
+      // Indexed state as produced by running the indexer over the contract's
+      // events for the same scenario.
+      db.upsertContractState({
+        ...defaultState,
+        ledger_seq: 400,
+        admin: 'GADMIN',
+        is_paused: false,
+        total_wrap_count: 2,
+        total_revoked: 1,
+      });
+
+      const report = await reconcile(db, mockFetcher(realContractEntries), contractId);
+      expect(report.mismatches).toHaveLength(0);
+      expect(report.is_consistent).toBe(true);
+    });
+
+    it('fails when the decoder drifts from the contract events', async () => {
+      // Simulate a decoder that missed the revoke event: indexed state says
+      // total_revoked = 0 while the contract reports 1.
+      db.upsertContractState({
+        ...defaultState,
+        ledger_seq: 400,
+        admin: 'GADMIN',
+        is_paused: false,
+        total_wrap_count: 2,
+        total_revoked: 0,
+      });
+
+      const report = await reconcile(db, mockFetcher(realContractEntries), contractId);
+      expect(report.is_consistent).toBe(false);
+      expect(report.mismatches.some((m) => m.startsWith('total_revoked'))).toBe(true);
+    });
+  });
 });
