@@ -87,3 +87,82 @@ export type MintInput = {
   dataHash: Uint8Array;
   signature: Uint8Array;
 };
+
+/**
+ * Keys that must never be written to browser storage. Wallet material
+ * (private keys, seeds, signed payloads) is held only in memory for the
+ * lifetime of a request and is never persisted.
+ */
+export const FORBIDDEN_STORAGE_KEYS = [
+  "privateKey",
+  "private_key",
+  "secretKey",
+  "secret_key",
+  "seed",
+  "mnemonic",
+  "signature",
+  "signedPayload",
+  "signed_payload",
+  "signedXdr",
+  "signed_xdr",
+] as const;
+
+/**
+ * Returns true when a storage key looks like wallet material that must not
+ * be persisted to localStorage, sessionStorage, or a cookie.
+ */
+export function isForbiddenStorageKey(key: string): boolean {
+  const normalized = key.toLowerCase();
+  return FORBIDDEN_STORAGE_KEYS.some((forbidden) =>
+    normalized.includes(forbidden.toLowerCase()),
+  );
+}
+
+/**
+ * Assert that a value destined for browser storage contains no wallet
+ * material. Throws when a forbidden key is present so callers fail closed
+ * instead of silently persisting sensitive data.
+ */
+export function assertNoWalletMaterial(
+  value: Record<string, unknown>,
+): void {
+  for (const key of Object.keys(value)) {
+    if (isForbiddenStorageKey(key)) {
+      throw new Error(
+        `Refusing to persist wallet material under key "${key}"`,
+      );
+    }
+  }
+}
+
+/**
+ * Narrow an untrusted RPC/contract response to a plain object before it is
+ * read or rendered. Contract responses are treated as untrusted input.
+ */
+export function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.getPrototypeOf(value) === Object.prototype
+  );
+}
+
+/**
+ * Validate the shape of an untrusted contract health response before it is
+ * rendered. Returns null when the response does not match the expected shape.
+ */
+export function parseContractHealth(value: unknown): ContractHealth | null {
+  if (!isPlainObject(value)) {
+    return null;
+  }
+  const { initialized, hasAdmin, hasSigningKey } = value;
+  if (
+    typeof initialized !== "boolean" ||
+    typeof hasAdmin !== "boolean" ||
+    typeof hasSigningKey !== "boolean"
+  ) {
+    return null;
+  }
+  return { initialized, hasAdmin, hasSigningKey };
+}

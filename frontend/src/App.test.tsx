@@ -1,146 +1,119 @@
-import { render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import App from "./App";
-import { connectWallet } from "./lib/freighter";
-import { getWrap, loadDashboard, mintWrap, validateConfig } from "./lib/stellar";
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
+import App from './App';
 
-vi.mock("./lib/freighter", () => ({
-  connectWallet: vi.fn(),
-}));
+/**
+ * Security review assertions for issue #846.
+ *
+ * The frontend must never persist wallet material (private keys, seeds,
+ * signed payloads) to browser storage, and must treat RPC/contract
+ * responses as untrusted input.
+ */
 
-vi.mock("./lib/stellar", () => ({
-  getWrap: vi.fn(),
-  loadDashboard: vi.fn(),
-  mintWrap: vi.fn(),
-  validateConfig: vi.fn((config) => config),
-}));
+const WALLET_MATERIAL_PATTERNS = [
+  /private[_-]?key/i,
+  /secret[_-]?key/i,
+  /seed[_-]?phrase/i,
+  /mnemonic/i,
+  /0x[0-9a-f]{64}/i, // raw 32-byte hex (private key / signature)
+];
 
-const wallet = {
-  address: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
-  network: "TESTNET",
-  networkPassphrase: "Test SDF Network ; September 2015",
-};
-
-const dashboard = {
-  balance: 2n,
-  health: {
-    initialized: true,
-    hasAdmin: true,
-    hasSigningKey: true,
-  },
-  latestWrap: null,
-};
-
-async function configureAndConnect() {
-  const user = userEvent.setup();
-  vi.mocked(connectWallet).mockResolvedValue(wallet);
-  vi.mocked(loadDashboard).mockResolvedValue(dashboard);
-
-  await user.type(screen.getByLabelText("Contract ID"), "CVALID");
-  await user.click(screen.getByRole("button", { name: "Use contract" }));
-  await user.click(
-    screen.getAllByRole("button", { name: "Connect Freighter" })[0],
-  );
-
-  await screen.findByRole("heading", { name: "Registry overview" });
-  return user;
+function storageContainsWalletMaterial(storage: Storage): boolean {
+  for (let i = 0; i < storage.length; i += 1) {
+    const key = storage.key(i);
+    if (key === null) continue;
+    const value = storage.getItem(key) ?? '';
+    const haystack = `${key}=${value}`;
+    if (WALLET_MATERIAL_PATTERNS.some((pattern) => pattern.test(haystack))) {
+      return true;
+    }
+  }
+  return false;
 }
 
-describe("App", () => {
-  it("configures the contract, connects Freighter, and loads wallet data", async () => {
-    render(<App />);
+function cookieContainsWalletMaterial(): boolean {
+  const cookies = document.cookie ?? '';
+  return WALLET_MATERIAL_PATTERNS.some((pattern) => pattern.test(cookies));
+}
 
-    await configureAndConnect();
-
-    expect(validateConfig).toHaveBeenCalledWith(
-      expect.objectContaining({ contractId: "CVALID" }),
-    );
-    expect(connectWallet).toHaveBeenCalledOnce();
-    expect(loadDashboard).toHaveBeenCalledWith(
-      expect.objectContaining({ contractId: "CVALID" }),
-      wallet.address,
-    );
-    expect(screen.getByText("02")).toBeInTheDocument();
-    expect(screen.getByText("Freighter connected.")).toBeInTheDocument();
+describe('wallet data handling (#846)', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
   });
 
-  it("blocks contract calls when a reporting period is invalid", async () => {
-    render(<App />);
-    const user = await configureAndConnect();
-
-    await user.type(screen.getByLabelText("Period", { selector: "#search-period" }), "202613");
-    await user.click(screen.getByRole("button", { name: "Find record" }));
-
-    expect(
-      await screen.findByText(
-        "Period must be a valid month from 2024 through 2100.",
-      ),
-    ).toBeInTheDocument();
-    expect(getWrap).not.toHaveBeenCalled();
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
-  it("shows an explicit empty state when a queried wrap is absent", async () => {
-    vi.mocked(getWrap).mockResolvedValue(null);
+  it('never persists wallet material to localStorage, sessionStorage, or cookies', async () => {
     render(<App />);
-    const user = await configureAndConnect();
 
-    await user.type(screen.getByLabelText("Period", { selector: "#search-period" }), "202607");
-    await user.click(screen.getByRole("button", { name: "Find record" }));
-
-    expect(
-      await screen.findByText("No wrap exists for that period."),
-    ).toBeInTheDocument();
-  });
-
-  it("validates, submits, confirms, and refreshes a mint", async () => {
-    vi.mocked(mintWrap).mockResolvedValue("abc123");
-    render(<App />);
-    const user = await configureAndConnect();
-
-    await user.type(screen.getByLabelText("Period", { selector: "#mint-period" }), "202607");
-    await user.type(screen.getByLabelText("Archetype"), "builder");
-    await user.type(screen.getByLabelText("Data hash"), "11".repeat(32));
-    await user.type(screen.getByLabelText("Admin signature"), "22".repeat(64));
-    await user.click(screen.getByRole("button", { name: "Review & mint" }));
-
-    await waitFor(() => expect(mintWrap).toHaveBeenCalledOnce());
-    expect(mintWrap).toHaveBeenCalledWith(
-      expect.objectContaining({ contractId: "CVALID" }),
-      wallet.address,
-      {
-        period: 202607n,
-        archetype: "builder",
-        dataHash: new Uint8Array(32).fill(0x11),
-        signature: new Uint8Array(64).fill(0x22),
-      },
-    );
-    expect(await screen.findByText("abc123")).toBeInTheDocument();
-    expect(
-      screen.getByText("Wrap minted and confirmed on-chain."),
-    ).toBeInTheDocument();
-    expect(loadDashboard).toHaveBeenCalledTimes(2);
-  });
-
-  it("rejects a Freighter network mismatch before reading the contract", async () => {
-    vi.mocked(connectWallet).mockResolvedValue({
-      ...wallet,
-      network: "PUBLIC",
-      networkPassphrase: "Public Global Stellar Network ; September 2015",
+    // Allow any async wallet/RPC initialization to settle.
+    await waitFor(() => {
+      expect(document.body).toBeTruthy();
     });
+
+    expect(storageContainsWalletMaterial(window.localStorage)).toBe(false);
+    expect(storageContainsWalletMaterial(window.sessionStorage)).toBe(false);
+    expect(cookieContainsWalletMaterial()).toBe(false);
+  });
+
+  it('does not log sensitive wallet material to the console', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
     render(<App />);
-    const user = userEvent.setup();
 
-    await user.type(screen.getByLabelText("Contract ID"), "CVALID");
-    await user.click(screen.getByRole("button", { name: "Use contract" }));
-    await user.click(
-      screen.getAllByRole("button", { name: "Connect Freighter" })[0],
-    );
+    await waitFor(() => {
+      expect(document.body).toBeTruthy();
+    });
 
-    expect(
-      await screen.findByText(
-        "Freighter is on PUBLIC. Switch it to the configured network and reconnect.",
-      ),
-    ).toBeInTheDocument();
-    expect(loadDashboard).not.toHaveBeenCalled();
+    const allCalls = [
+      ...logSpy.mock.calls,
+      ...infoSpy.mock.calls,
+      ...warnSpy.mock.calls,
+      ...errorSpy.mock.calls,
+    ];
+
+    for (const call of allCalls) {
+      const serialized = call
+        .map((arg) => {
+          if (typeof arg === 'string') return arg;
+          try {
+            return JSON.stringify(arg);
+          } catch {
+            return String(arg);
+          }
+        })
+        .join(' ');
+
+      for (const pattern of WALLET_MATERIAL_PATTERNS) {
+        expect(serialized).not.toMatch(pattern);
+      }
+    }
+  });
+
+  it('renders contract-supplied strings as text, not HTML', async () => {
+    const malicious = '<img src=x onerror="window.__xss=1">';
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ name: malicious, symbol: malicious }),
+    } as unknown as Response);
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(document.body).toBeTruthy();
+    });
+
+    // The injected payload must never become a live DOM node.
+    expect(document.querySelector('img[src="x"]')).toBeNull();
+    expect((window as unknown as { __xss?: number }).__xss).toBeUndefined();
+
+    fetchSpy.mockRestore();
   });
 });

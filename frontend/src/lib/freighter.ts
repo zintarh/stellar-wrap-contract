@@ -16,6 +16,35 @@ function freighterError(
   return new Error(error?.message ?? fallback);
 }
 
+/**
+ * Wallet material (private keys, seeds, signed payloads) must never be
+ * persisted to browser storage. This helper is the single choke point for
+ * Freighter responses so we can assert that property in tests.
+ */
+export const WALLET_STORAGE_KEYS = [
+  "freighter",
+  "wallet",
+  "walletSession",
+  "walletAddress",
+  "signedTxXdr",
+  "secretKey",
+  "seed",
+] as const;
+
+function assertNoWalletPersistence(): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    for (const key of WALLET_STORAGE_KEYS) {
+      window.localStorage?.removeItem(key);
+      window.sessionStorage?.removeItem(key);
+    }
+  } catch {
+    // Storage may be unavailable (private mode); nothing to clean up.
+  }
+}
+
 export async function connectWallet(): Promise<WalletSession> {
   const connection = await isConnected();
   if (connection.error) {
@@ -37,6 +66,8 @@ export async function connectWallet(): Promise<WalletSession> {
     throw freighterError(network.error, "Could not read the Freighter network.");
   }
 
+  assertNoWalletPersistence();
+
   return {
     address: access.address,
     network: network.network,
@@ -57,5 +88,8 @@ export async function signWithFreighter(
   if (result.error || !result.signedTxXdr) {
     throw freighterError(result.error, "Freighter did not sign the transaction.");
   }
+
+  assertNoWalletPersistence();
+
   return result.signedTxXdr;
 }
