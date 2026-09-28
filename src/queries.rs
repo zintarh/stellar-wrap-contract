@@ -49,6 +49,14 @@ pub(crate) fn total_wrap_count(e: Env) -> u32 {
         .unwrap_or(0)
 }
 
+/// Verifies that `data` matches the SHA-256 hash committed for `(user, period)`.
+///
+/// Looks up `DataKey::Wrap(user, period)` in persistent storage, computes
+/// `SHA-256(data)`, and compares the result to [`WrapRecord::data_hash`].
+/// Returns `true` only when the record exists **and** the hashes are equal.
+/// Returns `false` for a missing record, a tampered payload, or any mismatch.
+///
+/// This function is pure read — it never writes storage and requires no auth.
 pub(crate) fn verify_data(e: Env, user: Address, period: u64, data: Bytes) -> bool {
     let wrap: Option<WrapRecord> = e.storage().persistent().get(&DataKey::Wrap(user, period));
     wrap.is_some_and(|record| {

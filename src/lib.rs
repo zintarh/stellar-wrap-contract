@@ -308,6 +308,41 @@ impl StellarWrapContract {
         queries::total_wrap_count(e)
     }
 
+    /// Verifies that `data` matches the SHA-256 hash committed during minting for
+    /// the given `(user, period)` pair.
+    ///
+    /// Fetches the [`WrapRecord`] stored at `DataKey::Wrap(user, period)` and
+    /// computes `SHA-256(data)`. Returns `true` only when both conditions hold:
+    ///
+    /// 1. A wrap record exists for the `(user, period)` pair.
+    /// 2. The computed hash equals `WrapRecord::data_hash`.
+    ///
+    /// This is a read-only, permissionless entrypoint. It never mutates state,
+    /// never panics, and requires no authorization.
+    ///
+    /// # Parameters
+    /// - `user`: The address whose wrap record is being checked.
+    /// - `period`: The period (`YYYYMM` `u64`, e.g. `202401`) that identifies the record.
+    /// - `data`: The raw byte payload to verify against the stored hash.
+    ///
+    /// # Returns
+    /// - `true` — a wrap exists for `(user, period)` and `SHA-256(data)` matches
+    ///   the stored `data_hash`.
+    /// - `false` — either no wrap exists for `(user, period)`, or the hash of
+    ///   `data` does not match the stored hash (tampered or wrong payload).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // After minting a wrap whose data_hash = SHA-256(payload):
+    /// assert!(client.verify_data(&user, &202401u64, &payload));
+    ///
+    /// // A tampered payload returns false:
+    /// assert!(!client.verify_data(&user, &202401u64, &tampered_payload));
+    ///
+    /// // A non-existent user/period pair also returns false:
+    /// assert!(!client.verify_data(&unknown_user, &202401u64, &payload));
+    /// ```
     pub fn verify_data(e: Env, user: Address, period: u64, data: Bytes) -> bool {
         queries::verify_data(e, user, period, data)
     }
