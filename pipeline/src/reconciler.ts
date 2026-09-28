@@ -116,6 +116,92 @@ export interface ExpectedActions {
 }
 
 /**
+ * Operational health snapshot for the indexer. This is the primary signal an
+ * operator or monitor polls: `lag` is the gap between chain head and the last
+ * processed ledger, and `behind` is the alertable form of it.
+ */
+export interface IndexerHealth {
+  /** Chain head ledger observed at snapshot time. */
+  chain_head_ledger: number;
+  /** Highest ledger the indexer has processed. */
+  last_processed_ledger: number;
+  /** Gap between chain head and last processed ledger (>= 0). */
+  lag: number;
+  /** True when lag exceeds the configured alert threshold. */
+  behind: boolean;
+  /** Threshold (in ledgers) above which `behind` becomes true. */
+  lag_threshold: number;
+  /** Ledgers processed per second since the indexer started. */
+  processing_rate: number;
+  /** Cumulative decode failures observed. */
+  decode_failures: number;
+  /** Cumulative retry attempts observed. */
+  retry_count: number;
+  /** Outcome of the most recent reconciliation run, if any. */
+  last_reconciliation: ReconciliationRun | null;
+  /** True when the last reconciliation reported genuine divergence. */
+  last_reconciliation_ok: boolean;
+  timestamp: string;
+}
+
+/**
+ * Mutable counters the indexer updates as it runs. Kept separate from the DB so
+ * health can be reported without a schema change.
+ */
+export interface IndexerMetrics {
+  /** Highest ledger the indexer has processed. */
+  last_processed_ledger: number;
+  /** Cumulative decode failures. */
+  decode_failures: number;
+  /** Cumulative retry attempts. */
+  retry_count: number;
+  /** Wall-clock ms when the indexer started, for rate calculation. */
+  started_at_ms: number;
+}
+
+/**
+ * Create a fresh metrics record for a newly started indexer.
+ */
+export function createIndexerMetrics(startedAtMs: number = Date.now()): IndexerMetrics {
+  return {
+    last_processed_ledger: 0,
+    decode_failures: 0,
+    retry_count: 0,
+    started_at_ms: startedAtMs,
+  };
+}
+
+/**
+ * Build the operational health snapshot from live metrics, the chain head, and
+ * the last recorded reconciliation run. This is the single source of truth for
+ * "is the indexer keeping up?" and is safe to poll from a monitor.
+ */
+export function buildIndexerHealth(
+  metrics: IndexerMetrics,
+  chainHeadLedger: number,
+  lagThreshold: number,
+  lastReconciliation: ReconciliationRun | null,
+  nowMs: number = Date.now(),
+): IndexerHealth {
+  const lag = Math.max(0, chainHeadLedger - metrics.last_processed_ledger);
+  const elapsedSeconds = Math.max(0, (nowMs - metrics.started_at_ms) / 1000);
+  const processingRate = elapsedSeconds > 0 ? metrics.last_processed_ledger / elapsedSeconds : 0;
+  return {
+    chain_head_ledger: chainHeadLedger,
+    last_processed_ledger: metrics.last_processed_ledger,
+    lag,
+    behind: lag > lagThreshold,
+    lag_threshold: lagThreshold,
+    processing_rate: processingRate,
+    decode_failures: metrics.decode_failures,
+    retry_count: metrics.retry_count,
+    last_reconciliation: lastReconciliation,
+    last_reconciliation_ok: lastReconciliation ? !lastReconciliation.genuine_divergence : true,
+    timestamp: new Date(nowMs).toISOString(),
+  };
+}
+
+/**
  * Reconcile indexed state against current on-chain storage.
  * Fetches all current storage entries and compares with the database.
  */
@@ -235,7 +321,7 @@ export function alertsFromReconciliationRun(run: ReconciliationRun): ContractAle
       contract_id: run.contract_id,
       ledger_seq: run.ledger_seq,
       expected: false,
-      message: `Reconciliation drift on ${run.contract_id}: ${run.affected_counters.join(', ') || 'unknown counters'}`,
+      message: `Reconciliation drift on ${run.contract_id} at ledger ${run.ledger_seq}: ${run.affected_counters.join(', ')}`,
       details: {
         affected_counters: run.affected_counters,
         indexed_ledger_seq: run.indexed_ledger_seq,
@@ -247,145 +333,27 @@ export function alertsFromReconciliationRun(run: ReconciliationRun): ContractAle
 }
 
 /**
- * Derive alerts from a reconciliation report. Reuses the report's own
- * mismatches to detect privileged-state changes (pause, admin) rather than
- * re-reading chain state.
+ * Derive an alert when the indexer is behind by more than the threshold. This
+ * turns "behind by more than N ledgers" into an alertable condition instead of
+ * something an operator has to discover by inspection.
  */
-export function alertsFromReconciliationReport(
-  report: ReconciliationReport,
-  expected: ExpectedActions = {},
-): ContractAlert[] {
-  const alerts: ContractAlert[] = [];
-  const timestamp = new Date().toISOString();
-
-  for (const mismatch of report.mismatches) {
-    const field = mismatch.split(':')[0]?.trim();
-    if (field === 'is_paused') {
-      alerts.push({
-        condition: 'contract_paused',
-        contract_id: report.contract_id,
-        ledger_seq: report.ledger_seq,
-        expected: false,
-        message: `Contract ${report.contract_id} pause state changed: ${mismatch}`,
-        details: { mismatch },
-        timestamp,
-      });
-    } else if (field === 'admin' || field === 'admin_pubkey') {
-      const onChain = mismatch.split('on-chain=')[1]?.replace(/"/g, '') ?? '';
-      const isExpected = (expected.admin_changes ?? []).includes(onChain);
-      alerts.push({
-        condition: 'admin_change',
-        contract_id: report.contract_id,
-        ledger_seq: report.ledger_seq,
-        expected: isExpected,
-        message: isExpected
-          ? `Scheduled admin change on ${report.contract_id}: ${mismatch}`
-          : `UNEXPECTED admin change on ${report.contract_id}: ${mismatch}`,
-        details: { mismatch, on_chain_admin: onChain },
-        timestamp,
-      });
-    }
-  }
-
-  return alerts;
-}
-
-/**
- * Derive alerts for governance and bridge privileged actions. `expected`
- * distinguishes scheduled/announced actions from ones nobody asked for.
- */
-export function alertsFromPrivilegedActions(
-  contractId: string,
-  ledgerSeq: number,
-  actions: {
-    proposal_created?: number[];
-    proposal_executed?: number[];
-    timelock_scheduled?: number[];
-    bridge_disabled?: number[];
-  },
-  expected: ExpectedActions = {},
-): ContractAlert[] {
-  const alerts: ContractAlert[] = [];
-  const timestamp = new Date().toISOString();
-
-  for (const id of actions.proposal_created ?? []) {
-    const isExpected = (expected.proposal_creations ?? []).includes(id);
-    alerts.push({
-      condition: 'governance_proposal_created',
-      contract_id: contractId,
-      ledger_seq: ledgerSeq,
-      expected: isExpected,
-      message: isExpected
-        ? `Governance proposal ${id} created on ${contractId}`
-        : `UNEXPECTED governance proposal ${id} created on ${contractId}`,
-      details: { proposal_id: id },
-      timestamp,
-    });
-  }
-
-  for (const id of actions.proposal_executed ?? []) {
-    const isExpected = (expected.proposal_executions ?? []).includes(id);
-    alerts.push({
-      condition: 'governance_proposal_executed',
-      contract_id: contractId,
-      ledger_seq: ledgerSeq,
-      expected: isExpected,
-      message: isExpected
-        ? `Governance proposal ${id} executed on ${contractId}`
-        : `UNEXPECTED governance proposal ${id} executed on ${contractId}`,
-      details: { proposal_id: id },
-      timestamp,
-    });
-  }
-
-  for (const id of actions.timelock_scheduled ?? []) {
-    const isExpected = (expected.timelock_actions ?? []).includes(id);
-    alerts.push({
-      condition: 'timelock_action_scheduled',
-      contract_id: contractId,
-      ledger_seq: ledgerSeq,
-      expected: isExpected,
-      message: isExpected
-        ? `Timelock action ${id} scheduled on ${contractId}`
-        : `UNEXPECTED timelock action ${id} scheduled on ${contractId}`,
-      details: { action_id: id },
-      timestamp,
-    });
-  }
-
-  for (const id of actions.bridge_disabled ?? []) {
-    const isExpected = (expected.bridge_disables ?? []).includes(id);
-    alerts.push({
-      condition: 'bridge_chain_disabled',
-      contract_id: contractId,
-      ledger_seq: ledgerSeq,
-      expected: isExpected,
-      message: isExpected
-        ? `Bridge chain ${id} disabled on ${contractId}`
-        : `UNEXPECTED bridge chain ${id} disabled on ${contractId}`,
-      details: { chain_id: id },
-      timestamp,
-    });
-  }
-
-  return alerts;
-}
-
-/**
- * Route alerts to a human-visible destination. Unexpected privileged actions
- * are always sent; expected ones are sent too but flagged so the sink can
- * route them to a lower-severity channel.
- */
-export async function dispatchAlerts(sink: AlertSink, alerts: ContractAlert[]): Promise<void> {
-  for (const alert of alerts) {
-    await sink.send(alert);
-  }
-}
-
-function compareFields(field: string, a: unknown, b: unknown, mismatches: string[]): void {
-  const aStr = a != null ? String(a) : '<null>';
-  const bStr = b != null ? String(b) : '<null>';
-  if (aStr !== bStr) {
-    mismatches.push(`${field}: indexed="${aStr}" on-chain="${bStr}"`);
-  }
+export function alertsFromIndexerHealth(health: IndexerHealth): ContractAlert[] {
+  if (!health.behind) return [];
+  return [
+    {
+      condition: 'reconciliation_drift',
+      contract_id: '',
+      ledger_seq: health.last_processed_ledger,
+      expected: false,
+      message: `Indexer is behind by ${health.lag} ledgers (threshold ${health.lag_threshold})`,
+      details: {
+        lag: health.lag,
+        lag_threshold: health.lag_threshold,
+        chain_head_ledger: health.chain_head_ledger,
+        last_processed_ledger: health.last_processed_ledger,
+        processing_rate: health.processing_rate,
+      },
+      timestamp: health.timestamp,
+    },
+  ];
 }
