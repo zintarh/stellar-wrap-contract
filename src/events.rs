@@ -209,6 +209,24 @@ pub fn publish_event(e: &Env, event: Event) {
     }
 }
 
+/// Strongly typed event names for mint operations.
+#[contracttype]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MintEventType {
+    Mint,
+    Transition,
+}
+
+impl MintEventType {
+    /// Convert this event type to a Soroban `Symbol`.
+    pub fn to_symbol(&self, e: &Env) -> Symbol {
+        match self {
+            MintEventType::Mint => Symbol::new(e, "mint"),
+            MintEventType::Transition => Symbol::new(e, "trans"),
+        }
+    }
+}
+
 /// Strongly typed event data payloads for mint operations.
 ///
 /// Used as the data argument in `e.events().publish()` to provide

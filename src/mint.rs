@@ -1,6 +1,7 @@
 use soroban_sdk::{panic_with_error, symbol_short, Address, BytesN, Env, Symbol};
 
 use crate::{
+    events::{MintEventData, MintEventType},
     optout,
     signature::verify_mint_signature,
     storage_accounting,
