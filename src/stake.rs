@@ -16,6 +16,7 @@
 use soroban_sdk::{panic_with_error, symbol_short, Address, Env};
 
 use crate::{
+    constants::TTL_ONE_YEAR,
     storage_types::{StakeConfig, StakeRecord},
     ContractError, DataKey,
 };

@@ -431,14 +431,12 @@ proptest! {
         ],
     ) {
         let (env, client, _, _, _) = setup_env();
-        let title = String::from_str(&env, "proposal");
-        let description = String::from_str(&env, "duration bounds");
-        let data_hash = make_data_hash(&env, [0x42; 32]);
+        let proposer = Address::generate(&env);
+        let new_admin = Address::generate(&env);
 
         let result = client.try_create_admin_proposal(
-            &title,
-            &description,
-            &data_hash,
+            &proposer,
+            &new_admin,
             &duration,
         );
 
@@ -455,14 +453,12 @@ proptest! {
         ],
     ) {
         let (env, client, _, _, _) = setup_env();
-        let title = String::from_str(&env, "proposal");
-        let description = String::from_str(&env, "duration bounds");
-        let data_hash = make_data_hash(&env, [0x43; 32]);
+        let proposer = Address::generate(&env);
+        let new_admin = Address::generate(&env);
 
         let result = client.try_create_admin_proposal(
-            &title,
-            &description,
-            &data_hash,
+            &proposer,
+            &new_admin,
             &duration,
         );
 

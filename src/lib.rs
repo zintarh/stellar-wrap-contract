@@ -26,9 +26,7 @@ extern crate alloc;
 #[cfg(any(test, feature = "testutils"))]
 extern crate std;
 
-use soroban_sdk::{
-    contract, contractimpl, Address, Bytes, BytesN, Env, String, Symbol, Vec,
-};
+use soroban_sdk::{contract, contractimpl, Address, Bytes, BytesN, Env, String, Symbol, Vec};
 
 mod admin;
 mod alias;
@@ -43,8 +41,8 @@ mod mint;
 mod optout;
 mod oracle;
 mod queries;
-mod revoke;
 mod remove_wrap;
+mod revoke;
 pub mod signature;
 mod stake;
 mod storage_accounting;
@@ -241,10 +239,10 @@ impl StellarWrapContract {
         e: Env,
         user: Address,
         period: u64,
-        description: Option<String>,
-        image_url: Option<String>,
+        description: soroban_sdk::String,
+        image_url: soroban_sdk::String,
     ) {
-        wrap_record_helpers::set_wrap_metadata(e, user, period, description, image_url);
+        admin::set_wrap_metadata(e, user, period, description, image_url);
     }
 
     /// Transfers one wrap record and atomically charges the configured fee.
@@ -507,7 +505,7 @@ impl StellarWrapContract {
 
     /// Returns `true` if the user has opted out of future mints.
     pub fn is_opted_out(e: Env, user: Address) -> bool {
-        optout::is_opted_out(e, user)
+        optout::is_opted_out(&e, &user)
     }
 
     /// Return the current contract version number.
@@ -674,14 +672,14 @@ impl StellarWrapContract {
         bridge::set_bridge_relayers(&e, chain_id, relayers, threshold);
     }
 
-    /// Admin: Set the legacy single bridge relayer address (for refund auth).
-    pub fn set_bridge_relayer(e: Env, relayer: Address) {
-        bridge::set_bridge_relayer(&e, relayer);
-    }
-
     /// Returns the configured cross-chain token bridge relayers for a given chain.
     pub fn get_bridge_relayers(e: Env, chain_id: u32) -> Option<storage_types::BridgeRelayerSet> {
         bridge::get_bridge_relayers(&e, chain_id)
+    }
+
+    /// Returns the configured bridge relayer address, or None if not set.
+    pub fn get_bridge_relayer(e: Env) -> Option<Address> {
+        bridge::get_bridge_relayer(&e)
     }
 
     /// Admin: Set enabled status for a destination/source cross-chain network chain ID.
@@ -918,7 +916,11 @@ mod bridge_test;
 #[cfg(test)]
 mod expiration_test;
 #[cfg(test)]
+mod governance_exec_test;
+#[cfg(test)]
 mod governance_test;
+#[cfg(test)]
+mod invariants_test;
 #[cfg(test)]
 mod last_updated_test;
 #[cfg(test)]
@@ -930,53 +932,48 @@ mod prop_test;
 #[cfg(test)]
 mod queries_test;
 #[cfg(test)]
+mod revoke_test;
+#[cfg(test)]
 mod security_test;
 #[cfg(test)]
 mod stake_test;
 #[cfg(test)]
-mod invariants_test;
-#[cfg(test)]
 mod test;
-#[cfg(test)]
-mod governance_exec_test;
 #[cfg(test)]
 mod test_utils;
 #[cfg(test)]
 mod test_vectors;
 #[cfg(test)]
-mod transfer_test;
-#[cfg(test)]
-mod ttl_test;
-#[cfg(test)]
-mod queries_test;
+mod timelock_cancel_test;
 #[cfg(test)]
 mod timelock_test;
 #[cfg(test)]
-mod timelock_cancel_test;
+mod transfer_test;
 #[cfg(test)]
-mod revoke_test;
-
-#[cfg(test)]
-mod invalid_signature_test;
+mod ttl_test;
 
 #[cfg(test)]
 mod invalid_signature_test {
     use super::*;
-    use crate::test_utils::generate_signature;
+    use crate::test_utils::sign_payload;
+    use ed25519_dalek::SigningKey;
     use soroban_sdk::testutils::Address as _;
 
     #[test]
     fn test_invalid_signature_with_wrong_admin_pubkey() {
         let e = Env::default();
+        let contract_id = e.register(StellarWrapContract, ());
+        let client = StellarWrapContractClient::new(&e, &contract_id);
         e.mock_all_auths();
 
         let admin_a = Address::generate(&e);
-        let admin_b = Address::generate(&e);
 
-        let pubkey_a: BytesN<32> = BytesN::from_array(&e, &[0u8; 32]);
-        let pubkey_b: BytesN<32> = BytesN::from_array(&e, &[1u8; 32]);
+        let signing_key_a = SigningKey::from_bytes(&[1u8; 32]);
+        let signing_key_b = SigningKey::from_bytes(&[2u8; 32]);
+        let pubkey_a: BytesN<32> =
+            BytesN::from_array(&e, &signing_key_a.verifying_key().to_bytes());
 
-        StellarWrapContract::initialize(&e, admin_a.clone(), pubkey_a);
+        client.initialize(&admin_a, &pubkey_a);
 
         let user = Address::generate(&e);
         let period = 202501u64;
@@ -984,20 +981,27 @@ mod invalid_signature_test {
         let data_hash: BytesN<32> = BytesN::from_array(&e, &[2u8; 32]);
         let payload_version = 1u32;
 
-        let signature = generate_signature(&e, &admin_b, &pubkey_b, &user, period, archetype, &data_hash, payload_version);
-
-        assert!(StellarWrapContract::mint_wrap(
+        let signature = sign_payload(
             &e,
-            user.clone(),
+            &signing_key_b,
+            &contract_id,
+            &user,
             period,
-            archetype,
-            data_hash,
-            payload_version,
-            signature,
-        )
-        .is_err());
+            &archetype,
+            &data_hash,
+        );
 
-        assert_eq!(StellarWrapContract::balance_of(&e, user.clone()), 0i128);
-        assert_eq!(StellarWrapContract::get_latest_wrap(&e, user), None);
+        let result = client.try_mint_wrap(
+            &user,
+            &period,
+            &archetype,
+            &data_hash,
+            &payload_version,
+            &signature,
+        );
+
+        assert!(result.is_err());
+        assert_eq!(client.get_wrap(&user, &period), None);
+        assert_eq!(client.get_latest_wrap(&user), None);
     }
 }

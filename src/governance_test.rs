@@ -6,7 +6,7 @@ use crate::{AdminProposal, ProposalStatus};
 use soroban_sdk::{
     symbol_short,
     testutils::{Address as _, Events, Ledger},
-    vec, Address, BytesN, Env, IntoVal,
+    vec, Address, BytesN, Env, IntoVal, Symbol, TryIntoVal,
 };
 
 fn setup_env() -> (Env, StellarWrapContractClient<'static>, Address) {
@@ -15,7 +15,7 @@ fn setup_env() -> (Env, StellarWrapContractClient<'static>, Address) {
 
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
-    
+
     let admin = Address::generate(&env);
     let admin_pubkey = BytesN::from_array(&env, &[0; 32]);
     client.initialize(&admin, &admin_pubkey);
@@ -26,7 +26,7 @@ fn setup_env() -> (Env, StellarWrapContractClient<'static>, Address) {
 #[test]
 fn test_governance_lifecycle() {
     let (env, client, original_admin) = setup_env();
-    
+
     // Setup time
     env.ledger().with_mut(|li| {
         li.timestamp = 1000;
@@ -52,16 +52,16 @@ fn test_governance_lifecycle() {
     assert_eq!(stored_proposal.status, ProposalStatus::Active);
 
     // Verify 'propose' event
-    let events = env.events().all();
-    let event = events.last().unwrap();
-    assert_eq!(
-        event.topics,
-        (symbol_short!("gov"), symbol_short!("propose")).into_val(&env)
-    );
-    assert_eq!(
-        event.data,
-        (proposal_id, proposer.clone(), proposed_admin.clone()).into_val(&env)
-    );
+    let events = crate::test_utils::decode_events(&env);
+    let (topics, data) = events.last().unwrap();
+    let topic0: Symbol = topics[0].try_into_val(&env).unwrap();
+    let topic1: Symbol = topics[1].try_into_val(&env).unwrap();
+    assert_eq!(topic0, symbol_short!("gov"));
+    assert_eq!(topic1, symbol_short!("propose"));
+    let (p_id, p_proposer, p_admin): (u64, Address, Address) = data.try_into_val(&env).unwrap();
+    assert_eq!(p_id, proposal_id);
+    assert_eq!(p_proposer, proposer);
+    assert_eq!(p_admin, proposed_admin);
 
     // 2. Voting
     let voter1 = Address::generate(&env);
@@ -69,15 +69,16 @@ fn test_governance_lifecycle() {
     let voter3 = Address::generate(&env);
 
     client.vote_admin_proposal(&voter1, &proposal_id, &true);
-    let event_vote1 = env.events().all().last().unwrap();
-    assert_eq!(
-        event_vote1.topics,
-        (symbol_short!("gov"), symbol_short!("vote")).into_val(&env)
-    );
-    assert_eq!(
-        event_vote1.data,
-        (proposal_id, voter1.clone(), true).into_val(&env)
-    );
+    let events_vote1 = crate::test_utils::decode_events(&env);
+    let (topics_vote1, data_vote1) = events_vote1.last().unwrap();
+    let topic0: Symbol = topics_vote1[0].try_into_val(&env).unwrap();
+    let topic1: Symbol = topics_vote1[1].try_into_val(&env).unwrap();
+    assert_eq!(topic0, symbol_short!("gov"));
+    assert_eq!(topic1, symbol_short!("vote"));
+    let (p_id, p_voter, p_support): (u64, Address, bool) = data_vote1.try_into_val(&env).unwrap();
+    assert_eq!(p_id, proposal_id);
+    assert_eq!(p_voter, voter1);
+    assert_eq!(p_support, true);
 
     client.vote_admin_proposal(&voter2, &proposal_id, &true);
     client.vote_admin_proposal(&voter3, &proposal_id, &false);
@@ -94,15 +95,15 @@ fn test_governance_lifecycle() {
     client.execute_admin_proposal(&proposal_id);
 
     // Verify 'executed' event
-    let event_exec = env.events().all().last().unwrap();
-    assert_eq!(
-        event_exec.topics,
-        (symbol_short!("gov"), symbol_short!("executed")).into_val(&env)
-    );
-    assert_eq!(
-        event_exec.data,
-        (proposal_id, proposed_admin.clone()).into_val(&env)
-    );
+    let events_exec = crate::test_utils::decode_events(&env);
+    let (topics_exec, data_exec) = events_exec.last().unwrap();
+    let topic0: Symbol = topics_exec[0].try_into_val(&env).unwrap();
+    let topic1: Symbol = topics_exec[1].try_into_val(&env).unwrap();
+    assert_eq!(topic0, symbol_short!("gov"));
+    assert_eq!(topic1, symbol_short!("executed"));
+    let (p_id, p_admin): (u64, Address) = data_exec.try_into_val(&env).unwrap();
+    assert_eq!(p_id, proposal_id);
+    assert_eq!(p_admin, proposed_admin);
 
     let executed_proposal = client.get_admin_proposal(&proposal_id).unwrap();
     assert_eq!(executed_proposal.status, ProposalStatus::Executed);

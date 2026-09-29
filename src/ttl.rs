@@ -67,7 +67,9 @@ pub(crate) fn extend_ttl(e: Env, user: Address, period: u64) {
             .extend_ttl(&latest_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
     }
 
-    e.storage().instance().extend_ttl(TTL_ONE_YEAR, TTL_ONE_YEAR);
+    e.storage()
+        .instance()
+        .extend_ttl(TTL_ONE_YEAR, TTL_ONE_YEAR);
 }
 
 /// Admin-only function to extend TTL for all metadata keys associated with a
@@ -109,5 +111,7 @@ pub(crate) fn renew_all_ttls(e: Env, user: Address) {
             .extend_ttl(&latest_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
     }
 
-    e.storage().instance().extend_ttl(TTL_ONE_YEAR, TTL_ONE_YEAR);
+    e.storage()
+        .instance()
+        .extend_ttl(TTL_ONE_YEAR, TTL_ONE_YEAR);
 }

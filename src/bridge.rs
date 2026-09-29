@@ -1,10 +1,3 @@
-Searched for "insert_wrap_record"
-Viewed bridge.rs:240-311
-Viewed bridge.rs:160-265
-
-Here is the resolved, complete code for **`stellar-wrap-contract/src/bridge.rs`**:
-
-```rust
 use soroban_sdk::{panic_with_error, symbol_short, Address, Bytes, BytesN, Env, Symbol};
 
 use crate::{
@@ -17,7 +10,7 @@ use crate::{
     ContractError, DataKey,
 };
 
-use crate::ttl::TTL_ONE_YEAR;
+use crate::constants::TTL_ONE_YEAR;
 
 /// Set the bridge relayers for a given chain. Requires admin authorization.
 pub(crate) fn set_bridge_relayers(
@@ -243,7 +236,7 @@ pub(crate) fn bridge_wrap_in(
     }
 
     let contract_id = e.current_contract_address();
-    let mut verified_count = 0;
+    let mut verified_count: u32 = 0;
     let mut used_relayers = soroban_sdk::Vec::new(&e);
 
     for sig in signatures.iter() {
@@ -456,4 +449,3 @@ pub(crate) fn get_outbound_nonce(e: &Env) -> u64 {
     let key = DataKey::OutboundBridgeNonce;
     e.storage().instance().get(&key).unwrap_or(0)
 }
-```

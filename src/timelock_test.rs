@@ -4,12 +4,13 @@ extern crate std;
 
 use super::*;
 use crate::storage_types::{FeeParams, StakeConfig, TimelockAction};
+use crate::test_utils::decode_events;
 use crate::timelock;
 use ed25519_dalek::SigningKey;
 use soroban_sdk::{
     symbol_short,
     testutils::{Address as _, Events, Ledger},
-    Address, BytesN, Env, IntoVal,
+    Address, BytesN, Env, Symbol, TryIntoVal,
 };
 
 #[test]
@@ -60,19 +61,22 @@ fn test_timelock_flow() {
     assert_eq!(client.get_admin().unwrap(), new_admin);
 
     // 6. sched and exec events are emitted.
-    let events = env.events().all();
+    let events = decode_events(&env);
     let mut sched_found = false;
     let mut exec_found = false;
-    for (_contract_id, topics, _data) in events.into_iter() {
-        if topics.len() > 0 {
-            if topics.get(0).unwrap().into_val(&env) == symbol_short!("timelock").into_val(&env) {
-                if topics.len() > 1 {
-                    let event_type = topics.get(1).unwrap().into_val(&env);
-                    if event_type == symbol_short!("sched").into_val(&env) {
-                        sched_found = true;
-                    }
-                    if event_type == symbol_short!("exec").into_val(&env) {
-                        exec_found = true;
+    for (topics, _data) in events.iter() {
+        if !topics.is_empty() {
+            if let Ok(topic0) = topics[0].try_into_val(&env) {
+                let topic0: Symbol = topic0;
+                if topic0 == symbol_short!("timelock") && topics.len() > 1 {
+                    if let Ok(event_type) = topics[1].try_into_val(&env) {
+                        let event_type: Symbol = event_type;
+                        if event_type == symbol_short!("sched") {
+                            sched_found = true;
+                        }
+                        if event_type == symbol_short!("exec") {
+                            exec_found = true;
+                        }
                     }
                 }
             }
@@ -103,35 +107,27 @@ fn test_timelock_lockout_direct_paths() {
     // Enable timelock with a delay of 1 hour (3600 seconds)
     client.enable_timelock(&3600);
 
+    let err = Ok(soroban_sdk::Error::from_contract_error(
+        ContractError::TimelockRequired as u32,
+    ));
+
     // Test update_admin fails
     let new_admin = Address::generate(&env);
     let res = client.try_update_admin(&new_admin);
-    assert_eq!(
-        res.unwrap_err().unwrap().unwrap().name(),
-        "TimelockRequired"
-    );
+    assert_eq!(res.unwrap_err(), err);
 
     // Test propose_admin fails
     let res = client.try_propose_admin(&new_admin);
-    assert_eq!(
-        res.unwrap_err().unwrap().unwrap().name(),
-        "TimelockRequired"
-    );
+    assert_eq!(res.unwrap_err(), err);
 
     // Test accept_admin fails
     let res = client.try_accept_admin();
-    assert_eq!(
-        res.unwrap_err().unwrap().unwrap().name(),
-        "TimelockRequired"
-    );
+    assert_eq!(res.unwrap_err(), err);
 
     // Test upgrade fails
     let dummy_wasm = BytesN::from_array(&env, &[9u8; 32]);
     let res = client.try_upgrade(&dummy_wasm);
-    assert_eq!(
-        res.unwrap_err().unwrap().unwrap().name(),
-        "TimelockRequired"
-    );
+    assert_eq!(res.unwrap_err(), err);
 }
 
 #[test]
@@ -202,8 +198,9 @@ fn test_open_paths_succeed_with_timelock() {
     // set_stake_config
     let stake_config = StakeConfig {
         min_stake: 1000,
-        max_priority_bps: 5000,
         cooldown_seconds: 3600,
+        priority_multiplier_bps: 500,
+        max_priority_bps: 5000,
     };
     client.set_stake_config(&stake_config);
     let out_config = client.get_stake_config();
@@ -224,8 +221,10 @@ fn test_open_paths_succeed_with_timelock() {
     let dummy_root = BytesN::from_array(&env, &[7u8; 32]);
     let res = client.try_set_whitelist_root(&dummy_root);
     assert_eq!(
-        res.unwrap_err().unwrap().unwrap().name(),
-        "TimelockRequired"
+        res.unwrap_err(),
+        Ok(soroban_sdk::Error::from_contract_error(
+            ContractError::TimelockRequired as u32
+        ))
     );
 }
 
@@ -427,14 +426,19 @@ mod grace_period_tests {
         env.set_auths(&[]);
         client.timelock_sweep_expired(&id);
 
-        let events = env.events().all();
+        let events = decode_events(&env);
         let mut sweep_found = false;
-        for (_contract_id, topics, _data) in events.into_iter() {
+        for (topics, _data) in events.iter() {
             if topics.len() >= 2 {
-                if topics.get(0).unwrap().into_val(&env) == symbol_short!("timelock").into_val(&env) {
-                    let event_type = topics.get(1).unwrap().into_val(&env);
-                    if event_type == symbol_short!("sweep").into_val(&env) {
-                        sweep_found = true;
+                if let Ok(topic0) = topics[0].try_into_val(&env) {
+                    let topic0: Symbol = topic0;
+                    if topic0 == symbol_short!("timelock") {
+                        if let Ok(event_type) = topics[1].try_into_val(&env) {
+                            let event_type: Symbol = event_type;
+                            if event_type == symbol_short!("sweep") {
+                                sweep_found = true;
+                            }
+                        }
                     }
                 }
             }

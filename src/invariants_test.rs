@@ -114,18 +114,40 @@ fn test_post_bridge_in_invariants() {
 
     // Enable bridge chain
     client.set_chain_status(&1, &true);
+    let relayer_key = ed25519_dalek::SigningKey::from_bytes(&[8u8; 32]);
+    let relayer_pubkey = BytesN::from_array(&env, &relayer_key.verifying_key().to_bytes());
+    let mut relayers = soroban_sdk::Vec::new(&env);
+    relayers.push_back(relayer_pubkey);
+    client.set_bridge_relayers(&1, &relayers, &1);
+
     // Allow bridge in
     let archetype = Symbol::new(&env, "arch");
     let data_hash = BytesN::from_array(&env, &[0; 32]);
-    
-    // The admin must be relayer or mock auth handles it
-    client.set_bridge_relayer(&admin);
-    
-    client.bridge_wrap_in(&1, &1, &user, &202402, &archetype, &data_hash);
+    let period = 202402u64;
+
+    let payload = crate::signature::construct_inbound_bridge_payload(
+        &env,
+        &contract_id,
+        1,
+        1,
+        &user,
+        period,
+        &archetype,
+        &data_hash,
+    );
+    let mut out = [0u8; 512];
+    let len = payload.len() as usize;
+    payload.copy_into_slice(&mut out[..len]);
+    use ed25519_dalek::Signer;
+    let sig = relayer_key.sign(&out[..len]);
+    let mut signatures = soroban_sdk::Vec::new(&env);
+    signatures.push_back(BytesN::from_array(&env, &sig.to_bytes()));
+
+    client.bridge_wrap_in(&1, &1, &user, &period, &archetype, &data_hash, &signatures);
 
     let report = client.check_user_invariants(&user);
-    assert!(report.wrap_count_matches_user_periods);
-    assert!(report.wrap_count_matches_wrap_periods);
+    assert!(report.wrap_count_match_user_periods);
+    assert!(report.wrap_count_match_wrap_periods);
     assert!(report.latest_period_matches_max);
     assert!(report.all_user_periods_live);
     assert!(report.balance_matches_wrap_count);

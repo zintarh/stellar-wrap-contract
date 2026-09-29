@@ -4,7 +4,6 @@ use std::string::ToString;
 
 use ed25519_dalek::SigningKey;
 use soroban_sdk::{symbol_short, testutils::Address as _, Address, BytesN, Env};
-use std::string::ToString;
 
 use crate::{test_utils::sign_payload, StellarWrapContract, StellarWrapContractClient};
 
@@ -186,12 +185,14 @@ fn test_get_wrap_summary_after_one_mint() {
     );
     client.mint_wrap(&user, &period, &archetype, &hash, &1u32, &signature);
 
-    let summary = client.get_wrap_summary(&user).expect("summary should exist");
+    let summary = client
+        .get_wrap_summary(&user)
+        .expect("summary should exist");
     assert_eq!(summary.total_wraps, 1);
     assert_eq!(summary.periods.len(), 1);
-    assert_eq!(summary.periods.get(0), Some(&period));
+    assert_eq!(summary.periods.get(0), Some(period));
     assert_eq!(summary.archetypes.len(), 1);
-    assert_eq!(summary.archetypes.get(0), Some(&archetype));
+    assert_eq!(summary.archetypes.get(0), Some(archetype));
     assert_eq!(summary.first_period, period);
     assert_eq!(summary.latest_period, period);
 }
@@ -228,7 +229,9 @@ fn test_get_wrap_summary_after_three_mints() {
         client.mint_wrap(&user, &periods[i], &archetypes[i], &hash, &1u32, &signature);
     }
 
-    let summary = client.get_wrap_summary(&user).expect("summary should exist");
+    let summary = client
+        .get_wrap_summary(&user)
+        .expect("summary should exist");
     assert_eq!(summary.total_wraps, 3);
     assert_eq!(summary.periods.len(), 3);
     assert_eq!(summary.first_period, 202401);
@@ -272,14 +275,16 @@ fn test_get_wrap_summary_after_revoke() {
     // Revoke the middle period
     client.revoke_wrap(&user, &202402u64, &BytesN::from_array(&env, &[0u8; 32]));
 
-    let summary = client.get_wrap_summary(&user).expect("summary should exist");
+    let summary = client
+        .get_wrap_summary(&user)
+        .expect("summary should exist");
     assert_eq!(summary.total_wraps, 2);
     assert_eq!(summary.periods.len(), 2);
     assert_eq!(summary.first_period, 202401);
     assert_eq!(summary.latest_period, 202403);
     assert_eq!(summary.archetypes.len(), 2);
     // archetypes should not contain the revoked one
-    assert!(!summary.archetypes.iter().any(|a| *a == symbol_short!("b")));
+    assert!(!summary.archetypes.iter().any(|a| a == symbol_short!("b")));
 
     // Revoke all remaining wraps → None
     client.revoke_wrap(&user, &202401u64, &BytesN::from_array(&env, &[0u8; 32]));

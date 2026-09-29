@@ -147,7 +147,7 @@ fn test_pause_blocks_all_require_not_paused_entrypoints() {
 
     // ── transition_wrap_state ────────────────────────────────────────────
     let result = catch_unwind(AssertUnwindSafe(|| {
-        client.transition_wrap_state(&user, &period, &WrapState::Revoked);
+        client.transition_wrap_state(&user, &period, &WrapState::Cancelled);
     }));
     assert!(
         result.is_err(),
@@ -330,8 +330,8 @@ fn test_pause_allows_documented_entrypoints() {
     client.extend_ttl(&user, &period);
 
     // set_name / set_symbol — admin metadata
-    client.set_name(&symbol_short!("Test"));
-    client.set_symbol(&symbol_short!("TST"));
+    client.set_name(&String::from_str(&env, "Test"));
+    client.set_symbol(&String::from_str(&env, "TST"));
 
     // set_fee_params — admin accounting
     client.set_fee_params(&storage_types::FeeParams {
@@ -407,7 +407,7 @@ fn test_unpause_restores_blocked_entrypoints() {
         &data_hash,
     );
     let unpaused_result = catch_unwind(AssertUnwindSafe(|| {
-        client.mint_wrap(&user, &period + 1, &archetype, &data_hash, &1, &sig2);
+        client.mint_wrap(&user, &(period + 1), &archetype, &data_hash, &1, &sig2);
     }));
     assert!(
         unpaused_result.is_ok(),

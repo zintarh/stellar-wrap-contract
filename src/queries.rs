@@ -159,10 +159,7 @@ pub(crate) fn get_all_wraps_for_user(e: Env, user: Address) -> soroban_sdk::Vec<
 /// - `latest_period`: the latest period with an active wrap
 pub(crate) fn get_wrap_summary(e: Env, user: Address) -> Option<WrapSummary> {
     let wrap_periods_key = DataKey::WrapPeriods(user.clone());
-    let periods: soroban_sdk::Vec<u64> = e
-        .storage()
-        .persistent()
-        .get(&wrap_periods_key)?;
+    let periods: soroban_sdk::Vec<u64> = e.storage().persistent().get(&wrap_periods_key)?;
 
     if periods.is_empty() {
         return None;

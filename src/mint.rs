@@ -1,11 +1,11 @@
 use soroban_sdk::{panic_with_error, symbol_short, Address, BytesN, Env, Symbol};
 
 use crate::{
+    constants::TTL_ONE_YEAR,
     optout,
     signature::verify_mint_signature,
     storage_accounting,
     storage_types::{WrapLifecycleFSM, WrapState},
-    ttl::TTL_ONE_YEAR,
     ContractError, DataKey, WrapRecord,
 };
 
@@ -341,13 +341,9 @@ pub(crate) fn mint_wrap_batch(
 
         insert_wrap_record(&e, &item.user, item.period, &record);
 
-        e.events().publish(
-            (
-                MintEventType::Mint.to_symbol(&e),
-                item.user.clone(),
-                item.period,
-            ),
-            MintEventData::Mint(item.user, item.period, item.archetype),
+        crate::events::publish_event(
+            &e,
+            crate::events::Event::Mint(item.user, item.period, item.archetype),
         );
     }
 }

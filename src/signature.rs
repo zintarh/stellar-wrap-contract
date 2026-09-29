@@ -1,10 +1,8 @@
 extern crate alloc;
-use alloc::vec;
 
 use ed25519_dalek::{Signature, VerifyingKey};
 use soroban_sdk::{contracttype, xdr::ToXdr, Address, Bytes, BytesN, Env, Symbol};
 
-use alloc::vec;
 use crate::ContractError;
 
 /// Domain separator used for mint signatures.

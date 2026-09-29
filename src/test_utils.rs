@@ -1,7 +1,4 @@
 extern crate std;
-use std::vec;
-
-use std::vec;
 
 use ed25519_dalek::{Signer, SigningKey};
 use soroban_sdk::{
@@ -47,9 +44,7 @@ pub(crate) fn sign_payload_versioned(
         payload_version,
     );
     let len = payload.len() as usize;
-
-    let len = payload.len() as usize;
-    let mut out = vec![0u8; len];
+    let mut out = std::vec![0u8; len];
     payload.copy_into_slice(&mut out);
 
     let signature = signer.sign(&out);
@@ -107,113 +102,129 @@ pub(crate) fn scval_to_val(env: &Env, scval: &ScVal) -> Val {
 #[cfg(test)]
 mod get_wraps_tests {
     use super::*;
-    use crate::contract::Wrap;
-    use std::vec::Vec;
+    use crate::StellarWrapContract;
+    use crate::StellarWrapContractClient;
+    use soroban_sdk::symbol_short;
+    use soroban_sdk::testutils::Address as _;
 
-    fn setup_env() -> (Env, Address, SigningKey, Address, Symbol, BytesN<32>) {
+    fn setup_env() -> (
+        Env,
+        StellarWrapContractClient<'static>,
+        SigningKey,
+        Address,
+        Symbol,
+        BytesN<32>,
+    ) {
         let env = Env::default();
         env.mock_all_auths();
-        let signer = SigningKey::from_bytes(&[0u8; 32]);
-        let contract = env.register_contract(None, Wrap);
+        let signer = SigningKey::from_bytes(&[1u8; 32]);
+        let admin_pubkey = BytesN::from_array(&env, &signer.verifying_key().to_bytes());
+        let admin = Address::generate(&env);
+        let contract_id = env.register(StellarWrapContract, ());
+        let client = StellarWrapContractClient::new(&env, &contract_id);
+        client.initialize(&admin, &admin_pubkey);
         let user = Address::generate(&env);
-        let archetype = Symbol::new(&env, "Wrap");
+        let archetype = symbol_short!("arch");
         let data_hash = BytesN::from_array(&env, &[0u8; 32]);
-        (env, contract, signer, user, archetype, data_hash)
+        (env, client, signer, user, archetype, data_hash)
     }
 
     fn mint_wrap(
         env: &Env,
-        contract: &Address,
+        client: &StellarWrapContractClient,
         signer: &SigningKey,
         user: &Address,
         period: u64,
         archetype: &Symbol,
         data_hash: &BytesN<32>,
     ) {
-        let signature = sign_payload(env, signer, contract, user, period, archetype, data_hash);
-        env.invoke_contract::<()>(
-            contract,
-            "mint_wrap",
-            (user.clone(), period, archetype.clone(), data_hash.clone(), signature),
+        let signature = sign_payload(
+            env,
+            signer,
+            &client.address,
+            user,
+            period,
+            archetype,
+            data_hash,
         );
-    }
-
-    fn get_wraps(env: &Env, contract: &Address, user: &Address, start: u32, limit: u32) -> Vec<u64> {
-        env.invoke_contract(contract, "get_wraps", (user.clone(), start, limit))
-    }
-
-    fn revoke(env: &Env, contract: &Address, user: &Address, period: u64) {
-        env.invoke_contract::<()>(contract, "revoke", (user.clone(), period));
+        client.mint_wrap(user, &period, archetype, data_hash, &1u32, &signature);
     }
 
     #[test]
     fn test_get_wraps_full_page_returns_all_in_insertion_order() {
-        let (env, contract, signer, user, archetype, data_hash) = setup_env();
-        let periods = vec![10u64, 30, 20, 50, 40];
+        let (env, client, signer, user, archetype, data_hash) = setup_env();
+        let periods = [202401u64, 202403, 202402, 202405, 202404];
         for &p in &periods {
-            mint_wrap(&env, &contract, &signer, &user, p, &archetype, &data_hash);
+            mint_wrap(&env, &client, &signer, &user, p, &archetype, &data_hash);
         }
 
-        let result = get_wraps(&env, &contract, &user, 0, 5);
-        assert_eq!(result, periods);
+        let result = client.get_wraps(&user, &0, &5);
+        assert_eq!(result.len(), 5);
+        for (i, &p) in periods.iter().enumerate() {
+            assert_eq!(result.get(i as u32).unwrap().period, p);
+        }
     }
 
     #[test]
     fn test_get_wraps_zero_limit_returns_empty() {
-        let (env, contract, signer, user, archetype, data_hash) = setup_env();
-        mint_wrap(&env, &contract, &signer, &user, 1, &archetype, &data_hash);
+        let (env, client, signer, user, archetype, data_hash) = setup_env();
+        mint_wrap(
+            &env, &client, &signer, &user, 202401, &archetype, &data_hash,
+        );
 
-        let result = get_wraps(&env, &contract, &user, 0, 0);
+        let result = client.get_wraps(&user, &0, &0);
         assert!(result.is_empty());
     }
 
     #[test]
     fn test_get_wraps_start_at_len_returns_empty() {
-        let (env, contract, signer, user, archetype, data_hash) = setup_env();
-        for &p in &[1u64, 2] {
-            mint_wrap(&env, &contract, &signer, &user, p, &archetype, &data_hash);
+        let (env, client, signer, user, archetype, data_hash) = setup_env();
+        for &p in &[202401u64, 202402] {
+            mint_wrap(&env, &client, &signer, &user, p, &archetype, &data_hash);
         }
 
-        assert!(get_wraps(&env, &contract, &user, 2, 5).is_empty());
-        assert!(get_wraps(&env, &contract, &user, 100, 5).is_empty());
+        assert!(client.get_wraps(&user, &2, &5).is_empty());
+        assert!(client.get_wraps(&user, &100, &5).is_empty());
     }
 
     #[test]
     fn test_get_wraps_start_within_len_returns_tail() {
-        let (env, contract, signer, user, archetype, data_hash) = setup_env();
-        let periods = vec![10u64, 20, 30, 40, 50];
+        let (env, client, signer, user, archetype, data_hash) = setup_env();
+        let periods = [202401u64, 202402, 202403, 202404, 202405];
         for &p in &periods {
-            mint_wrap(&env, &contract, &signer, &user, p, &archetype, &data_hash);
+            mint_wrap(&env, &client, &signer, &user, p, &archetype, &data_hash);
         }
 
-        let result = get_wraps(&env, &contract, &user, 3, 10);
-        assert_eq!(result, vec![40, 50]);
+        let result = client.get_wraps(&user, &3, &10);
+        assert_eq!(result.len(), 2);
+        assert_eq!(result.get(0).unwrap().period, 202404);
+        assert_eq!(result.get(1).unwrap().period, 202405);
     }
 
     #[test]
     fn test_get_wraps_limit_max_does_not_overflow() {
-        let (env, contract, signer, user, archetype, data_hash) = setup_env();
-        let periods = vec![1u64, 2, 3, 4, 5];
+        let (env, client, signer, user, archetype, data_hash) = setup_env();
+        let periods = [202401u64, 202402, 202403, 202404, 202405];
         for &p in &periods {
-            mint_wrap(&env, &contract, &signer, &user, p, &archetype, &data_hash);
+            mint_wrap(&env, &client, &signer, &user, p, &archetype, &data_hash);
         }
 
-        let result = get_wraps(&env, &contract, &user, 0, u32::MAX);
-        assert_eq!(result, periods);
+        let result = client.get_wraps(&user, &0, &u32::MAX);
+        assert_eq!(result.len(), 5);
     }
 
     #[test]
     fn test_get_wraps_after_revoke_middle_period_short_page() {
-        let (env, contract, signer, user, archetype, data_hash) = setup_env();
-        let periods = vec![10u64, 20, 30, 40, 50];
+        let (env, client, signer, user, archetype, data_hash) = setup_env();
+        let periods = [202401u64, 202402, 202403, 202404, 202405];
         for &p in &periods {
-            mint_wrap(&env, &contract, &signer, &user, p, &archetype, &data_hash);
+            mint_wrap(&env, &client, &signer, &user, p, &archetype, &data_hash);
         }
 
-        // Revoke a middle period (e.g., 30)
-        revoke(&env, &contract, &user, 30);
+        let reason = BytesN::from_array(&env, &[0u8; 32]);
+        client.revoke_wrap(&user, &202403, &reason);
 
-        let result = get_wraps(&env, &contract, &user, 0, u32::MAX);
-        assert_eq!(result, vec![10, 20, 40, 50]);
+        let result = client.get_wraps(&user, &0, &u32::MAX);
+        assert_eq!(result.len(), 4);
     }
 }

@@ -1091,12 +1091,18 @@ fn test_update_admin_clears_pending_proposal() {
     client.propose_admin(&proposed_admin);
 
     // BEFORE update_admin: Verify pending proposal exists
-    assert_eq!(client.get_pending_admin().unwrap(), proposed_admin,
-               "pending proposal should exist before update_admin");
+    assert_eq!(
+        client.get_pending_admin().unwrap(),
+        proposed_admin,
+        "pending proposal should exist before update_admin"
+    );
 
     // BEFORE update_admin: Verify current admin is unchanged
-    assert_eq!(client.get_admin().unwrap(), admin,
-               "current admin should be unchanged before update_admin");
+    assert_eq!(
+        client.get_admin().unwrap(),
+        admin,
+        "current admin should be unchanged before update_admin"
+    );
 
     // === ACTION: Bypass two-step flow using single-step update_admin ===
     // This one-step call should clear any in-flight PendingAdmin proposal
@@ -1105,18 +1111,25 @@ fn test_update_admin_clears_pending_proposal() {
     // === VERIFICATION: Verify all expected state changes ===
 
     // 1. NEWLY ASSIGNED ADMIN IS CORRECT
-    assert_eq!(client.get_admin().unwrap(), direct_new_admin,
-               "admin should be updated to the new admin");
+    assert_eq!(
+        client.get_admin().unwrap(),
+        direct_new_admin,
+        "admin should be updated to the new admin"
+    );
 
     // 2. PENDING PROPOSAL IS CLEARED (no orphaned state)
-    assert!(client.get_pending_admin().is_none(),
-            "pending proposal should be cleared after update_admin");
+    assert!(
+        client.get_pending_admin().is_none(),
+        "pending proposal should be cleared after update_admin"
+    );
 
     // 3. NO STALE PENDING-ADMIN STATE REMAINS
     // Verify by attempting to actually retrieve and confirm absence
     let pending_after = client.get_pending_admin();
-    assert!(pending_after.is_none(),
-            "no stale pending-admin state should remain; storage should be clean");
+    assert!(
+        pending_after.is_none(),
+        "no stale pending-admin state should remain; storage should be clean"
+    );
 
     // 4. VERIFY BYPASSED PROPOSED ADMIN CANNOT ACCEPT
     // The proposed_admin who was bypassed should NOT be able to call accept_admin
@@ -1124,15 +1137,20 @@ fn test_update_admin_clears_pending_proposal() {
     let accept_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         client.accept_admin();
     }));
-    assert!(accept_result.is_err(),
-            "accept_admin should fail when no pending proposal exists");
+    assert!(
+        accept_result.is_err(),
+        "accept_admin should fail when no pending proposal exists"
+    );
 
     // 5. VERIFY NEW ADMIN CAN MAKE NEW PROPOSALS
     // The new admin should be able to create a fresh proposal
     let another_admin = Address::generate(&env);
     client.propose_admin(&another_admin);
-    assert_eq!(client.get_pending_admin().unwrap(), another_admin,
-               "new admin should be able to propose a new transfer");
+    assert_eq!(
+        client.get_pending_admin().unwrap(),
+        another_admin,
+        "new admin should be able to propose a new transfer"
+    );
 }
 
 /// Test 20: get_pending_admin Returns None When No Proposal
@@ -1229,7 +1247,7 @@ fn test_all_mutating_entrypoints_honor_pause() {
     let pubkey = BytesN::from_array(&env, &[11u8; 32]);
 
     env.mock_all_auths();
-    client.initialize(&admin, &admin_pubkey);
+    client.initialize(&admin, &pubkey);
 
     client.pause();
 
@@ -1240,25 +1258,21 @@ fn test_all_mutating_entrypoints_honor_pause() {
     let res = client.try_mint_wrap(&user, &202401, &archetype, &data_hash, &1u32, &signature);
     assert!(res.is_err(), "mint_wrap should fail when paused");
 
-    // Attacker submits hash B together with the signature that was made for hash A.
-    // The contract must detect the mismatch and panic with InvalidSignature (#5).
-    client.mint_wrap(
-        &user,
-        &period,
-        &archetype,
-        &data_hash_b, // tampered: different from what was signed
-        &CURRENT_PAYLOAD_VERSION,
-        &signature,
-    );
-
     let res = client.try_transfer_wrap(&user, &admin, &202401);
     assert!(res.is_err(), "transfer_wrap should fail when paused");
 
     let res = client.try_backfill_wrap_periods(&user, &soroban_sdk::vec![&env, 202401]);
-    assert!(res.is_err(), "backfill_wrap_periods should fail when paused");
+    assert!(
+        res.is_err(),
+        "backfill_wrap_periods should fail when paused"
+    );
 
-    let res = client.try_transition_wrap_state(&user, &202401, &crate::storage_types::WrapState::Expired);
-    assert!(res.is_err(), "transition_wrap_state should fail when paused");
+    let res =
+        client.try_transition_wrap_state(&user, &202401, &crate::storage_types::WrapState::Expired);
+    assert!(
+        res.is_err(),
+        "transition_wrap_state should fail when paused"
+    );
 
     let res = client.try_expire_wrap(&user, &202401);
     assert!(res.is_err(), "expire_wrap should fail when paused");
@@ -1275,7 +1289,15 @@ fn test_all_mutating_entrypoints_honor_pause() {
     let res = client.try_bridge_wrap_out(&user, &1, &Bytes::new(&env), &202401);
     assert!(res.is_err(), "bridge_wrap_out should fail when paused");
 
-    let res = client.try_bridge_wrap_in(&1, &1, &user, &202401, &archetype, &data_hash);
+    let res = client.try_bridge_wrap_in(
+        &1,
+        &1,
+        &user,
+        &202401,
+        &archetype,
+        &data_hash,
+        &soroban_sdk::Vec::new(&env),
+    );
     assert!(res.is_err(), "bridge_wrap_in should fail when paused");
 }
 
@@ -1295,10 +1317,14 @@ fn test_create_admin_proposal_duration_overflow_asserts_arithmetic_overflow() {
         li.timestamp = 1;
     });
 
-    let result = client.try_create_admin_proposal(&u64::MAX);
+    let proposer = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+    let result = client.try_create_admin_proposal(&proposer, &new_admin, &u64::MAX);
     assert_eq!(
-        result.err().unwrap().contract_error(),
-        Some(ContractError::ArithmeticOverflow as u32)
+        result.unwrap_err(),
+        Ok(soroban_sdk::Error::from_contract_error(
+            ContractError::ArithmeticOverflow as u32
+        ))
     );
 }
 
@@ -1339,15 +1365,16 @@ fn test_bridge_wrap_out_nonce_overflow_asserts_arithmetic_overflow() {
     );
 
     env.as_contract(&contract_id, || {
-        env.storage().instance().set(
-            &Symbol::new(&env, "outbound_nonce"),
-            &u32::MAX,
-        );
+        env.storage()
+            .instance()
+            .set(&DataKey::OutboundBridgeNonce, &u64::MAX);
     });
 
     let result = client.try_bridge_wrap_out(&user, &1, &Bytes::new(&env), &period);
     assert_eq!(
-        result.err().unwrap().contract_error(),
-        Some(ContractError::ArithmeticOverflow as u32)
+        result.unwrap_err(),
+        Ok(soroban_sdk::Error::from_contract_error(
+            ContractError::ArithmeticOverflow as u32
+        ))
     );
 }

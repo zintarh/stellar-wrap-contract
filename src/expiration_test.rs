@@ -90,9 +90,9 @@ fn insert_wrap_in_state(
             data_hash: BytesN::from_array(env, &[9u8; 32]),
             archetype: symbol_short!("arch"),
             period,
+            fsm: WrapLifecycleFSM::new(state, updated_at),
             description: None,
             image_url: None,
-            fsm: WrapLifecycleFSM::new(state, updated_at),
         };
         env.storage().persistent().set(&wrap_key, &record);
     });

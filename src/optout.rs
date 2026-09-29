@@ -22,7 +22,7 @@
 // [`opt_in`] call `user.require_auth()`, so a caller can only set or clear
 // their own flag — opt-out cannot be set on another user's behalf.
 
-use soroban_sd::{address, panic_with_error, Env};
+use soroban_sdk::{panic_with_error, Address, Env};
 
 use crate::{ContractError, DataKey};
 
@@ -54,9 +54,7 @@ pub(crate) fn opt_in(e: Env, user: Address) {
 
 /// Returns `true` the user has opted out of future mints.
 pub(crate) fn is_opted_out(e: &Env, user: &Address) -> bool {
-    e.storage()
-        .persistent()
-        .has(&DataKey::OptOut(user.clone()))
+    e.storage().persistent().has(&DataKey::OptOut(user.clone()))
 }
 
 /// Panics with [ContractError::UserOptedOut] if `user` has set the opt-out
