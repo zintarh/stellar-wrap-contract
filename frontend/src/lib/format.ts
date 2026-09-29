@@ -1,3 +1,4 @@
+import { renderContractFailure } from "./contractErrors";
 import type { ContractHealth, WrapRecord } from "./types";
 
 const HEX_PATTERN = /^(?:0x)?[0-9a-fA-F]+$/;
@@ -195,11 +196,31 @@ export const SOULBOUND_NOTICE =
   "Wrap records are soulbound and cannot be transferred to another account.";
 
 export function errorMessage(error: unknown): string {
+  const text = plainErrorText(error);
+  if (text) {
+    const contractError = renderContractFailure(text);
+    if (contractError) {
+      return contractError;
+    }
+    return text;
+  }
+  return "Something unexpected happened. Please try again.";
+}
+
+function plainErrorText(error: unknown): string {
   if (error instanceof Error) {
     return error.message;
   }
   if (typeof error === "string") {
     return error;
   }
-  return "Something unexpected happened. Please try again.";
+  if (error && typeof error === "object") {
+    if ("message" in error && typeof error.message === "string") {
+      return error.message;
+    }
+    if ("error" in error && typeof error.error === "string") {
+      return error.error;
+    }
+  }
+  return "";
 }

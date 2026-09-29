@@ -1,0 +1,338 @@
+[
+  {
+    "variant": "AlreadyInitialized",
+    "code": 1,
+    "actionable": false,
+    "message": "This contract is already initialized."
+  },
+  {
+    "variant": "NotInitialized",
+    "code": 2,
+    "actionable": false,
+    "message": "This contract has not been initialized."
+  },
+  {
+    "variant": "Unauthorized",
+    "code": 3,
+    "actionable": false,
+    "message": "This account is not allowed to perform that action."
+  },
+  {
+    "variant": "WrapAlreadyExists",
+    "code": 4,
+    "actionable": true,
+    "message": "This period is already minted for this account. Open the existing wrap, or mint a different period."
+  },
+  {
+    "variant": "InvalidSignature",
+    "code": 5,
+    "actionable": true,
+    "message": "The mint signature was rejected. Request a new signature for this account, period, and data hash, then try again."
+  },
+  {
+    "variant": "InvalidPeriod",
+    "code": 6,
+    "actionable": true,
+    "message": "That period is not valid. Use a YYYYMM month from 2024 through 2100."
+  },
+  {
+    "variant": "MigrationAlreadyApplied",
+    "code": 7,
+    "actionable": false,
+    "message": "That migration has already been applied."
+  },
+  {
+    "variant": "InvalidStateTransition",
+    "code": 8,
+    "actionable": false,
+    "message": "The wrap record cannot move to that state."
+  },
+  {
+    "variant": "WrapNotFound",
+    "code": 9,
+    "actionable": true,
+    "message": "No wrap exists for this account and period. Check the period and try again."
+  },
+  {
+    "variant": "NoAdminTransferProposal",
+    "code": 10,
+    "actionable": false,
+    "message": "There is no admin transfer waiting to be accepted."
+  },
+  {
+    "variant": "AdminTransferProposalExists",
+    "code": 11,
+    "actionable": false,
+    "message": "An admin transfer is already waiting."
+  },
+  {
+    "variant": "Paused",
+    "code": 12,
+    "actionable": true,
+    "message": "The contract is paused. Try again after it is unpaused."
+  },
+  {
+    "variant": "ArithmeticOverflow",
+    "code": 13,
+    "actionable": false,
+    "message": "The contract hit an arithmetic overflow."
+  },
+  {
+    "variant": "InvalidFeeParams",
+    "code": 14,
+    "actionable": false,
+    "message": "The fee parameters are not valid."
+  },
+  {
+    "variant": "BatchEmpty",
+    "code": 15,
+    "actionable": true,
+    "message": "The batch is empty. Add at least one wrap and try again."
+  },
+  {
+    "variant": "BatchTooLarge",
+    "code": 16,
+    "actionable": true,
+    "message": "The batch is too large. Split it into smaller batches and try again."
+  },
+  {
+    "variant": "DuplicateBatchEntry",
+    "code": 17,
+    "actionable": true,
+    "message": "The batch lists the same account and period more than once. Remove the duplicate and try again."
+  },
+  {
+    "variant": "StakeTooLow",
+    "code": 18,
+    "actionable": true,
+    "message": "The stake amount is below the minimum. Stake a larger amount."
+  },
+  {
+    "variant": "StakeNotFound",
+    "code": 19,
+    "actionable": true,
+    "message": "There is no stake for this account. Stake before using this action."
+  },
+  {
+    "variant": "StakeCooldownActive",
+    "code": 20,
+    "actionable": true,
+    "message": "A stake cooldown is already active. Wait for it to finish."
+  },
+  {
+    "variant": "StakeNotUnstaking",
+    "code": 21,
+    "actionable": true,
+    "message": "This stake is not unstaking. Start unstaking before withdrawing."
+  },
+  {
+    "variant": "StakeCooldownNotElapsed",
+    "code": 22,
+    "actionable": true,
+    "message": "The stake cooldown has not finished. Wait until it elapses, then try again."
+  },
+  {
+    "variant": "InvalidStakeConfig",
+    "code": 23,
+    "actionable": false,
+    "message": "The stake configuration is not valid."
+  },
+  {
+    "variant": "StakeArithmeticOverflow",
+    "code": 24,
+    "actionable": false,
+    "message": "The contract hit a stake arithmetic overflow."
+  },
+  {
+    "variant": "ProposalNotFound",
+    "code": 25,
+    "actionable": true,
+    "message": "No proposal exists with that id. Check the id and try again."
+  },
+  {
+    "variant": "ProposalNotActive",
+    "code": 26,
+    "actionable": false,
+    "message": "That proposal is not active."
+  },
+  {
+    "variant": "ProposalAlreadyVoted",
+    "code": 27,
+    "actionable": true,
+    "message": "This account has already voted on that proposal."
+  },
+  {
+    "variant": "ProposalVotingPeriodNotEnded",
+    "code": 28,
+    "actionable": true,
+    "message": "Voting is still open. Wait until the voting period ends."
+  },
+  {
+    "variant": "ProposalVotingPeriodEnded",
+    "code": 29,
+    "actionable": true,
+    "message": "The voting period for that proposal has ended."
+  },
+  {
+    "variant": "ProposalDefeated",
+    "code": 30,
+    "actionable": false,
+    "message": "That proposal was defeated."
+  },
+  {
+    "variant": "InvalidProposalDuration",
+    "code": 31,
+    "actionable": false,
+    "message": "The proposal duration is not valid."
+  },
+  {
+    "variant": "UserOptedOut",
+    "code": 32,
+    "actionable": true,
+    "message": "This account has opted out of new wraps. Opt back in before minting."
+  },
+  {
+    "variant": "BridgeNotInitialized",
+    "code": 33,
+    "actionable": false,
+    "message": "The bridge is not initialized."
+  },
+  {
+    "variant": "InvalidChain",
+    "code": 34,
+    "actionable": true,
+    "message": "That chain id is not valid. Choose a supported chain."
+  },
+  {
+    "variant": "ChainDisabled",
+    "code": 35,
+    "actionable": true,
+    "message": "That chain is disabled. Choose a different chain."
+  },
+  {
+    "variant": "NonceAlreadyProcessed",
+    "code": 36,
+    "actionable": true,
+    "message": "That bridge nonce was already processed. Do not submit it again."
+  },
+  {
+    "variant": "InvalidBridgePayload",
+    "code": 37,
+    "actionable": true,
+    "message": "The bridge payload is not valid. Check it and try again."
+  },
+  {
+    "variant": "MerkleRootNotSet",
+    "code": 38,
+    "actionable": false,
+    "message": "No whitelist root is set."
+  },
+  {
+    "variant": "InvalidMerkleProof",
+    "code": 39,
+    "actionable": true,
+    "message": "This account is not on the whitelist. Ask to be added, or submit a valid whitelist proof."
+  },
+  {
+    "variant": "TimelockNotReady",
+    "code": 40,
+    "actionable": false,
+    "message": "That timelocked operation is not ready yet."
+  },
+  {
+    "variant": "TimelockOperationNotFound",
+    "code": 41,
+    "actionable": false,
+    "message": "That timelocked operation does not exist."
+  },
+  {
+    "variant": "TimelockOperationExists",
+    "code": 42,
+    "actionable": false,
+    "message": "That timelocked operation is already queued."
+  },
+  {
+    "variant": "InvalidTimelockDelay",
+    "code": 43,
+    "actionable": false,
+    "message": "The timelock delay is not valid."
+  },
+  {
+    "variant": "TimelockRequired",
+    "code": 44,
+    "actionable": false,
+    "message": "That action has to go through the timelock."
+  },
+  {
+    "variant": "TimelockAlreadyEnabled",
+    "code": 45,
+    "actionable": false,
+    "message": "The timelock is already enabled."
+  },
+  {
+    "variant": "WrapNotExpired",
+    "code": 46,
+    "actionable": true,
+    "message": "This wrap has not expired yet. Wait until it expires, then try again."
+  },
+  {
+    "variant": "InvalidExpirationDuration",
+    "code": 47,
+    "actionable": false,
+    "message": "The expiration duration is not valid."
+  },
+  {
+    "variant": "TransferFeeNotConfigured",
+    "code": 48,
+    "actionable": false,
+    "message": "The transfer fee is not configured."
+  },
+  {
+    "variant": "InvalidTransfer",
+    "code": 49,
+    "actionable": true,
+    "message": "That transfer is not valid. Check the recipient and try again."
+  },
+  {
+    "variant": "TransferInProgress",
+    "code": 50,
+    "actionable": true,
+    "message": "A transfer for this wrap is already in progress. Wait for it to finish."
+  },
+  {
+    "variant": "StorageInvariantViolation",
+    "code": 51,
+    "actionable": false,
+    "message": "The contract found a storage invariant violation."
+  },
+  {
+    "variant": "InvalidAdminPubKey",
+    "code": 52,
+    "actionable": false,
+    "message": "The admin signing key is not valid."
+  },
+  {
+    "variant": "InvalidThreshold",
+    "code": 53,
+    "actionable": false,
+    "message": "The threshold is not valid."
+  },
+  {
+    "variant": "MerkleProofTooLong",
+    "code": 54,
+    "actionable": true,
+    "message": "The whitelist proof is too long. Submit a shorter proof."
+  },
+  {
+    "variant": "TimelockOperationExpired",
+    "code": 55,
+    "actionable": false,
+    "message": "That timelocked operation has expired."
+  },
+  {
+    "variant": "TimelockOperationNotExpired",
+    "code": 56,
+    "actionable": false,
+    "message": "That timelocked operation has not expired yet."
+  }
+]

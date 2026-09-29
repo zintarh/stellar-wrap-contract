@@ -36,6 +36,8 @@ mod bridge;
 mod burn;
 mod constants;
 mod errors;
+#[cfg(test)]
+mod error_messages;
 mod events;
 mod governance;
 mod merkle;
