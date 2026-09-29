@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint . --max-warnings=0",
     "test": "vitest run",
+    "test:contract": "vitest run src/lib/__tests__/contract-bindings.test.ts",
     "typecheck": "tsc -b --pretty false",
     "audit": "npm audit --omit=dev --audit-level=high",
     "a11y": "eslint . --max-warnings=0"

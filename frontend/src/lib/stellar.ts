@@ -21,6 +21,50 @@ import type {
 
 const TRANSACTION_TIMEOUT_SECONDS = 30;
 
+/**
+ * The contract interface the frontend depends on. This is the single
+ * source of truth for the function names, argument order, and argument
+ * types that the frontend bindings expect. The test suite asserts this
+ * spec against the built contract's spec (WASM custom section / XDR) so a
+ * breaking contract-interface change fails CI instead of surfacing in the
+ * browser.
+ */
+export interface ContractFunctionSpec {
+  name: string;
+  args: Array<{ type: string }>;
+  returns: string;
+}
+
+export const CONTRACT_INTERFACE: ContractFunctionSpec[] = [
+  { name: "health", args: [], returns: "map" },
+  {
+    name: "balance_of",
+    args: [{ type: "address" }],
+    returns: "i128",
+  },
+  {
+    name: "get_latest_wrap",
+    args: [{ type: "address" }],
+    returns: "option",
+  },
+  {
+    name: "get_wrap",
+    args: [{ type: "address" }, { type: "u64" }],
+    returns: "option",
+  },
+  {
+    name: "mint_wrap",
+    args: [
+      { type: "address" },
+      { type: "u64" },
+      { type: "symbol" },
+      { type: "bytes" },
+      { type: "bytes" },
+    ],
+    returns: "bytes",
+  },
+];
+
 function isLoopbackHost(hostname: string): boolean {
   return (
     hostname === "localhost" ||

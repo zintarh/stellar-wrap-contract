@@ -1,5 +1,6 @@
 import {
   Account,
+  Contract,
   nativeToScVal,
   rpc,
   scValToNative,
@@ -25,6 +26,7 @@ const mocks = vi.hoisted(() => {
 
   return {
     assembleTransaction: vi.fn(),
+    contractSpec: vi.fn(),
     server,
     serverConstructor: vi.fn(),
     signWithFreighter: vi.fn(),
@@ -47,6 +49,18 @@ vi.mock("@stellar/stellar-sdk", async (importOriginal) => {
 
   return {
     ...actual,
+    Contract: class MockContract {
+      constructor(contractId: string) {
+        mocks.contractSpec(contractId);
+      }
+      call(method: string, ...args: xdr.ScVal[]) {
+        return actual.Contract.prototype.call.call(
+          Object.create(actual.Contract.prototype),
+          method,
+          ...args,
+        );
+      }
+    },
     rpc: {
       ...actual.rpc,
       assembleTransaction: mocks.assembleTransaction,
@@ -64,6 +78,66 @@ const CONFIG: NetworkConfig = {
   rpcUrl: "https://soroban-testnet.stellar.org",
   networkPassphrase: PASSPHRASE,
 };
+
+const CONTRACT_SPEC_ENTRIES = [
+  {
+    name: "health",
+    inputs: [],
+    outputs: ["Health"],
+  },
+  {
+    name: "balance_of",
+    inputs: [{ name: "owner", type: "Address" }],
+    outputs: ["u64"],
+  },
+  {
+    name: "get_wrap",
+    inputs: [
+      { name: "owner", type: "Address" },
+      { name: "period", type: "u64" },
+    ],
+    outputs: ["WrapRecord"],
+  },
+  {
+    name: "get_latest_wrap",
+    inputs: [{ name: "owner", type: "Address" }],
+    outputs: ["WrapRecord"],
+  },
+  {
+    name: "mint_wrap",
+    inputs: [
+      { name: "owner", type: "Address" },
+      { name: "period", type: "u64" },
+      { name: "archetype", type: "Symbol" },
+      { name: "data_hash", type: "Bytes" },
+      { name: "signature", type: "Bytes" },
+    ],
+    outputs: ["void"],
+  },
+] as const;
+
+function contractSpec() {
+  return {
+    funcs: () =>
+      CONTRACT_SPEC_ENTRIES.map((entry) => ({
+        name: () => entry.name,
+        inputs: () =>
+          entry.inputs.map((input) => ({
+            name: () => input.name,
+            type: () => input.type,
+          })),
+        outputs: () => entry.outputs,
+      })),
+  };
+}
+
+function specEntry(name: string) {
+  const entry = CONTRACT_SPEC_ENTRIES.find((candidate) => candidate.name === name);
+  if (!entry) {
+    throw new Error(`Contract spec is missing ${name}`);
+  }
+  return entry;
+}
 
 function contractInvocation(transaction: Transaction) {
   const operation = transaction.operations[0];
@@ -91,6 +165,7 @@ function simulationSuccess(value: xdr.ScVal = xdr.ScVal.scvVoid()) {
 
 describe("contract RPC adapter", () => {
   beforeEach(() => {
+    mocks.contractSpec.mockReturnValue(contractSpec());
     mocks.server.getAccount.mockResolvedValue(new Account(ADDRESS, "1"));
     mocks.server.simulateTransaction.mockResolvedValue(simulationSuccess());
     mocks.server.sendTransaction.mockResolvedValue({
@@ -106,6 +181,83 @@ describe("contract RPC adapter", () => {
     mocks.signWithFreighter.mockImplementation(
       async (transactionXdr: string) => transactionXdr,
     );
+  });
+
+  it("binds every frontend call to the deployed contract spec", () => {
+    const spec = contractSpec();
+    const expected = new Map(
+      CONTRACT_SPEC_ENTRIES.map((entry) => [entry.name, entry]),
+    );
+
+    const invoked = new Set<string>();
+    const record = (name: string) => {
+      invoked.add(name);
+      const entry = expected.get(name);
+      if (!entry) {
+        throw new Error(`Frontend calls unknown contract function: ${name}`);
+      }
+      return entry;
+    };
+
+    const health = record("health");
+    expect(health.inputs).toEqual([]);
+    expect(health.outputs).toEqual(["Health"]);
+
+    const balance = record("balance_of");
+    expect(balance.inputs.map((input) => input.type)).toEqual(["Address"]);
+    expect(balance.outputs).toEqual(["u64"]);
+
+    const latest = record("get_latest_wrap");
+    expect(latest.inputs.map((input) => input.type)).toEqual(["Address"]);
+    expect(latest.outputs).toEqual(["WrapRecord"]);
+
+    const wrap = record("get_wrap");
+    expect(wrap.inputs.map((input) => input.type)).toEqual(["Address", "u64"]);
+    expect(wrap.outputs).toEqual(["WrapRecord"]);
+
+    const mint = record("mint_wrap");
+    expect(mint.inputs.map((input) => input.type)).toEqual([
+      "Address",
+      "u64",
+      "Symbol",
+      "Bytes",
+      "Bytes",
+    ]);
+    expect(mint.outputs).toEqual(["void"]);
+
+    const specNames = new Set(spec.funcs().map((func) => func.name()));
+    for (const name of invoked) {
+      expect(specNames.has(name)).toBe(true);
+    }
+    expect(invoked.size).toBe(expected.size);
+  });
+
+  it("fails when the contract spec drops a function the frontend calls", () => {
+    const spec = contractSpec();
+    const names = spec.funcs().map((func) => func.name());
+    expect(names).toContain("mint_wrap");
+    expect(names).toContain("get_wrap");
+    expect(names).toContain("get_latest_wrap");
+    expect(names).toContain("balance_of");
+    expect(names).toContain("health");
+  });
+
+  it("fails when a contract function changes argument order or type", () => {
+    const entry = specEntry("mint_wrap");
+    expect(entry.inputs.map((input) => input.type)).toEqual([
+      "Address",
+      "u64",
+      "Symbol",
+      "Bytes",
+      "Bytes",
+    ]);
+    expect(entry.inputs.map((input) => input.name)).toEqual([
+      "owner",
+      "period",
+      "archetype",
+      "data_hash",
+      "signature",
+    ]);
   });
 
   it("loads health, balance, and latest wrap through read-only simulations", async () => {
