@@ -4,7 +4,72 @@ This document describes the design and implementation of the Generic Token Bridg
 
 ## Overview
 
-The Generic Token Bridge Interface allows `stellar-wrap-contract` to interact seamlessly with external blockchains (e.g., Ethereum, Polygon, Solana). It enables users to transfer/bridge wrap records off-chain to target chains and allows authorized bridge relayers to process inbound cross-chain wrap transfers onto Stellar.
+The Generic Token Bridge Interface allows `stellar-wrap-contract` to interact seamlessly with external blockchains (e.g., Ethereum, Polygon, Solana). It enables users to transfer/bridge wrap records off-chain to target chains and allows a threshold of appointed relayer keys to process inbound cross-chain wrap transfers onto Stellar.
+
+The contract does not observe other chains. What a user is trusting is stated in [Trust model](#trust-model).
+
+---
+
+## Trust model
+
+A user is trusting the admin, and trusting a threshold of relayer keys for anything that arrives from another chain. This section is enough to judge that trust without reading `bridge.rs`.
+
+### Who the relayers are, and who appoints them
+
+Relayers are off-chain operators. For each chain id they are an Ed25519 public key (`BytesN<32>`) in that chain's relayer set. The admin appoints the set and its threshold by calling `set_bridge_relayers(chain_id, relayers, threshold)`. Replacing the set or the threshold is the same call, and it requires the admin's authorization. No one else can appoint or remove a relayer.
+
+`set_bridge_relayer` stores one Stellar `Address` separately. Inbound fulfillment and refunds do not authorize against that address.
+
+### What a compromised relayer can do
+
+`bridge_wrap_in` accepts a message once `threshold` distinct keys from that chain's set have signed it. Whoever can produce those signatures can:
+
+- Mint a new active wrap on Stellar for any recipient who has not opted out, using any unused source nonce and any valid period, archetype, and data hash. The contract does not check that anything was locked on the source chain, so the mint can be unbacked.
+- If that recipient already has a wrap for the same period, restore it from `Bridged` when the lifecycle rules allow the transition. That is the inbound path that unlocks a wrap this contract already holds.
+
+A compromised relayer cannot do any of the following, even with a full threshold of signatures:
+
+- Appoint or remove relayers, change the threshold, or enable or disable a chain. Those calls require the admin.
+- Pause the contract, upgrade it, or rotate the admin.
+- Transfer, burn, or revoke a wrap.
+- Start an outbound bridge for a user. `bridge_wrap_out` requires that user's authorization.
+- Refund an outbound request. `bridge_wrap_refund` requires the admin's authorization. Relayer keys are not sufficient.
+
+A relayer who holds fewer keys than the threshold cannot complete an inbound message. They can refuse to sign. If the keys that are still willing to sign drop below the threshold, inbound fulfillment for that chain stops. That case is covered under [Threshold](#threshold).
+
+### What the contract checks, and what it takes on someone's word
+
+The contract checks the following itself:
+
+- **Outbound.** The contract is not paused. The user authorized the call. The destination chain is enabled. The recipient payload is non-empty. The user's wrap exists and the lifecycle rules accept the move to `Bridged`.
+- **Inbound.** The contract is not paused. The recipient has not opted out. The source chain is enabled. The period is a valid `YYYYMM`. The pair `(source_chain, source_nonce)` has not already been processed. At least `threshold` distinct public keys from that chain's set signed the inbound payload: this contract's address, the source chain, the source nonce, the recipient, the period, the archetype, and the data hash.
+- **Refund.** The contract is not paused. An outbound request with that nonce is stored. A relayer set is stored for the request's destination chain. The wrap exists and can be restored from `Bridged`. The admin authorized the call.
+
+The contract does not check the other chain. It accepts the following because a threshold of relayers signed it:
+
+- That a source-chain transaction locked or burned a wrap.
+- That `source_nonce` identifies a real event on that chain.
+- That the recipient, period, archetype, and data hash are the values from that event.
+
+A refund is not a relayer attestation. The contract accepts the admin's authorization as proof that the destination rejected the outbound transfer. It does not verify a rejection proof, and it does not verify relayer signatures on the refund. The implementation records that signature checks for refunds are not done yet and requires the admin instead.
+
+`bridge_wrap_out` only stores the request and emits `br_out`. It does not submit the transfer to the destination chain and does not learn whether that chain minted anything. Delivery on the destination is entirely on the relayers, off this contract.
+
+### Failure modes
+
+**Stuck outbound request.** `bridge_wrap_out` moves the wrap to `Bridged` before any destination chain acts, and it stores an `OutboundBridgeRequest`. From then on the user cannot transfer, burn, revoke, bridge the same wrap again, or call `transition_wrap_state` to leave `Bridged`. The contract has no timeout and no user cancellation. If the relayers never complete the transfer on the destination and the admin never refunds the request, the wrap stays `Bridged`.
+
+**Refund.** `bridge_wrap_refund(outbound_nonce)` is the unlock after a destination is said to have rejected the transfer. The admin must authorize it. The destination chain must already have a relayer set, or the call fails with `BridgeNotInitialized`. The chain does not have to still be enabled, and no relayer signature is required. The call restores the wrap through `restore_from_bridge` and emits `br_refund`. It leaves the outbound request in storage, and it does not prove the destination rejected the transfer. If the destination already minted and the admin still refunds, the user is credited on both sides and this contract cannot see that. If the admin does not refund, the user still cannot unlock the wrap. The only other exit from `Bridged` is an inbound message that restores that same wrap, and that message needs a threshold of relayer signatures.
+
+**Disabled chain.** The admin disables a chain with `set_chain_status(chain_id, false)`. Chain id `0` is never enabled. `bridge_wrap_out` and `bridge_wrap_in` then fail with `ChainDisabled` and do not change wrap state. Disabling a chain does not restore wraps already moved to `Bridged` toward that chain, and it does not remove the relayer set. Those wraps remain stuck until the admin refunds them, or until an inbound message restores that same wrap.
+
+### Threshold
+
+Each chain stores its public keys and a `threshold` together. `set_bridge_relayers` rejects `threshold == 0` and rejects a threshold greater than the number of keys in that call (`InvalidThreshold`). A set that is already shorter than its threshold cannot be installed. A rejected call leaves the previous set in place.
+
+`bridge_wrap_in` counts distinct keys. The same key listed twice, or signing twice, counts once. The call fails with `InvalidSignature` unless at least `threshold` distinct configured keys signed the payload.
+
+The set falls below the threshold when fewer than `threshold` distinct keys can still produce a valid signature: keys are lost, relayers stop signing, or the configured list contains fewer distinct keys than `threshold`. Inbound fulfillment for that chain then stops. The contract does not lower the threshold, does not accept a smaller quorum, and does not let the user force the message through. Outbound locking on a chain that is still enabled continues to succeed, so new requests can become stuck while inbound is frozen. The admin restores service by appointing a new set whose distinct keys meet the threshold they set, and by refunding outbound requests that should be unlocked.
 
 ---
 
@@ -12,9 +77,11 @@ The Generic Token Bridge Interface allows `stellar-wrap-contract` to interact se
 
 ### 1. Administration & Network Registry
 
-- **Bridge Relayer (`set_bridge_relayer` / `get_bridge_relayer`)**:
-  - The admin configures an authorized relayer or bridge validator contract.
-  - Inbound bridge operations require explicit authorization (`relayer.require_auth()`).
+- **Bridge relayers (`set_bridge_relayers` / `get_bridge_relayers`)**:
+  - The admin appoints, per chain id, the Ed25519 public keys and the signature threshold. See [Trust model](#trust-model).
+  - Inbound fulfillment checks that threshold of signatures. It does not use `require_auth()` on a relayer address.
+- **Refund address (`set_bridge_relayer` / `get_bridge_relayer`)**:
+  - The admin may store one Stellar address. Refunds and inbound fulfillment do not authorize against it. Refunds require the admin.
 
 - **Supported Chain Registry (`set_chain_status` / `is_chain_supported`)**:
   - Chains are identified by unique numeric network IDs (e.g., `1` for Ethereum Mainnet, `137` for Polygon, `900` for Solana).
@@ -38,19 +105,22 @@ The Generic Token Bridge Interface allows `stellar-wrap-contract` to interact se
 
 ### 3a. Outbound Refund
 
-- If the destination chain rejects an outbound request, the configured bridge
-   relayer calls `bridge_wrap_refund(outbound_nonce)`.
-- The request must identify an existing `Bridged` record; the relayer restores
-   it to `Active` and the contract emits `br_refund`.
+- If the destination chain rejects an outbound request, the admin calls
+   `bridge_wrap_refund(outbound_nonce)`. Relayer signatures are not checked.
+- The request must identify an existing `Bridged` record; the call restores
+   it to `Active` and the contract emits `br_refund`. A relayer set must
+   already be stored for the destination chain.
 - The public `transition_wrap_state` entry point cannot exit `Bridged`, so only
-   this relayer-authorized settlement path can unlock the wrap.
+   this admin-authorized settlement path, or an inbound restore of that same
+   wrap, can unlock it. There is no user-initiated unlock. See
+   [Failure modes](#failure-modes).
 
 ### 3. Inbound Cross-Chain Wrap (`bridge_wrap_in`)
 
-1. **Relayer Execution**: An authorized bridge relayer calls `bridge_wrap_in(source_chain, source_nonce, recipient, period, archetype, data_hash)`.
+1. **Relayer Execution**: A caller submits `bridge_wrap_in(source_chain, source_nonce, recipient, period, archetype, data_hash, signatures)`.
 2. **Validation & Replay Protection**:
-   - Relayer authorization is verified (`relayer.require_auth()`).
-   - Source chain must be active.
+   - At least `threshold` distinct keys from the source chain's relayer set must have signed the inbound payload. Fewer valid signatures fail with `InvalidSignature`.
+   - Source chain must be active. A disabled chain fails with `ChainDisabled`.
    - `InboundBridgeProcessed(source_chain, source_nonce)` ensures each cross-chain transaction can only be processed once (preventing double-spend / replay attacks).
 3. **Wrap Minting / Activation**:
    - Validates period structure (`YYYYMM` format, between `MIN_PERIOD_YEAR = 2024` and `MAX_PERIOD_YEAR = 2100` with months `01..=12`, enforced by shared `validate_period`).
@@ -92,7 +162,8 @@ pub struct InboundBridgeRecord {
 
 ### Storage Keys (`DataKey`)
 
-- `BridgeRelayer`: Configured relayer `Address`.
+- `BridgeRelayer`: Stellar `Address` stored by `set_bridge_relayer`. Not used to authorize inbound messages or refunds.
+- `BridgeRelayerSet(u32)`: Per chain id, the relayer public keys and the `threshold`.
 - `BridgeChainStatus(u32)`: Status flag (`bool`) per chain ID.
 - `OutboundBridgeNonce`: Monotonic counter (`u64`).
 - `OutboundBridgeRequest(u64)`: Outbound request keyed by nonce.
@@ -104,7 +175,7 @@ pub struct InboundBridgeRecord {
 ## Security Audit & Guarantees
 
 1. **Replay Protection**: Inbound nonces are recorded per source chain in persistent storage to prevent replay attacks.
-2. **Access Control**: Admin authorization is enforced for configuration (`set_bridge_relayer`, `set_chain_status`), and Relayer authorization is enforced for inbound wraps.
+2. **Access Control**: The admin appoints relayers, sets the threshold, and enables or disables chains (`set_bridge_relayers`, `set_bridge_relayer`, `set_chain_status`). Inbound wraps require a threshold of relayer signatures, not a relayer `require_auth()`. Refunds require the admin. See [Trust model](#trust-model).
 3. **Emergency Pause**: Main contract pause flag immediately halts both outbound and inbound bridge operations.
 4. **Storage TTL Management**: Persistent entries (outbound requests, inbound records, processed flags) have TTL set to 1 year (~17,280 * 365 ledgers).
 
@@ -123,11 +194,10 @@ here so a reader finds them in context:
   `proxy_pattern_decision` test module, which fails if a batching proxy entry
   point is introduced without updating the record.
 - [`docs/SIGNATURE_VERIFICATION_DECISION.md`](./SIGNATURE_VERIFICATION_DECISION.md)
-  — the signature verification decision. It records that inbound bridge
-  operations are authorized by `require_auth()` on the configured relayer
-  rather than by off-chain signatures. This decision is enforced by the
-  `signature_verification_decision` test module, which fails if a signature
-  verification path is added without updating the record.
+  — the signature verification decision record. Inbound fulfillment as
+  implemented checks a threshold of Ed25519 signatures from the chain's
+  relayer set. The trust assumptions of that check are in
+  [Trust model](#trust-model), not in a relayer `require_auth()`.
 
 Both records carry a review checklist item (see the "Enforcement" section of
 each record) so a reviewer can catch a violation during code review even
@@ -141,7 +211,7 @@ This section describes how cross-chain messages are relayed into the contract an
 
 ### Relayers
 
-Bridge relayers submit signed cross-chain messages. A relayer is a privileged actor: it can trigger any action that the bridge is authorized to perform on the destination chain. Relayers are registered and removed by the admin (see `docs/admin-rotation.md`).
+Bridge relayers are Ed25519 keys appointed per chain by the admin, together with a signature threshold. They can attest inbound messages. They cannot pause, upgrade, rotate the admin, change the relayer set, or refund. Who they are, who appoints them, and what a compromised key can do are specified in [Trust model](#trust-model). The admin appointment path is the same admin authority described in `docs/admin-rotation.md`.
 
 ### Authority Model
 
@@ -150,15 +220,15 @@ Privileged actions in this contract are reachable through more than one route. T
 1. **Admin direct** — the admin calls the privileged function directly. No delay. The admin can cancel any pending governance or timelock action.
 2. **Governance proposal** — token holders propose and vote; on success the action is queued. Delay is the governance voting period plus the timelock delay. The admin or governance can cancel a queued proposal before execution.
 3. **Timelock** — a queued action executes after the timelock delay elapses. The admin can cancel a queued action before it executes. See `docs/timelock.md`.
-4. **Bridge relayer** — a registered relayer submits a signed message that triggers the action. No delay beyond message finality. The admin can deregister a relayer, which prevents future messages but does not cancel an already-submitted message.
+4. **Bridge relayer** — a threshold of registered relayer keys signs an inbound `bridge_wrap_in` message. No delay beyond collecting those signatures. The admin can replace the relayer set, which rejects later messages under the old keys. A message already accepted and applied is not reversed by removing a relayer. Relayer signatures do not authorize pause, unpause, upgrade, withdrawal, relayer-set changes, or refunds.
 
 ### Fastest path per action
 
-The fastest path to any privileged action is the one with the smallest delay, not the largest. For most actions the admin direct route is fastest (no delay). For actions the admin cannot perform directly, the bridge relayer route is fastest (message finality only). The governance and timelock routes are always slower because they include a voting period and/or a timelock delay.
+The fastest path to any privileged action is the one with the smallest delay, not the largest. For most actions the admin direct route is fastest (no delay). `bridge_wrap_in` is the action the admin cannot perform: it waits only on a threshold of relayer signatures. The governance and timelock routes are always slower because they include a voting period and/or a timelock delay.
 
 ### Actions reachable by multiple routes
 
-Any action reachable by both the admin direct route and the governance/timelock route has different guarantees depending on the route: the admin route is immediate and cancellable only by the admin, while the governance route is delayed and cancellable by the admin or governance. Any action reachable by both the bridge relayer route and the admin route is subject to the relayer's signing authority in addition to the admin's authority; the admin can revoke the relayer but cannot retroactively cancel a message the relayer already submitted.
+Any action reachable by both the admin direct route and the governance/timelock route has different guarantees depending on the route: the admin route is immediate and cancellable only by the admin, while the governance route is delayed and cancellable by the admin or governance. Inbound bridge fulfillment is reachable only by a threshold of relayer signatures. The admin can replace the relayer set but cannot reverse a `bridge_wrap_in` that has already been applied.
 
 ### Privileged Actions
 
@@ -169,17 +239,19 @@ Each privileged function in the contract appears exactly once below, with all of
 | `setAdmin` | yes (no delay) | yes (vote + timelock) | yes (timelock delay) | no |
 | `setRelayer` | yes (no delay) | yes (vote + timelock) | yes (timelock delay) | no |
 | `setTimelockDelay` | yes (no delay) | yes (vote + timelock) | yes (timelock delay) | no |
-| `pause` | yes (no delay) | yes (vote + timelock) | yes (timelock delay) | yes (message finality) |
-| `unpause` | yes (no delay) | yes (vote + timelock) | yes (timelock delay) | yes (message finality) |
+| `pause` | yes (no delay) | yes (vote + timelock) | yes (timelock delay) | no |
+| `unpause` | yes (no delay) | yes (vote + timelock) | yes (timelock delay) | no |
 | `upgrade` | yes (no delay) | yes (vote + timelock) | yes (timelock delay) | no |
-| `withdraw` | yes (no delay) | yes (vote + timelock) | yes (timelock delay) | yes (message finality) |
+| `withdraw` | yes (no delay) | yes (vote + timelock) | yes (timelock delay) | no |
+| `bridge_wrap_in` | no | no | no | yes (threshold of relayer signatures) |
+| `bridge_wrap_refund` | yes (no delay) | no | no | no |
 
 ### Who may initiate, delay, and cancel
 
 - **Admin direct:** initiated by the admin; no delay; cancellable only by the admin (by not calling it).
 - **Governance proposal:** initiated by any token holder meeting the proposal threshold; delay is the voting period plus the timelock delay; cancellable by the admin or by governance before execution.
 - **Timelock:** initiated by the admin or by a passed governance proposal; delay is the timelock delay; cancellable by the admin before execution.
-- **Bridge relayer:** initiated by a registered relayer; delay is message finality only; cancellable by the admin only by deregistering the relayer, which does not affect already-submitted messages.
+- **Bridge relayer:** inbound fulfillment is initiated by submitting a threshold of signatures from the admin-appointed set; delay is only the time to collect those signatures; the admin can replace the set so later messages fail, and cannot undo a message already applied. Refunds are not in this route.
 
 ### Cross-references
 
