@@ -11,7 +11,10 @@
 extern crate std;
 
 use super::*;
-use soroban_sdk::{testutils::{Address as _, Ledger}, Address, BytesN, Env};
+use soroban_sdk::{
+    testutils::{Address as _, Ledger},
+    Address, BytesN, Env,
+};
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -220,6 +223,4 @@ fn passing_execution_sets_status_to_executed() {
 
     // Admin should have been updated (no timelock)
     assert_eq!(client.get_admin().unwrap(), proposed_admin);
-
-
 }

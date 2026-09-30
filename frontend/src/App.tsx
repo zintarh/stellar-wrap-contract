@@ -96,7 +96,7 @@ function WrapCard({
       <dl className="record-grid">
         <div>
           <dt>Minted</dt>
-          <dd>{formatTimestamp(record.timestamp)}</dd>
+          <dd>{formatTimestamp(record.createdAt)}</dd>
         </div>
         <div>
           <dt>Data hash</dt>

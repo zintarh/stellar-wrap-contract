@@ -28,7 +28,7 @@ export type WrapRecordState =
   | "opted-out";
 
 export type WrapRecord = {
-  timestamp: bigint;
+  createdAt: bigint;
   dataHash: string;
   archetype: string;
   /** Raw period as stored on-chain, in `YYYYMM` form. */
@@ -38,6 +38,10 @@ export type WrapRecord = {
    * only know a record exists keep working; treat a missing value as "active".
    */
   state?: WrapRecordState;
+  revoked?: boolean;
+  burned?: boolean;
+  optedOut?: boolean;
+  expired?: boolean;
   /**
    * Records are soulbound: they cannot be transferred between accounts.
    * Kept on the record so the UI can surface this without extra lookups.
@@ -79,6 +83,7 @@ export type Dashboard = {
   balance: bigint;
   health: ContractHealth;
   latestWrap: WrapRecord | null;
+  records: WrapRecord[];
 };
 
 export type MintInput = {

@@ -1,8 +1,8 @@
 use soroban_sdk::{panic_with_error, symbol_short, Address, Env, Vec};
 
+use crate::remove_wrap::remove_wrap_record;
 use crate::storage_accounting;
 use crate::{ContractError, DataKey, WrapRecord, WrapState};
-use crate::remove_wrap::remove_wrap_record;
 
 /// Burns (permanently deletes) a wrap record owned by the caller.
 ///
@@ -43,7 +43,7 @@ pub(crate) fn burn_wrap(e: Env, user: Address, period: u64) {
     crate::wrap_record_helpers::remove_wrap_record(&e, &user, period);
 
     let record: WrapRecord = e.storage().persistent().get(&wrap_key).unwrap();
-    if record.fsm.state == WrapState::Bridged {
+    if record.lifecycle.state == WrapState::Bridged {
         panic_with_error!(e, ContractError::InvalidStateTransition);
     }
 
@@ -84,10 +84,7 @@ pub(crate) fn burn_wrap(e: Env, user: Address, period: u64) {
             &e,
             storage_accounting::estimate_wrapcount_bytes_new(),
         );
-        storage_accounting::sub_storage_bytes(
-            &e,
-            storage_accounting::estimate_latest_bytes_new(),
-        );
+        storage_accounting::sub_storage_bytes(&e, storage_accounting::estimate_latest_bytes_new());
     } else {
         e.storage()
             .persistent()
@@ -148,8 +145,12 @@ pub(crate) fn burn_wrap(e: Env, user: Address, period: u64) {
     // 8. Decrement global total wrap count (live wrap count)
     let total_key = DataKey::TotalWrapCount;
     let total: u32 = e.storage().persistent().get(&total_key).unwrap_or(0);
-    e.storage().persistent().set(&total_key, &total.saturating_sub(1));
-    e.storage().persistent().extend_ttl(&total_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
+    e.storage()
+        .persistent()
+        .set(&total_key, &total.saturating_sub(1));
+    e.storage()
+        .persistent()
+        .extend_ttl(&total_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
 
     // 9. Emit burn event AFTER all state mutations
     e.events()

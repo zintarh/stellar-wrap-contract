@@ -232,11 +232,11 @@ pub(crate) fn mint_wrap(
 
     let now = e.ledger().timestamp();
     let record = WrapRecord {
-        timestamp: now,
+        created_at: now,
         data_hash,
         archetype: archetype.clone(),
         period,
-        fsm: WrapLifecycleFSM::new(WrapState::Active, now),
+        lifecycle: WrapLifecycleFSM::new(WrapState::Active, now),
         description: None,
         image_url: None,
     };
@@ -330,11 +330,11 @@ pub(crate) fn mint_wrap_batch(
     for item in items.iter() {
         let now = e.ledger().timestamp();
         let record = WrapRecord {
-            timestamp: now,
+            created_at: now,
             data_hash: item.data_hash.clone(),
             archetype: item.archetype.clone(),
             period: item.period,
-            fsm: WrapLifecycleFSM::new(WrapState::Active, now),
+            lifecycle: WrapLifecycleFSM::new(WrapState::Active, now),
             description: None,
             image_url: None,
         };
@@ -364,12 +364,12 @@ pub(crate) fn transition_wrap_state(e: Env, user: Address, period: u64, next_sta
         .get(&wrap_key)
         .unwrap_or_else(|| panic_with_error!(e, ContractError::WrapNotFound));
 
-    if record.fsm.state == WrapState::Bridged {
+    if record.lifecycle.state == WrapState::Bridged {
         panic_with_error!(e, ContractError::InvalidStateTransition);
     }
 
     let now = e.ledger().timestamp();
-    if !record.fsm.transition_to(next_state, now) {
+    if !record.lifecycle.transition_to(next_state, now) {
         panic_with_error!(e, ContractError::InvalidStateTransition);
     }
 
@@ -432,13 +432,13 @@ pub(crate) fn expire_wrap(e: Env, user: Address, period: u64) {
 
     let now = e.ledger().timestamp();
     let duration = get_expiration_duration(&e);
-    let expires_at = record.fsm.updated_at.saturating_add(duration);
+    let expires_at = record.lifecycle.updated_at.saturating_add(duration);
 
     if now <= expires_at {
         panic_with_error!(e, ContractError::WrapNotExpired);
     }
 
-    if !record.fsm.transition_to(WrapState::Expired, now) {
+    if !record.lifecycle.transition_to(WrapState::Expired, now) {
         panic_with_error!(e, ContractError::InvalidStateTransition);
     }
 

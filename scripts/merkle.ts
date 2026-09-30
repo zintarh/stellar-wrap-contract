@@ -1,54 +1,33 @@
-/**
- * Merkle tree helper for Stellar Wrap batch claims.
- *
- * Leaf encoding (must match on-chain `compute_merkle_leaf`):
- *   SHA-256( 0x00 || XDR(user) || XDR(period) || XDR(archetype) || XDR(data_hash) )
- *
- * Internal nodes:
- *   SHA-256( 0x01 || min(left,right) || max(left,right) )  — lexicographic byte order
- *
- * Proof depth is bounded by MAX_PROOF_DEPTH (32) to prevent unbounded proofs.
- *
- * Usage:
- *   npm install @stellar/stellar-sdk @noble/hashes
- *   nxp ts-node scripts/merkle.ts
-"/
 import { createHash } from "crypto";
-import {
-  Address,
-  xdr,
-  scValToNative,
-  nativeToScVal,
-} from "@stellar/stellar-sdk";
+import { basename } from "path";
+import { Address, nativeToScVal, xdr } from "@stellar/stellar-sdk";
 
 export type ClaimLeaf = {
   user: string;
   period: bigint;
   archetype: string;
-  dataHash: Buffer; // 32 bytes
+  dataHash: Buffer;
 };
 
 const MAX_PROOF_DEPTH = 32;
 
-function sha256(buf: Buffer): Buffer {
-  return createHash("sha256").update(buf).digest();
+function sha256(value: Buffer): Buffer {
+  return createHash("sha256").update(value).digest();
 }
 
-function toXdrBytes(val: xdr.ScVal): Buffer {
-  return Buffer.from(val.toXDR());
+function toXdrBytes(value: xdr.ScVal): Buffer {
+  return Buffer.from(value.toXDR());
 }
 
-/** Encode a single merkle leaf exactly as the Soroban contract does. */
-export function encodeMerkleLeaf(leaf: ClaimLeaf, networkPassphrase: string): Buffer {
-  const userAddr = Address.fromString(leaf.user);
-  const parts = [
+export function encodeMerkleLeaf(leaf: ClaimLeaf, _networkPassphrase: string): Buffer {
+  const userAddress = Address.fromString(leaf.user);
+  return sha256(Buffer.concat([
     Buffer.from([0x00]),
-    toXdrBytes(userAddr.toScVal()),
+    toXdrBytes(userAddress.toScVal()),
     toXdrBytes(nativeToScVal(leaf.period, { type: "u64" })),
     toXdrBytes(nativeToScVal(leaf.archetype, { type: "symbol" })),
     toXdrBytes(nativeToScVal(leaf.dataHash, { type: "bytes" })),
-  ];
-  return sha256(Buffer.concat(parts));
+  ]));
 }
 
 function hashPair(a: Buffer, b: Buffer): Buffer {
@@ -56,71 +35,60 @@ function hashPair(a: Buffer, b: Buffer): Buffer {
   return sha256(Buffer.concat([Buffer.from([0x01]), left, right]));
 }
 
-/** Build a binary merkle root from pre-encoded 32-byte leaves. */
 export function buildMerkleRoot(leaves: Buffer[]): Buffer {
   if (leaves.length === 0) throw new Error("empty tree");
-  let layer = leaves.map((l) => Buffer.from(l));
+  let layer: Buffer<ArrayBufferLike>[] = leaves.map((leaf) => Buffer.from(leaf));
   while (layer.length > 1) {
     const next: Buffer[] = [];
-    for (let i = 0; i < layer.length; i += 2) {
-      if (i + 1 < layer.length) {
-        next.push(hashPair(layer[i], layer[i + 1]));
-      } else {
-        next.push(layer[i]);
-      }
+    for (let index = 0; index < layer.length; index += 2) {
+      next.push(index + 1 < layer.length ? hashPair(layer[index], layer[index + 1]) : layer[index]);
     }
     layer = next;
   }
   return layer[0];
 }
 
-/** Generate a proof for `index` in the leaf array. */
 export function buildMerkleProof(leaves: Buffer[], index: number): Buffer[] {
+  if (leaves.length === 0 || index < 0 || index >= leaves.length) {
+    throw new Error("invalid leaf index");
+  }
   const proof: Buffer[] = [];
-  let idx = index;
-  let layer = leaves.map((l) => Buffer.from(l));
+  let currentIndex = index;
+  let layer: Buffer<ArrayBufferLike>[] = leaves.map((leaf) => Buffer.from(leaf));
   while (layer.length > 1) {
-    const siblingIdx = idx % 2 === 0 ? idx + 1 : idx - 1;
-    if (siblingIdx < layer.length) {
-      proof.push(layer[siblingIdx]);
+    const siblingIndex = currentIndex % 2 === 0 ? currentIndex + 1 : currentIndex - 1;
+    if (siblingIndex < layer.length) {
+      proof.push(layer[siblingIndex]);
       if (proof.length > MAX_PROOF_DEPTH) {
         throw new Error("proof depth exceeds MAX_PROOF_DEPTH");
       }
     }
     const next: Buffer[] = [];
-    for (let i = 0; i < layer.length; i += 2) {
-      if (i + 1 < layer.length) {
-        next.push(hashPair(layer[i], layer[i + 1]));
-      } else {
-        next.push(layer[i]);
-      }
+    for (let cursor = 0; cursor < layer.length; cursor += 2) {
+      next.push(cursor + 1 < layer.length ? hashPair(layer[cursor], layer[cursor + 1]) : layer[cursor]);
     }
-    idx = Math.floor(idx / 2);
+    currentIndex = Math.floor(currentIndex / 2);
     layer = next;
   }
   return proof;
 }
 
-/** Convenience: encode leaves, return root and per-index proofs. */
 export function buildClaimTree(
   claims: ClaimLeaf[],
-  networkPassphrase: string
+  networkPassphrase: string,
 ): { root: Buffer; proofs: Buffer[][] } {
-  const leaves = claims.map((c) => encodeMerkleLeaf(c, networkPassphrase));
+  const leaves = claims.map((claim) => encodeMerkleLeaf(claim, networkPassphrase));
   const root = buildMerkleRoot(leaves);
-  const proofs = leaves.map((_, i) => buildMerkleProof(leaves, i));
-  return { root, proofs };
+  return { root, proofs: leaves.map((_, index) => buildMerkleProof(leaves, index)) };
 }
 
-if (require.main === module) {
-  const demo: ClaimLeaf[] = [
-    {
-      user: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
-      period: 202512n,
-      archetype: "builder",
-      dataHash: Buffer.alloc(32, 1),
-    },
-  ];
+if (basename(process.argv[1] ?? "") === "merkle.ts") {
+  const demo: ClaimLeaf[] = [{
+    user: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+    period: 202512n,
+    archetype: "builder",
+    dataHash: Buffer.alloc(32, 1),
+  }];
   const { root, proofs } = buildClaimTree(demo, "Test SDF Network ; September 2015");
   console.log("root:", root.toString("hex"));
   console.log("proof depth:", proofs[0].length);

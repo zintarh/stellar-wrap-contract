@@ -431,7 +431,8 @@ mod grace_period_tests {
         let mut sweep_found = false;
         for (_contract_id, topics, _data) in events.into_iter() {
             if topics.len() >= 2 {
-                if topics.get(0).unwrap().into_val(&env) == symbol_short!("timelock").into_val(&env) {
+                if topics.get(0).unwrap().into_val(&env) == symbol_short!("timelock").into_val(&env)
+                {
                     let event_type = topics.get(1).unwrap().into_val(&env);
                     if event_type == symbol_short!("sweep").into_val(&env) {
                         sweep_found = true;

@@ -24,7 +24,7 @@ pub(crate) fn create_admin_proposal(
     if duration_seconds < MIN_PROPOSAL_DURATION || duration_seconds > MAX_PROPOSAL_DURATION {
         panic_with_error!(e, ContractError::InvalidProposalDuration);
     }
-    
+
     let count: u64 = e
         .storage()
         .instance()
@@ -61,7 +61,6 @@ pub(crate) fn create_admin_proposal(
     );
 
     proposal_id
-
 }
 
 /// Cast a vote on an active governance proposal.

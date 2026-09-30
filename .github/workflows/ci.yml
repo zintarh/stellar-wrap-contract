@@ -31,5 +31,20 @@ jobs:
       - name: Build
         run: npm run build --if-present
 
+      - name: Test
+        run: npm test --if-present
+
+      - name: Start preview server
+        run: |
+          ./node_modules/.bin/vite preview --host 127.0.0.1 --port 3000 > /tmp/vite-preview.log 2>&1 &
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:3000/ > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/vite-preview.log
+          exit 1
+
       - name: Accessibility check
-        run: npx --yes @axe-core/cli http://localhost:3000 --exit
+        run: npx --yes @axe-core/cli http://127.0.0.1:3000 --exit

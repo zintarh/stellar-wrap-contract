@@ -1,5 +1,5 @@
-use soroban_sdk::{panic_with_error, Env};
 use crate::{storage_types::FeeParams, ContractError, DataKey};
+use soroban_sdk::{panic_with_error, Env};
 
 const ESTIMATE_WRAP_RECORD_BYTES: u64 = 64;
 const ESTIMATE_WRAP_KEY_BYTES: u64 = 48;
@@ -46,7 +46,12 @@ pub(crate) fn get_fee_params(e: &Env) -> FeeParams {
     e.storage()
         .instance()
         .get(&DataKey::FeeParams)
-        .unwrap_or(FeeParams { base_fee: 0, per_kib_fee: 0, scale_step_kib: 1, max_fee: 0 })
+        .unwrap_or(FeeParams {
+            base_fee: 0,
+            per_kib_fee: 0,
+            scale_step_kib: 1,
+            max_fee: 0,
+        })
 }
 
 pub(crate) fn set_fee_params(e: &Env, params: FeeParams) {

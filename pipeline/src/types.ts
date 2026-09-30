@@ -83,11 +83,11 @@ export interface WrapLifecycleFSM {
 }
 
 export interface WrapRecord {
-  timestamp: number;
+  created_at: number;
   data_hash: string; // hex-encoded 32 bytes
   archetype: string;
   period: number;
-  fsm: WrapLifecycleFSM;
+  lifecycle: WrapLifecycleFSM;
 }
 
 export interface FeeParams {
@@ -267,4 +267,7 @@ export interface IndexerConfig {
   start_ledger: number;
   backfill: boolean;
   reconcile_only: boolean;
+  alert_webhook_url: string;
+  alert_min_severity: 'info' | 'warning' | 'critical';
+  expected_admin: string;
 }

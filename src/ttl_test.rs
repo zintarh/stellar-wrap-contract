@@ -1,12 +1,15 @@
 #![cfg(test)]
 
-use crate::{StellarWrapContract, StellarWrapContractClient, ContractError, CURRENT_PAYLOAD_VERSION};
-use soroban_sdk::{
-    testutils::{Address as _, Ledger},
-    Address, BytesN, Env, IntoVal, symbol_short
-};
 use crate::test_utils::sign_payload;
+use crate::{
+    ContractError, StellarWrapContract, StellarWrapContractClient, CURRENT_PAYLOAD_VERSION,
+};
 use ed25519_dalek::SigningKey;
+use soroban_sdk::{
+    symbol_short,
+    testutils::{Address as _, Ledger},
+    Address, BytesN, Env, IntoVal,
+};
 
 #[test]
 fn test_renew_all_ttls_admin_auth() {
@@ -23,7 +26,7 @@ fn test_renew_all_ttls_admin_auth() {
     let signing_key = SigningKey::from_bytes(&[1u8; 32]);
     let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
     let admin = Address::generate(&env);
-    
+
     client.initialize(&admin, &admin_pubkey);
 
     // 1. renew_all_ttls requires admin authorization.
@@ -33,17 +36,15 @@ fn test_renew_all_ttls_admin_auth() {
     assert!(auth_res.is_err());
 
     // Mock admin auth and it should succeed
-    env.mock_auths(&[
-        soroban_sdk::testutils::MockAuth {
-            address: &admin,
-            invoke: &soroban_sdk::testutils::MockAuthInvoke {
-                contract: &contract_id,
-                fn_name: "renew_all_ttls",
-                args: (&user,).into_val(&env),
-                sub_invokes: &[],
-            },
-        }
-    ]);
+    env.mock_auths(&[soroban_sdk::testutils::MockAuth {
+        address: &admin,
+        invoke: &soroban_sdk::testutils::MockAuthInvoke {
+            contract: &contract_id,
+            fn_name: "renew_all_ttls",
+            args: (&user,).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
     client.renew_all_ttls(&user);
 }
 
@@ -107,14 +108,14 @@ fn test_extend_ttl_extends_expiry() {
     // Original TTL is ~1 year (17280 * 365 = 6307200 ledgers)
     // Advance ledger to just before max TTL to test extend_ttl behavior
     env.ledger().set_sequence_number(6300000);
-    
+
     // 5. Repeated extend_ttl calls are idempotent and do not compound beyond the max TTL.
     client.extend_ttl(&user, &period);
     client.extend_ttl(&user, &period);
-    
+
     // Advance ledger past original TTL
     env.ledger().set_sequence_number(6400000);
-    
+
     // 4. After extend_ttl, the wrap record is still readable past its original expiry ledger.
     let wrap_after = client.get_wrap(&user, &period);
     assert!(wrap_after.is_some());

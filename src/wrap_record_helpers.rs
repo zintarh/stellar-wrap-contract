@@ -5,8 +5,8 @@
 
 use soroban_sdk::{panic_with_error, Address, Env};
 
-use crate::{storage_accounting, ContractError, DataKey};
 use crate::storage_types::WrapState;
+use crate::{storage_accounting, ContractError, DataKey};
 
 const TTL_ONE_YEAR: u32 = 17_280 * 365;
 
@@ -41,7 +41,7 @@ pub(crate) fn remove_wrap_record(e: &Env, user: &Address, period: u64) {
 
     // Guard: cannot remove a bridged-out record.
     let record: crate::WrapRecord = e.storage().persistent().get(&wrap_key).unwrap();
-    if record.fsm.state == WrapState::Bridged {
+    if record.lifecycle.state == WrapState::Bridged {
         panic_with_error!(e, ContractError::InvalidStateTransition);
     }
 

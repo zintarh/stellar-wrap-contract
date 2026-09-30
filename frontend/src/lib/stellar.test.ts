@@ -108,7 +108,7 @@ describe("contract RPC adapter", () => {
     );
   });
 
-  it("loads health, balance, and latest wrap through read-only simulations", async () => {
+  it("loads health, balance, and wraps through read-only simulations", async () => {
     mocks.server.simulateTransaction.mockImplementation(
       async (transaction: Transaction) => {
         switch (contractMethod(transaction)) {
@@ -124,6 +124,8 @@ describe("contract RPC adapter", () => {
             return simulationSuccess(nativeToScVal(2n));
           case "get_latest_wrap":
             return simulationSuccess();
+          case "get_all_wraps_for_user":
+            return simulationSuccess(xdr.ScVal.scvVec([]));
           default:
             throw new Error("Unexpected contract method");
         }
@@ -138,8 +140,9 @@ describe("contract RPC adapter", () => {
       },
       balance: 2n,
       latestWrap: null,
+      records: [],
     });
-    expect(mocks.server.simulateTransaction).toHaveBeenCalledTimes(3);
+    expect(mocks.server.simulateTransaction).toHaveBeenCalledTimes(4);
   });
 
   it("decodes a period lookup result", async () => {
@@ -150,7 +153,7 @@ describe("contract RPC adapter", () => {
           archetype: "builder",
           data_hash: hash,
           period: 202607n,
-          timestamp: 1_700_000_000n,
+          created_at: 1_700_000_000n,
         }),
       ),
     );
@@ -159,7 +162,7 @@ describe("contract RPC adapter", () => {
       archetype: "builder",
       dataHash: "ab".repeat(32),
       period: 202607n,
-      timestamp: 1_700_000_000n,
+      createdAt: 1_700_000_000n,
     });
 
     const transaction = mocks.server.simulateTransaction.mock

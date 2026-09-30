@@ -6,6 +6,17 @@ import { applyStorageEntryToState, createEmptyState } from './processor';
 import type { DerivedState, StorageEntry } from './types';
 import { DataKeyVariant } from './types';
 
+function compareFields(
+  field: string,
+  indexedValue: unknown,
+  onChainValue: unknown,
+  mismatches: string[],
+): void {
+  if (indexedValue !== onChainValue) {
+    mismatches.push(`${field}: indexed=${String(indexedValue)}, on-chain=${String(onChainValue)}`);
+  }
+}
+
 export interface ReconciliationReport {
   contract_id: string;
   ledger_seq: number;
@@ -17,6 +28,7 @@ export interface ReconciliationReport {
   onchain: {
     total_wraps: number;
     contract_state: number;
+    latest_ledger: number;
   };
   mismatches: string[];
   is_consistent: boolean;
@@ -218,6 +230,7 @@ export async function reconcile(
 
   // Build on-chain state from entries
   for (const entry of storageEntries) {
+    onChainState.ledger_seq = Math.max(onChainState.ledger_seq, entry.ledger);
     applyStorageEntryToState(onChainState, entry);
   }
 
@@ -253,6 +266,7 @@ export async function reconcile(
     onchain: {
       total_wraps: onChainState.totalWrapCount,
       contract_state: onChainState.migrationVersion,
+      latest_ledger: onChainState.ledger_seq,
     },
     mismatches,
     is_consistent: isConsistent,

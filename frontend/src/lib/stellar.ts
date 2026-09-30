@@ -117,16 +117,28 @@ export async function loadDashboard(
   address: string,
 ): Promise<Dashboard> {
   const addressArg = nativeToScVal(Address.fromString(address));
-  const [health, balance, latestWrap] = await Promise.all([
+  const [health, balance, latestWrap, wraps] = await Promise.all([
     readContract(config, address, "health"),
     readContract(config, address, "balance_of", [addressArg]),
     readContract(config, address, "get_latest_wrap", [addressArg]),
+    readContract(config, address, "get_all_wraps_for_user", [addressArg]),
   ]);
+  if (!Array.isArray(wraps)) {
+    throw new Error("The contract returned invalid wrap records.");
+  }
+  const records = wraps.map((wrap) => {
+    const record = normalizeWrap(wrap);
+    if (!record) {
+      throw new Error("The contract returned an empty wrap record.");
+    }
+    return record;
+  });
 
   return {
     health: normalizeHealth(health),
     balance: BigInt(balance as bigint | number | string),
     latestWrap: normalizeWrap(latestWrap),
+    records,
   };
 }
 

@@ -26,9 +26,7 @@ extern crate alloc;
 #[cfg(any(test, feature = "testutils"))]
 extern crate std;
 
-use soroban_sdk::{
-    contract, contractimpl, Address, Bytes, BytesN, Env, String, Symbol, Vec,
-};
+use soroban_sdk::{contract, contractimpl, Address, Bytes, BytesN, Env, String, Symbol, Vec};
 
 mod admin;
 mod alias;
@@ -43,8 +41,8 @@ mod mint;
 mod optout;
 mod oracle;
 mod queries;
-mod revoke;
 mod remove_wrap;
+mod revoke;
 pub mod signature;
 mod stake;
 mod storage_accounting;
@@ -910,17 +908,23 @@ mod admin_test;
 #[cfg(test)]
 mod balance_of_test;
 #[cfg(test)]
-mod events_test;
-#[cfg(test)]
 mod batch_test;
 #[cfg(test)]
 mod bridge_test;
 #[cfg(test)]
+mod events_test;
+#[cfg(test)]
 mod expiration_test;
+#[cfg(test)]
+mod governance_exec_test;
 #[cfg(test)]
 mod governance_test;
 #[cfg(test)]
+mod invariants_test;
+#[cfg(test)]
 mod last_updated_test;
+#[cfg(test)]
+mod merkle_test;
 #[cfg(test)]
 mod oracle_test;
 #[cfg(test)]
@@ -930,34 +934,25 @@ mod prop_test;
 #[cfg(test)]
 mod queries_test;
 #[cfg(test)]
+mod revoke_test;
+#[cfg(test)]
 mod security_test;
 #[cfg(test)]
 mod stake_test;
 #[cfg(test)]
-mod invariants_test;
-#[cfg(test)]
 mod test;
-#[cfg(test)]
-mod governance_exec_test;
 #[cfg(test)]
 mod test_utils;
 #[cfg(test)]
 mod test_vectors;
 #[cfg(test)]
-mod transfer_test;
-#[cfg(test)]
-mod ttl_test;
-#[cfg(test)]
-mod queries_test;
+mod timelock_cancel_test;
 #[cfg(test)]
 mod timelock_test;
 #[cfg(test)]
-mod timelock_cancel_test;
+mod transfer_test;
 #[cfg(test)]
-mod revoke_test;
-
-#[cfg(test)]
-mod invalid_signature_test;
+mod ttl_test;
 
 #[cfg(test)]
 mod invalid_signature_test {
@@ -984,7 +979,16 @@ mod invalid_signature_test {
         let data_hash: BytesN<32> = BytesN::from_array(&e, &[2u8; 32]);
         let payload_version = 1u32;
 
-        let signature = generate_signature(&e, &admin_b, &pubkey_b, &user, period, archetype, &data_hash, payload_version);
+        let signature = generate_signature(
+            &e,
+            &admin_b,
+            &pubkey_b,
+            &user,
+            period,
+            archetype,
+            &data_hash,
+            payload_version,
+        );
 
         assert!(StellarWrapContract::mint_wrap(
             &e,

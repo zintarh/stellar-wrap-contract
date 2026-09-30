@@ -24,13 +24,21 @@ fn test_redundant_pause_does_not_emit_an_event() {
     // Genuine initial pause transition emits exactly one event.
     client.pause();
     let genuine = decode_events(&env);
-    assert_eq!(genuine.len(), 1, "a genuine pause must emit exactly one event");
+    assert_eq!(
+        genuine.len(),
+        1,
+        "a genuine pause must emit exactly one event"
+    );
 
     // A redundant pause (already paused) must emit no additional event.
     assert!(client.is_paused());
     client.pause();
     let redundant = decode_events(&env);
-    assert_eq!(redundant.len(), 0, "a redundant pause must not emit an event");
+    assert_eq!(
+        redundant.len(),
+        0,
+        "a redundant pause must not emit an event"
+    );
 }
 
 #[test]
@@ -45,13 +53,21 @@ fn test_redundant_unpause_does_not_emit_an_event() {
     // Genuine unpause transition emits exactly one event.
     client.unpause();
     let genuine = decode_events(&env);
-    assert_eq!(genuine.len(), 1, "a genuine unpause must emit exactly one event");
+    assert_eq!(
+        genuine.len(),
+        1,
+        "a genuine unpause must emit exactly one event"
+    );
 
     // A redundant unpause (already unpaused) must emit no additional event.
     assert!(!client.is_paused());
     client.unpause();
     let redundant = decode_events(&env);
-    assert_eq!(redundant.len(), 0, "a redundant unpause must not emit an event");
+    assert_eq!(
+        redundant.len(),
+        0,
+        "a redundant unpause must not emit an event"
+    );
 }
 
 #[test]
@@ -93,5 +109,8 @@ fn test_schema_version_initialized_at_one() {
 
     // Schema version should be 1 after initialization
     let schema_version = client.schema_version();
-    assert_eq!(schema_version, 1, "schema version should be 1 after initialization");
+    assert_eq!(
+        schema_version, 1,
+        "schema version should be 1 after initialization"
+    );
 }

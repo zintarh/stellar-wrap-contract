@@ -56,13 +56,13 @@ describe("contract result normalization", () => {
 
     expect(
       normalizeWrap({
-        timestamp: 1_700_000_000n,
+        created_at: 1_700_000_000n,
         data_hash: hash,
         archetype: "builder",
         period: 202607n,
       }),
     ).toEqual({
-      timestamp: 1_700_000_000n,
+      createdAt: 1_700_000_000n,
       dataHash: `000fff${"00".repeat(29)}`,
       archetype: "builder",
       period: 202607n,
@@ -78,7 +78,7 @@ describe("contract result normalization", () => {
     (dataHash) => {
       expect(() =>
         normalizeWrap({
-          timestamp: 1n,
+          created_at: 1n,
           data_hash: dataHash,
           archetype: "builder",
           period: 202607n,

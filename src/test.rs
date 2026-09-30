@@ -2,17 +2,17 @@
 
 extern crate std;
 
-use std::vec::Vec;
 use ed25519_dalek::SigningKey;
 use soroban_sdk::{
     symbol_short,
+    testutils::{budget::ContractCostType, Address as _, Events, Ledger},
     testutils::{
         budget::ContractCostType,
         {Address as _, Events, Ledger},
     },
-    testutils::{budget::ContractCostType, Address as _, Events, Ledger},
     Address, Bytes, BytesN, Env, IntoVal, String, Symbol, TryFromVal, TryIntoVal,
 };
+use std::vec::Vec;
 
 use super::*;
 use crate::test_utils::{decode_events, sign_batch_payload, sign_payload, sign_payload_versioned};
@@ -254,9 +254,33 @@ fn test_revoke_latest_recomputes_next_newest_period() {
     let hash3 = BytesN::from_array(&env, &[33u8; 32]);
 
     // Mint three wraps with periods 202401, 202402, 202403
-    let sig1 = sign_payload(&env, &signing_key, &contract_id, &user, 202401, &archetype, &hash1);
-    let sig2 = sign_payload(&env, &signing_key, &contract_id, &user, 202402, &archetype, &hash2);
-    let sig3 = sign_payload(&env, &signing_key, &contract_id, &user, 202403, &archetype, &hash3);
+    let sig1 = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user,
+        202401,
+        &archetype,
+        &hash1,
+    );
+    let sig2 = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user,
+        202402,
+        &archetype,
+        &hash2,
+    );
+    let sig3 = sign_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &user,
+        202403,
+        &archetype,
+        &hash3,
+    );
 
     client.mint_wrap(&user, &202401, &archetype, &hash1, &1u32, &sig1);
     client.mint_wrap(&user, &202402, &archetype, &hash2, &1u32, &sig2);
@@ -906,8 +930,7 @@ fn test_mint_rejects_invalid_signature_with_wrong_admin_pubkey() {
 
     // Initialize with pubkey A
     let signing_key_a = SigningKey::from_bytes(&[22u8; 32]);
-    let admin_pubkey_a =
-        BytesN::from_array(&env, &signing_key_a.verifying_key().to_bytes());
+    let admin_pubkey_a = BytesN::from_array(&env, &signing_key_a.verifying_key().to_bytes());
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
 
@@ -1517,7 +1540,7 @@ fn test_get_mint_timestamp_exists() {
     let wrap = client.get_wrap(&user, &period).unwrap();
     assert_eq!(
         client.get_mint_timestamp(&user, &period),
-        Some(wrap.timestamp)
+        Some(wrap.created_at)
     );
 }
 
@@ -3864,7 +3887,7 @@ fn test_set_timelock_delay_valid_updates_delay() {
 
     env.mock_all_auths();
     client.initialize(&admin, &pubkey);
-    
+
     // Enable timelock with initial delay
     let initial_delay = timelock::MIN_DELAY;
     client.enable_timelock(&initial_delay);
@@ -3889,7 +3912,7 @@ fn test_set_timelock_delay_valid_updates_delay() {
 
     // Verify the delay has been updated
     assert_eq!(client.timelock_delay(), Some(new_delay));
-    
+
     // Verify the operation is no longer in the queue
     assert!(client.timelock_operation(&operation_id).is_none());
 }
@@ -3907,48 +3930,50 @@ fn test_operation_keeps_original_eta_after_delay_change() {
 
     env.mock_all_auths();
     client.initialize(&admin, &pubkey);
-    
+
     // Enable timelock with initial delay
     let initial_delay = 10_000; // Use a custom delay for testing
     client.enable_timelock(&initial_delay);
-    
+
     // Get the current timestamp
     let now = env.ledger().timestamp();
-    
+
     // Schedule an admin change operation under the old delay
     let admin_action = TimelockAction::SetAdmin(new_admin.clone());
     let admin_operation_id = client.timelock_schedule(&admin_action);
-    
+
     // Record the original ETA
     let admin_operation = client.timelock_operation(&admin_operation_id).unwrap();
     let original_eta = admin_operation.eta;
     assert_eq!(original_eta, now + initial_delay);
-    
+
     // Schedule and execute a delay change (increase the delay)
     let new_delay = initial_delay * 2;
     let delay_action = TimelockAction::SetTimelockDelay(new_delay);
     let delay_operation_id = client.timelock_schedule(&delay_action);
-    
+
     // Fast forward past the initial delay
     env.ledger().with_mut(|ledger| {
         ledger.timestamp += initial_delay;
     });
-    
+
     // Execute the delay change
     client.timelock_execute(&delay_operation_id);
     assert_eq!(client.timelock_delay(), Some(new_delay));
-    
+
     // Verify the admin operation still has its original ETA
     let admin_operation_after = client.timelock_operation(&admin_operation_id).unwrap();
-    assert_eq!(admin_operation_after.eta, original_eta, 
-        "Operation should keep its original ETA even after delay changes");
-    
+    assert_eq!(
+        admin_operation_after.eta, original_eta,
+        "Operation should keep its original ETA even after delay changes"
+    );
+
     // The admin operation should still be executable at its original ETA
     env.ledger().with_mut(|ledger| {
         ledger.timestamp = original_eta;
     });
     client.timelock_execute(&admin_operation_id);
-    
+
     // Verify the admin was changed
     assert_eq!(client.get_admin().unwrap(), new_admin);
 }
@@ -3970,7 +3995,7 @@ fn test_set_timelock_delay_min_boundary() {
     // Scheduling exactly MIN_DELAY should succeed
     let action = TimelockAction::SetTimelockDelay(timelock::MIN_DELAY);
     let operation_id = client.timelock_schedule(&action);
-    
+
     // Verify it was scheduled
     assert!(client.timelock_operation(&operation_id).is_some());
 }
@@ -3992,7 +4017,7 @@ fn test_set_timelock_delay_max_boundary() {
     // Scheduling exactly MAX_DELAY should succeed
     let action = TimelockAction::SetTimelockDelay(timelock::MAX_DELAY);
     let operation_id = client.timelock_schedule(&action);
-    
+
     // Verify it was scheduled
     assert!(client.timelock_operation(&operation_id).is_some());
 }

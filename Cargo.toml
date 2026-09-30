@@ -35,7 +35,7 @@ soroban-sdk = { version = "=27.0.3", features = ["testutils"] }
 # Property-based testing
 proptest = { version = "1", default-features = false, features = ["alloc"] }
 
-[Profile.release]
+[profile.release]
 opt-level = "z"
 lto = true
 panic = "abort"
