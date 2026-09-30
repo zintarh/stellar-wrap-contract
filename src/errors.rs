@@ -68,6 +68,9 @@ pub enum ContractError {
     // Timelock grace period
     TimelockOperationExpired = 55,
     TimelockOperationNotExpired = 56,
+    /// The supplied bridge relayer set is invalid (e.g. it contains duplicate
+    /// relayer keys, which would let a single key satisfy multiple slots).
+    InvalidRelayerSet = 57,
 }
 
 impl ContractError {
@@ -76,7 +79,7 @@ impl ContractError {
     /// have not yet been mapped to a producing code path and a failing-path
     /// test. When a variant is added, bump this constant and add the variant
     /// to the `ALL_VARIANTS` table in that test; otherwise CI fails.
-    pub const VARIANT_COUNT: u32 = 56;
+    pub const VARIANT_COUNT: u32 = 57;
 
     /// Every variant in declaration order. The coverage test iterates this
     /// table to assert each variant is reachable and asserted by a test.
@@ -137,6 +140,7 @@ impl ContractError {
         ContractError::MerkleProofTooLong,
         ContractError::TimelockOperationExpired,
         ContractError::TimelockOperationNotExpired,
+        ContractError::InvalidRelayerSet,
     ];
 
     /// Numeric code for this variant, matching the `#[repr(u32)]` discriminant.
