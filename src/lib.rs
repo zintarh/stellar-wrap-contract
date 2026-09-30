@@ -18,6 +18,11 @@
 //! This prevents unauthorized wraps even if the caller contract is
 //! compromised. The admin address controls the public-key rotation.
 
+//! Minting requires an Ed25519 signature from the configured admin key
+//! over the full payload (contract ID, user, period, archetype, data hash).
+//! This prevents unauthorized wraps even if the caller contract is
+//! compromised. The admin address controls the public-key rotation.
+
 #![no_std]
 #![allow(clippy::too_many_arguments)]
 
