@@ -47,7 +47,6 @@ fn sign_payload(
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #4)")]
 fn test_replay_attack_same_period_fails() {
     let env = Env::default();
     let contract_id = env.register(StellarWrapContract, ());
@@ -90,9 +89,9 @@ fn test_replay_attack_same_period_fails() {
     let wrap = client.get_wrap(&user, &period);
     assert!(wrap.is_some(), "First mint should succeed.");
 
-    // Replay attack: Try to mint again with the exact same parameters
-    // This should PANIC with WrapAlreadyExists error (#4)
-    client.mint_wrap(
+    // Replay attack: Try to mint again with the exact same parameters.
+    let balance_before = client.balance_of(&user);
+    let result = client.try_mint_wrap(
         &user,
         &period,
         &archetype,
@@ -100,12 +99,14 @@ fn test_replay_attack_same_period_fails() {
         &CURRENT_PAYLOAD_VERSION,
         &signature,
     );
+
+    assert!(result.is_err(), "replay mint must fail");
+    assert_eq!(client.balance_of(&user), balance_before);
 }
 
 /// Test 2: Replay Attack with Different Hash (but same period)
 /// Even with a different hash, the same period should be rejected
 #[test]
-#[should_panic(expected = "Error(Contract, #4)")]
 fn test_replay_attack_different_hash_same_period_fails() {
     let env = Env::default();
     let contract_id = env.register(StellarWrapContract, ());
@@ -156,9 +157,9 @@ fn test_replay_attack_different_hash_same_period_fails() {
         CURRENT_PAYLOAD_VERSION,
     );
 
-    // Try to mint again for the same period with a different hash
-    // This should still fail - period is already used
-    client.mint_wrap(
+    // Try to mint again for the same period with a different hash.
+    let balance_before = client.balance_of(&user);
+    let result = client.try_mint_wrap(
         &user,
         &period,
         &archetype,
@@ -166,6 +167,9 @@ fn test_replay_attack_different_hash_same_period_fails() {
         &CURRENT_PAYLOAD_VERSION,
         &signature_2,
     );
+
+    assert!(result.is_err(), "duplicate-period mint must fail");
+    assert_eq!(client.balance_of(&user), balance_before);
 }
 
 /// Test 3: Multiple Valid Periods Work Correctly

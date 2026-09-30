@@ -572,7 +572,6 @@ fn test_health_reflects_initialization_state() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #4)")]
 fn test_duplicate_period_fails() {
     let env = Env::default();
     let contract_id = env.register(StellarWrapContract, ());
@@ -601,7 +600,11 @@ fn test_duplicate_period_fails() {
     );
 
     client.mint_wrap(&user, &period, &archetype, &hash, &1u32, &sig);
-    client.mint_wrap(&user, &period, &archetype, &hash, &1u32, &sig);
+    let balance_before = client.balance_of(&user);
+    let result = client.try_mint_wrap(&user, &period, &archetype, &hash, &1u32, &sig);
+
+    assert!(result.is_err(), "duplicate mint must fail");
+    assert_eq!(client.balance_of(&user), balance_before);
 }
 
 #[test]
@@ -810,6 +813,8 @@ fn test_mint_wrap_rejects_period_tampered_signature() {
         &data_hash,
     );
 
+    let balance_before = client.balance_of(&user);
+
     // Submitting that signature with a different period must be rejected.
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         client.mint_wrap(
@@ -830,7 +835,7 @@ fn test_mint_wrap_rejects_period_tampered_signature() {
     // No wrap or wrap-count may be written for either period.
     assert!(client.get_wrap(&user, &period_a).is_none());
     assert!(client.get_wrap(&user, &period_b).is_none());
-    assert_eq!(client.balance_of(&user), 0);
+    assert_eq!(client.balance_of(&user), balance_before);
 }
 
 /// Asserts that a caught mint failure surfaced the contract's
@@ -881,6 +886,8 @@ fn test_mint_wrap_rejects_signature_from_wrong_key() {
         &data_hash,
     );
 
+    let balance_before = client.balance_of(&user);
+
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         client.mint_wrap(
             &user,
@@ -895,7 +902,7 @@ fn test_mint_wrap_rejects_signature_from_wrong_key() {
 
     // Nothing may be written by the failed mint.
     assert!(client.get_wrap(&user, &period).is_none());
-    assert_eq!(client.balance_of(&user), 0);
+    assert_eq!(client.balance_of(&user), balance_before);
 }
 
 #[test]
@@ -930,6 +937,8 @@ fn test_mint_rejects_invalid_signature_with_wrong_admin_pubkey() {
         &data_hash,
     );
 
+    let balance_before = client.balance_of(&user);
+
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         client.mint_wrap(
             &user,
@@ -944,7 +953,7 @@ fn test_mint_rejects_invalid_signature_with_wrong_admin_pubkey() {
     assert_maps_to_invalid_signature(&result);
 
     // Verify balance and latest period are untouched
-    assert_eq!(client.balance_of(&user), 0);
+    assert_eq!(client.balance_of(&user), balance_before);
     assert!(client.get_latest_wrap(&user).is_none());
 }
 

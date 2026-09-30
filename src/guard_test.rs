@@ -107,6 +107,8 @@ fn test_zero_hash_mint_failure_leaves_no_guard_entry() {
         CURRENT_PAYLOAD_VERSION,
     );
 
+    let balance_before = client.balance_of(&user);
+
     // ── 1. Trigger the zero-hash failure ──────────────────────────────────
     // `try_mint_wrap` returns a `Result` instead of panicking, so we can
     // inspect storage after the call even though it fails.
@@ -143,6 +145,7 @@ fn test_zero_hash_mint_failure_leaves_no_guard_entry() {
         client.get_wrap(&user, &period).is_none(),
         "No wrap record should be stored after a failed mint"
     );
+    assert_eq!(client.balance_of(&user), balance_before);
 }
 
 /// After a *successful* mint the guard must also be absent — it is explicitly
