@@ -153,7 +153,7 @@ pub(crate) fn transfer_wrap(e: Env, from: Address, to: Address, period: u64) {
         .get(&source_key)
         .unwrap_or_else(|| panic_with_error!(e, ContractError::WrapNotFound));
 
-    if record.fsm.state == crate::storage_types::WrapState::Bridged {
+    if record.lifecycle.state == crate::storage_types::WrapState::Bridged {
         panic_with_error!(e, ContractError::InvalidStateTransition);
     }
 

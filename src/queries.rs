@@ -20,7 +20,7 @@ pub(crate) fn get_wrap(e: Env, user: Address, period: u64) -> Option<WrapRecord>
 
 pub(crate) fn get_mint_timestamp(e: Env, user: Address, period: u64) -> Option<u64> {
     let wrap: Option<WrapRecord> = e.storage().persistent().get(&DataKey::Wrap(user, period));
-    wrap.map(|r| r.timestamp)
+    wrap.map(|r| r.created_at)
 }
 
 /// Return the ledger timestamp of the user's most recent state change via a
@@ -159,10 +159,7 @@ pub(crate) fn get_all_wraps_for_user(e: Env, user: Address) -> soroban_sdk::Vec<
 /// - `latest_period`: the latest period with an active wrap
 pub(crate) fn get_wrap_summary(e: Env, user: Address) -> Option<WrapSummary> {
     let wrap_periods_key = DataKey::WrapPeriods(user.clone());
-    let periods: soroban_sdk::Vec<u64> = e
-        .storage()
-        .persistent()
-        .get(&wrap_periods_key)?;
+    let periods: soroban_sdk::Vec<u64> = e.storage().persistent().get(&wrap_periods_key)?;
 
     if periods.is_empty() {
         return None;
@@ -242,6 +239,105 @@ pub(crate) fn get_admin_pubkey(e: Env) -> Option<BytesN<32>> {
 /// Return the contract semantic version string (`MAJOR.MINOR.PATCH`).
 ///
 /// Derived from `Cargo.toml` package version at compile time via
-/// `CARGO_PKG_VERSION`, so t
+/// `CARGO_PKG_VERSION`, so this value cannot drift from the package version.
+pub(crate) fn version(e: Env) -> String {
+    String::from_str(&e, env!("CARGO_PKG_VERSION"))
+}
 
-/* … truncated 3687 chars — edit only what you need near the top … */
+pub(crate) fn has_wrap(e: Env, user: Address, period: u64) -> bool {
+    e.storage().persistent().has(&DataKey::Wrap(user, period))
+}
+
+pub(crate) fn total_revoked(e: Env) -> u64 {
+    e.storage()
+        .instance()
+        .get::<_, u64>(&DataKey::TotalRevoked)
+        .unwrap_or(0)
+}
+
+pub(crate) fn name(e: Env) -> String {
+    e.storage()
+        .temporary()
+        .get(&DataKey::Name)
+        .unwrap_or_else(|| String::from_str(&e, "Stellar Wrap Registry"))
+}
+
+pub(crate) fn symbol(e: Env) -> String {
+    e.storage()
+        .temporary()
+        .get(&DataKey::Symbol)
+        .unwrap_or_else(|| String::from_str(&e, "WRAP"))
+}
+
+pub(crate) fn decimals(_e: Env) -> u32 {
+    0
+}
+
+pub(crate) fn contract_version(e: Env) -> u32 {
+    e.storage()
+        .instance()
+        .get(&DataKey::ContractVersion)
+        .unwrap_or(0)
+}
+
+pub(crate) fn schema_version(e: Env) -> u32 {
+    e.storage()
+        .instance()
+        .get(&DataKey::SchemaVersion)
+        .unwrap_or(0)
+}
+
+pub const MAX_QUERY_RESULTS: u32 = 200;
+
+pub(crate) fn check_user_invariants(e: Env, user: Address) -> InvariantReport {
+    let wrap_count: u32 = e
+        .storage()
+        .persistent()
+        .get(&DataKey::WrapCount(user.clone()))
+        .unwrap_or(0);
+    let user_periods: Vec<u64> = e
+        .storage()
+        .persistent()
+        .get(&DataKey::UserPeriods(user.clone()))
+        .unwrap_or_else(|| Vec::new(&e));
+    let wrap_periods: Vec<u64> = e
+        .storage()
+        .persistent()
+        .get(&DataKey::WrapPeriods(user.clone()))
+        .unwrap_or_else(|| Vec::new(&e));
+    let latest_period: Option<u64> = e
+        .storage()
+        .persistent()
+        .get(&DataKey::LatestPeriod(user.clone()));
+
+    let scan_len = core::cmp::min(user_periods.len(), MAX_QUERY_RESULTS);
+    let mut max_user_period: Option<u64> = None;
+    let mut live_wraps_found = 0;
+    for index in 0..scan_len {
+        if let Some(period) = user_periods.get(index) {
+            max_user_period = Some(core::cmp::max(max_user_period.unwrap_or(0), period));
+            if e.storage()
+                .persistent()
+                .has(&DataKey::Wrap(user.clone(), period))
+            {
+                live_wraps_found += 1;
+            }
+        }
+    }
+
+    let all_user_periods_live = live_wraps_found == scan_len;
+    InvariantReport {
+        wrap_count_match_user_periods: wrap_count == user_periods.len(),
+        wrap_count_match_wrap_periods: wrap_count == wrap_periods.len(),
+        latest_period_matches_max: latest_period == max_user_period,
+        all_user_periods_live,
+        balance_matches_wrap_count: balance_of(e.clone(), user) == i128::from(wrap_count),
+        wrap_count,
+        user_periods_len: user_periods.len(),
+        wrap_periods_len: wrap_periods.len(),
+        latest_period,
+        max_user_period,
+        live_wraps_found,
+        balance: wrap_count,
+    }
+}

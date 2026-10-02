@@ -253,7 +253,13 @@ fn test_mint_wrap_batch_aggregated_signature_rejects_reordered_items() {
 
     // Sign over [item1, item2] ...
     let signed_order = vec![&env, item1.clone(), item2.clone()];
-    let agg_sig = sign_batch_payload(&env, &signing_key, &contract_id, &signed_order, payload_version);
+    let agg_sig = sign_batch_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &signed_order,
+        payload_version,
+    );
 
     // ... but submit [item2, item1]. construct_batch_mint_payload commits to
     // order, so the signature no longer matches the payload.
@@ -303,7 +309,13 @@ fn test_mint_wrap_batch_aggregated_signature_rejects_mutated_data_hash() {
     };
 
     let signed_items = vec![&env, item1.clone(), item2.clone()];
-    let agg_sig = sign_batch_payload(&env, &signing_key, &contract_id, &signed_items, payload_version);
+    let agg_sig = sign_batch_payload(
+        &env,
+        &signing_key,
+        &contract_id,
+        &signed_items,
+        payload_version,
+    );
 
     // Mutate item1's data_hash after the signature was computed over it.
     let mut mutated_item1 = item1;
@@ -348,7 +360,13 @@ fn test_mint_wrap_batch_aggregated_signature_rejects_wrong_key() {
     let items = vec![&env, item1];
 
     // Signed by a key that is not the registered admin key.
-    let agg_sig = sign_batch_payload(&env, &wrong_signing_key, &contract_id, &items, payload_version);
+    let agg_sig = sign_batch_payload(
+        &env,
+        &wrong_signing_key,
+        &contract_id,
+        &items,
+        payload_version,
+    );
 
     let result = client.try_mint_wrap_batch(&items, &Some(agg_sig));
     assert_eq!(

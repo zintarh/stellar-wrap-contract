@@ -15,7 +15,7 @@ fn setup_env() -> (Env, StellarWrapContractClient<'static>, Address) {
 
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
-    
+
     let admin = Address::generate(&env);
     let admin_pubkey = BytesN::from_array(&env, &[0; 32]);
     client.initialize(&admin, &admin_pubkey);
@@ -26,7 +26,7 @@ fn setup_env() -> (Env, StellarWrapContractClient<'static>, Address) {
 #[test]
 fn test_governance_lifecycle() {
     let (env, client, original_admin) = setup_env();
-    
+
     // Setup time
     env.ledger().with_mut(|li| {
         li.timestamp = 1000;

@@ -186,7 +186,9 @@ fn test_get_wrap_summary_after_one_mint() {
     );
     client.mint_wrap(&user, &period, &archetype, &hash, &1u32, &signature);
 
-    let summary = client.get_wrap_summary(&user).expect("summary should exist");
+    let summary = client
+        .get_wrap_summary(&user)
+        .expect("summary should exist");
     assert_eq!(summary.total_wraps, 1);
     assert_eq!(summary.periods.len(), 1);
     assert_eq!(summary.periods.get(0), Some(&period));
@@ -228,7 +230,9 @@ fn test_get_wrap_summary_after_three_mints() {
         client.mint_wrap(&user, &periods[i], &archetypes[i], &hash, &1u32, &signature);
     }
 
-    let summary = client.get_wrap_summary(&user).expect("summary should exist");
+    let summary = client
+        .get_wrap_summary(&user)
+        .expect("summary should exist");
     assert_eq!(summary.total_wraps, 3);
     assert_eq!(summary.periods.len(), 3);
     assert_eq!(summary.first_period, 202401);
@@ -272,7 +276,9 @@ fn test_get_wrap_summary_after_revoke() {
     // Revoke the middle period
     client.revoke_wrap(&user, &202402u64, &BytesN::from_array(&env, &[0u8; 32]));
 
-    let summary = client.get_wrap_summary(&user).expect("summary should exist");
+    let summary = client
+        .get_wrap_summary(&user)
+        .expect("summary should exist");
     assert_eq!(summary.total_wraps, 2);
     assert_eq!(summary.periods.len(), 2);
     assert_eq!(summary.first_period, 202401);

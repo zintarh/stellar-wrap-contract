@@ -188,7 +188,7 @@ export function eventId(event: ContractEvent): string {
 
 // ─── State derivation from events ──────────────────────────────────────
 
-export function createEmptyState(contractId: string, ledgerSeq: number): DerivedState {
+export function createEmptyState(contractId: string, ledgerSeq = 0): DerivedState {
   return {
     contract_id: contractId,
     ledger_seq: ledgerSeq,
@@ -284,11 +284,11 @@ function applyMintEvent(state: DerivedState, event: TypedEvent): void {
 
   // Create a placeholder wrap record from the mint event
   const record: WrapRecord = {
-    timestamp: 0, // Not available from event; filled from storage
+    created_at: 0, // Not available from event; filled from storage
     data_hash: '', // Not available from event; filled from storage
     archetype,
     period,
-    fsm: { state: 3, updated_at: 0 }, // Active by default
+    lifecycle: { state: 3, updated_at: 0 }, // Active by default
   };
 
   let userWraps = state.wraps.get(user);
@@ -329,9 +329,199 @@ function applyRevokeEvent(state: DerivedState, event: TypedEvent): void {
   const period = Number(event.parsed.period ?? 0);
 
   const userWraps = state.wraps.get(user);
-  if (userWraps) {
-    userWraps.delete(period);
-    if (userWraps.size === 0) {
-      state.wraps
+  if (!userWraps?.delete(period)) return;
+  if (userWraps.size === 0) {
+    state.wraps.delete(user);
+  }
 
-/* … truncated 7137 chars — edit only what you need near the top … */
+  const currentCount = state.userCounts.get(user) ?? 0;
+  if (currentCount > 0) state.userCounts.set(user, currentCount - 1);
+  state.totalRevoked += 1;
+
+  const periods = state.userPeriods.get(user) ?? [];
+  const index = periods.indexOf(period);
+  if (index !== -1) {
+    periods.splice(index, 1);
+    state.userPeriods.set(user, periods);
+  }
+}
+
+function applyTransitionEvent(state: DerivedState, event: TypedEvent): void {
+  const user = String(event.parsed.user ?? '');
+  const period = Number(event.parsed.period ?? 0);
+  const nextState = Number(event.parsed.next_state ?? 0);
+  const record = state.wraps.get(user)?.get(period);
+  if (record) {
+    record.lifecycle.state = nextState as WrapRecord['lifecycle']['state'];
+    record.lifecycle.updated_at = event.raw.ledger;
+  }
+}
+
+export function applyStorageEntryToState(state: DerivedState, entry: StorageEntry): void {
+  switch (entry.key.variant) {
+    case DataKeyVariant.Admin:
+      state.admin = entry.value.type === 'address' ? entry.value.value : null;
+      break;
+    case DataKeyVariant.AdminPubKey:
+      state.adminPubKey = entry.value.type === 'bytes32' ? entry.value.value : null;
+      break;
+    case DataKeyVariant.PendingAdmin:
+      state.pendingAdmin = entry.value.type === 'address' ? entry.value.value : null;
+      break;
+    case DataKeyVariant.MigrationVersion:
+      state.migrationVersion = entry.value.type === 'u32' ? entry.value.value : 0;
+      break;
+    case DataKeyVariant.Paused:
+      state.paused = entry.value.type === 'bool' ? entry.value.value : false;
+      break;
+    case DataKeyVariant.Name:
+      state.name = entry.value.type === 'string' ? entry.value.value : null;
+      break;
+    case DataKeyVariant.Symbol:
+      state.symbol = entry.value.type === 'string' ? entry.value.value : null;
+      break;
+    case DataKeyVariant.StorageBytes:
+      state.storageBytes = entry.value.type === 'u64' ? entry.value.value : 0;
+      break;
+    case DataKeyVariant.TotalWrapCount:
+      state.totalWrapCount = entry.value.type === 'u32' ? entry.value.value : 0;
+      break;
+    case DataKeyVariant.TotalRevoked:
+      state.totalRevoked = entry.value.type === 'u64' ? entry.value.value : 0;
+      break;
+    case DataKeyVariant.SlashThreshold:
+      state.slashThreshold = entry.value.type === 'u32' ? entry.value.value : 3;
+      break;
+    case DataKeyVariant.Wrap: {
+      if (entry.value.type !== 'wrap_record') break;
+      const user = entry.key.user;
+      let userWraps = state.wraps.get(user);
+      if (!userWraps) {
+        userWraps = new Map();
+        state.wraps.set(user, userWraps);
+      }
+      userWraps.set(entry.key.period, entry.value.value);
+      break;
+    }
+    case DataKeyVariant.WrapCount:
+      state.userCounts.set(entry.key.user, entry.value.type === 'u32' ? entry.value.value : 0);
+      break;
+    case DataKeyVariant.LatestPeriod:
+      state.userLatestPeriods.set(entry.key.user, entry.value.type === 'u64' ? entry.value.value : 0);
+      break;
+    case DataKeyVariant.UserPeriods:
+      state.userPeriods.set(entry.key.user, entry.value.type === 'u64_vec' ? entry.value.value : []);
+      break;
+    case DataKeyVariant.AliasHash:
+      state.userAliasHashes.set(entry.key.user, entry.value.type === 'bytes32' ? entry.value.value : '');
+      break;
+    case DataKeyVariant.SlashCount:
+      state.userSlashCounts.set(entry.key.user, entry.value.type === 'u32' ? entry.value.value : 0);
+      break;
+    case DataKeyVariant.Slashed:
+      state.userSlashed.set(entry.key.user, entry.value.type === 'bool' ? entry.value.value : false);
+      break;
+  }
+}
+
+export function persistStateToDB(
+  db: IndexerDB,
+  state: DerivedState,
+  contractId = state.contract_id,
+  ledgerSeq = state.ledger_seq,
+  events: ContractEvent[] = [],
+): void {
+  const persist = () => {
+    for (const event of events) {
+      if (event.failed_call) continue;
+      const typed = classifyEvent(event);
+      if (!db.markEventApplied({
+        id: event.id,
+        contract_id: event.contract_id,
+        event_type: typed.event_type,
+        ledger_seq: event.ledger,
+      })) continue;
+      db.insertEvent({
+        id: event.id,
+        contract_id: event.contract_id,
+        event_type: typed.event_type,
+        ledger_seq: event.ledger,
+        tx_hash: event.tx_hash,
+        topics_json: JSON.stringify(event.topics),
+        data_json: JSON.stringify(event.data),
+        failed_call: event.failed_call,
+      });
+    }
+    db.upsertContractState({
+      contract_id: contractId,
+      admin: state.admin,
+      admin_pubkey: state.adminPubKey,
+      pending_admin: state.pendingAdmin,
+      migration_version: state.migrationVersion,
+      is_paused: state.paused,
+      total_wrap_count: state.totalWrapCount,
+      total_revoked: state.totalRevoked,
+      storage_bytes: state.storageBytes,
+      slash_threshold: state.slashThreshold,
+      ledger_seq: ledgerSeq,
+    });
+
+    for (const [user, periodMap] of state.wraps) {
+      for (const [period, record] of periodMap) {
+        db.upsertWrap({
+          contract_id: contractId,
+          user,
+          period,
+          timestamp: record.created_at,
+          data_hash: record.data_hash,
+          archetype: record.archetype,
+          fsm_state: record.lifecycle.state,
+          fsm_updated_at: record.lifecycle.updated_at,
+          ledger_seq: ledgerSeq,
+          tx_hash: '',
+        });
+      }
+    }
+
+    const users = new Set([
+      ...state.wraps.keys(),
+      ...state.userCounts.keys(),
+      ...state.userLatestPeriods.keys(),
+      ...state.userPeriods.keys(),
+      ...state.userAliasHashes.keys(),
+      ...state.userSlashCounts.keys(),
+      ...state.userSlashed.keys(),
+    ]);
+    for (const user of users) {
+      db.upsertUserState({
+        contract_id: contractId,
+        user,
+        wrap_count: state.userCounts.get(user) ?? 0,
+        latest_period: state.userLatestPeriods.get(user) ?? null,
+        alias_hash: state.userAliasHashes.get(user) ?? null,
+        slash_count: state.userSlashCounts.get(user) ?? 0,
+        is_slashed: state.userSlashed.get(user) ?? false,
+        periods: state.userPeriods.get(user) ?? [],
+        ledger_seq: ledgerSeq,
+      });
+    }
+  };
+
+  db.commitLedger(contractId, ledgerSeq, ledgerSeq, persist);
+}
+
+export function processEventBatch(
+  state: DerivedState,
+  events: ContractEvent[],
+): { state: DerivedState; processed: number } {
+  const seen = new Set<string>();
+  let processed = 0;
+  for (const event of events) {
+    if (event.failed_call || seen.has(event.id)) continue;
+    seen.add(event.id);
+    applyEventToState(state, classifyEvent(event));
+    processed += 1;
+  }
+  state.ledger_seq = events.reduce((max, event) => Math.max(max, event.ledger), state.ledger_seq);
+  return { state, processed };
+}

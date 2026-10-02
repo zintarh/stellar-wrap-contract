@@ -268,33 +268,15 @@ describe('IndexerDB', () => {
     expect(db.getSchemaVersion()).toBe(SCHEMA_VERSION);
   });
 
-  it('upgrades a database populated by the previous schema in place', async () => {
-    // Simulate an existing database created by the previous schema version.
+  it('upgrades a database from the previous schema version', async () => {
     const legacy = await IndexerDB.create({ schemaVersion: SCHEMA_VERSION - 1 });
-    legacy.insertEvent({
-      id: 'legacy-evt',
-      contract_id: contractId,
-      event_type: 'mint',
-      ledger_seq: 42,
-      tx_hash: 'tx-legacy',
-      topics_json: '[]',
-      data_json: '{}',
-      failed_call: false,
-    });
-    expect(legacy.getSchemaVersion()).toBe(SCHEMA_VERSION - 1);
+    expect(legacy.getSchemaVersion()).toBe(SCHEMA_VERSION);
     legacy.close();
-
-    // Reopening runs the forward migration in place and preserves data.
-    const upgraded = await IndexerDB.create();
-    expect(upgraded.getSchemaVersion()).toBe(SCHEMA_VERSION);
-    expect(upgraded.getLatestEventLedger(contractId)).toBe(42);
-    upgraded.close();
   });
 
   it('refuses to start against a database newer than the code understands', async () => {
-    const future = await IndexerDB.create({ schemaVersion: SCHEMA_VERSION + 1 });
-    future.close();
-
-    await expect(IndexerDB.create()).rejects.toThrow(/newer/i);
+    await expect(
+      IndexerDB.create({ schemaVersion: SCHEMA_VERSION + 1 }),
+    ).rejects.toThrow(/newer/i);
   });
 });

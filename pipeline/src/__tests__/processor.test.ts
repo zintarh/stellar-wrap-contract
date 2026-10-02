@@ -276,11 +276,11 @@ describe('applyStorageEntryToState', () => {
   it('applies Wrap storage entry', () => {
     const state = createEmptyState('CCONTRACT', 100);
     const wrapRecord = {
-      timestamp: 1000,
+      created_at: 1000,
       data_hash: 'ab'.repeat(32),
       archetype: 'arch',
       period: 202501,
-      fsm: { state: 3 as const, updated_at: 1000 },
+      lifecycle: { state: 3 as const, updated_at: 1000 },
     };
 
     applyStorageEntryToState(state, {

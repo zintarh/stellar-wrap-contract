@@ -69,7 +69,7 @@ export function normalizeWrap(value: unknown): WrapRecord | null {
   );
 
   return {
-    timestamp: BigInt(record.timestamp as bigint | number | string),
+    createdAt: BigInt(record.created_at as bigint | number | string),
     dataHash: toHex(hashBytes),
     archetype: String(record.archetype),
     period: BigInt(record.period as bigint | number | string),
@@ -156,7 +156,7 @@ export function wrapRecordState(
     state = "burned";
   } else if (flags.revoked) {
     state = "revoked";
-  } else if (flags.optedOut || flags["opted-out"]) {
+  } else if (flags["opted-out"]) {
     state = "opted-out";
   } else if (flags.expired || isPeriodExpired(record.period, now)) {
     state = "expired";

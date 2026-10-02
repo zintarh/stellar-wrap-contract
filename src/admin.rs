@@ -80,9 +80,7 @@ pub(crate) fn initialize(e: Env, admin: Address, admin_pubkey: BytesN<32>) {
         .instance()
         .set(&DataKey::AdminPubKey, &admin_pubkey);
     // Store the initial storage schema version (v1).
-    e.storage()
-        .instance()
-        .set(&DataKey::SchemaVersion, &1u32);
+    e.storage().instance().set(&DataKey::SchemaVersion, &1u32);
     crate::events::publish_event(&e, crate::events::Event::AdminInit(admin));
 }
 
@@ -361,11 +359,7 @@ pub(crate) fn set_wrap_metadata(
         panic_with_error!(e, ContractError::NotInitialized);
     }
 
-    let mut record: WrapRecord = e
-        .storage()
-        .persistent()
-        .get(&key)
-        .unwrap();
+    let mut record: WrapRecord = e.storage().persistent().get(&key).unwrap();
     record.description = Some(description.clone());
     record.image_url = Some(image_url.clone());
 

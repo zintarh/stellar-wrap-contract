@@ -134,11 +134,23 @@ mod get_wraps_tests {
         env.invoke_contract::<()>(
             contract,
             "mint_wrap",
-            (user.clone(), period, archetype.clone(), data_hash.clone(), signature),
+            (
+                user.clone(),
+                period,
+                archetype.clone(),
+                data_hash.clone(),
+                signature,
+            ),
         );
     }
 
-    fn get_wraps(env: &Env, contract: &Address, user: &Address, start: u32, limit: u32) -> Vec<u64> {
+    fn get_wraps(
+        env: &Env,
+        contract: &Address,
+        user: &Address,
+        start: u32,
+        limit: u32,
+    ) -> Vec<u64> {
         env.invoke_contract(contract, "get_wraps", (user.clone(), start, limit))
     }
 

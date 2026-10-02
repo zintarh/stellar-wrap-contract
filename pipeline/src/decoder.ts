@@ -172,8 +172,8 @@ function decodeWrapRecord(valMap: xdr.ScMapEntry[]): WrapRecord {
     const raw = entry.val();
 
     switch (key) {
-      case 'timestamp':
-        record.timestamp = scvToU64(raw);
+      case 'created_at':
+        record.created_at = scvToU64(raw);
         break;
       case 'data_hash':
         record.data_hash = scvToBytesN(raw, 32);
@@ -184,23 +184,20 @@ function decodeWrapRecord(valMap: xdr.ScMapEntry[]): WrapRecord {
       case 'period':
         record.period = scvToU64(raw);
         break;
-      case 'fsm': {
-        const fsmMap = raw.map() ?? [];
-        record.fsm = decodeFSM(fsmMap);
+      case 'lifecycle': {
+        const lifecycleMap = raw.map() ?? [];
+        record.lifecycle = decodeFSM(lifecycleMap);
         break;
       }
-      case 'updated_at':
-        record.updated_at = scvToU64(raw);
-        break;
     }
   }
 
   return {
-    timestamp: record.timestamp as number,
+    created_at: record.created_at as number,
     data_hash: record.data_hash as string,
     archetype: record.archetype as string,
     period: record.period as number,
-    fsm: record.fsm as WrapLifecycleFSM ?? { state: 3, updated_at: record.timestamp as number },
+    lifecycle: record.lifecycle as WrapLifecycleFSM ?? { state: 3, updated_at: record.created_at as number },
   };
 }
 

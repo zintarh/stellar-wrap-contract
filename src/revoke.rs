@@ -72,10 +72,7 @@ pub(crate) fn revoke_wrap(e: Env, user: Address, period: u64, reason_hash: Bytes
             &e,
             storage_accounting::estimate_wrapcount_bytes_new(),
         );
-        storage_accounting::sub_storage_bytes(
-            &e,
-            storage_accounting::estimate_latest_bytes_new(),
-        );
+        storage_accounting::sub_storage_bytes(&e, storage_accounting::estimate_latest_bytes_new());
     } else {
         e.storage()
             .persistent()

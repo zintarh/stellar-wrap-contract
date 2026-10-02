@@ -39,19 +39,31 @@ export class SorobanFetcher {
       },
     ];
 
-    const response = await this.server.getEvents({
-      startLedger,
-      filters,
-      limit: this.eventPageSize,
-    });
-
-    const events: ContractEvent[] = (response.events || []).map((evt) =>
-      this.parseRawEvent(evt),
-    );
+    const events: ContractEvent[] = [];
+    let cursor: string | undefined;
+    let latestLedger = startLedger;
+    let pageSize: number;
+    do {
+      const response = await this.server.getEvents({
+        startLedger,
+        cursor,
+        filters,
+        limit: this.eventPageSize,
+      });
+      const page = response.events || [];
+      events.push(...page.map((event) => this.parseRawEvent(event)));
+      const previousCursor = cursor;
+      cursor = response.cursor;
+      latestLedger = response.latestLedger;
+      pageSize = page.length;
+      if (pageSize === this.eventPageSize && cursor === previousCursor) {
+        throw new Error('Soroban RPC event cursor did not advance.');
+      }
+    } while (pageSize === this.eventPageSize);
 
     return {
       events,
-      latestLedger: response.latestLedger,
+      latestLedger,
     };
   }
 

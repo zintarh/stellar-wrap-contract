@@ -22,7 +22,7 @@
 // [`opt_in`] call `user.require_auth()`, so a caller can only set or clear
 // their own flag — opt-out cannot be set on another user's behalf.
 
-use soroban_sd::{address, panic_with_error, Env};
+use soroban_sdk::{address, panic_with_error, Env};
 
 use crate::{ContractError, DataKey};
 
@@ -54,9 +54,7 @@ pub(crate) fn opt_in(e: Env, user: Address) {
 
 /// Returns `true` the user has opted out of future mints.
 pub(crate) fn is_opted_out(e: &Env, user: &Address) -> bool {
-    e.storage()
-        .persistent()
-        .has(&DataKey::OptOut(user.clone()))
+    e.storage().persistent().has(&DataKey::OptOut(user.clone()))
 }
 
 /// Panics with [ContractError::UserOptedOut] if `user` has set the opt-out
@@ -66,10 +64,7 @@ pub(crate) fn is_opted_out(e: &Env, user: &Address) -> bool {
 /// that a single opted-out item reverts the entire operation (mint batch or
 /// inbound bridge transfer).
 pub(crate) fn require_not_opted_out(e: &Env, user: &Address) {
-    if e.storage()
-        .persistent()
-        .has(&DataKey::OptOut(user.clone()))
-    {
+    if e.storage().persistent().has(&DataKey::OptOut(user.clone())) {
         panic_with_error!(e, ContractError::UserOptedOut);
     }
 }
@@ -77,7 +72,7 @@ pub(crate) fn require_not_opted_out(e: &Env, user: &Address) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sd::testutils::{Address as _, Ledger as _};
+    use soroban_sdk::testutils::{Address as _, Ledger as _};
 
     /// Round trip: mint a period, opt out, opt back in, then attempt to
     /// re-mint the same period. The opt-out flag must not erase the period

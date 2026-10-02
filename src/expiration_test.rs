@@ -86,13 +86,13 @@ fn insert_wrap_in_state(
     env.as_contract(contract_id, || {
         let wrap_key = DataKey::Wrap(user.clone(), period);
         let record = WrapRecord {
-            timestamp: updated_at,
+            created_at: updated_at,
             data_hash: BytesN::from_array(env, &[9u8; 32]),
             archetype: symbol_short!("arch"),
             period,
             description: None,
             image_url: None,
-            fsm: WrapLifecycleFSM::new(state, updated_at),
+            lifecycle: WrapLifecycleFSM::new(state, updated_at),
         };
         env.storage().persistent().set(&wrap_key, &record);
     });
@@ -135,8 +135,11 @@ fn test_expire_draft_wrap_after_deadline_succeeds() {
     client.expire_wrap(&user, &period);
 
     let wrap = client.get_wrap(&user, &period).unwrap();
-    assert_eq!(wrap.fsm.state, WrapState::Expired);
-    assert_eq!(wrap.fsm.updated_at, insertion_time + default_duration + 1);
+    assert_eq!(wrap.lifecycle.state, WrapState::Expired);
+    assert_eq!(
+        wrap.lifecycle.updated_at,
+        insertion_time + default_duration + 1
+    );
 }
 
 #[test]
@@ -171,7 +174,7 @@ fn test_expire_pending_wrap_after_deadline_succeeds() {
     client.expire_wrap(&user, &period);
 
     let wrap = client.get_wrap(&user, &period).unwrap();
-    assert_eq!(wrap.fsm.state, WrapState::Expired);
+    assert_eq!(wrap.lifecycle.state, WrapState::Expired);
 }
 
 #[test]
@@ -432,7 +435,7 @@ fn test_expire_just_past_deadline_succeeds() {
     client.expire_wrap(&user, &period);
 
     let wrap = client.get_wrap(&user, &period).unwrap();
-    assert_eq!(wrap.fsm.state, WrapState::Expired);
+    assert_eq!(wrap.lifecycle.state, WrapState::Expired);
 }
 
 // ─── Expiration event emission ──────────────────────────────────────────
@@ -575,7 +578,7 @@ fn test_custom_duration_affects_expire_behavior() {
     client.expire_wrap(&user, &period);
 
     let wrap = client.get_wrap(&user, &period).unwrap();
-    assert_eq!(wrap.fsm.state, WrapState::Expired);
+    assert_eq!(wrap.lifecycle.state, WrapState::Expired);
 }
 
 #[test]
@@ -840,11 +843,11 @@ fn test_expire_one_wrap_does_not_affect_others() {
 
     // period_a should be expired.
     let wrap_a = client.get_wrap(&user, &period_a).unwrap();
-    assert_eq!(wrap_a.fsm.state, WrapState::Expired);
+    assert_eq!(wrap_a.lifecycle.state, WrapState::Expired);
 
     // period_b should remain Active.
     let wrap_b = client.get_wrap(&user, &period_b).unwrap();
-    assert_eq!(wrap_b.fsm.state, WrapState::Active);
+    assert_eq!(wrap_b.lifecycle.state, WrapState::Active);
 }
 
 // ─── Multiple users ─────────────────────────────────────────────────────
@@ -892,9 +895,9 @@ fn test_expire_multiple_users_independently() {
 
     // user_a should be expired.
     let wrap_a = client.get_wrap(&user_a, &period).unwrap();
-    assert_eq!(wrap_a.fsm.state, WrapState::Expired);
+    assert_eq!(wrap_a.lifecycle.state, WrapState::Expired);
 
     // user_b should still be Draft (its own deadline is later).
     let wrap_b = client.get_wrap(&user_b, &period).unwrap();
-    assert_eq!(wrap_b.fsm.state, WrapState::Draft);
+    assert_eq!(wrap_b.lifecycle.state, WrapState::Draft);
 }

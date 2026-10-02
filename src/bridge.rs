@@ -1,10 +1,3 @@
-Searched for "insert_wrap_record"
-Viewed bridge.rs:240-311
-Viewed bridge.rs:160-265
-
-Here is the resolved, complete code for **`stellar-wrap-contract/src/bridge.rs`**:
-
-```rust
 use soroban_sdk::{panic_with_error, symbol_short, Address, Bytes, BytesN, Env, Symbol};
 
 use crate::{
@@ -120,7 +113,7 @@ pub(crate) fn bridge_wrap_out(
 
     let now = e.ledger().timestamp();
 
-    if !wrap_record.fsm.transition_to(WrapState::Bridged, now) {
+    if !wrap_record.lifecycle.transition_to(WrapState::Bridged, now) {
         panic_with_error!(e, ContractError::InvalidStateTransition);
     }
     e.storage().persistent().set(&wrap_key, &wrap_record);
@@ -191,7 +184,7 @@ pub(crate) fn bridge_wrap_refund(e: Env, outbound_nonce: u64) {
         .unwrap_or_else(|| panic_with_error!(e, ContractError::WrapNotFound));
 
     let now = e.ledger().timestamp();
-    if !wrap_record.fsm.restore_from_bridge(now) {
+    if !wrap_record.lifecycle.restore_from_bridge(now) {
         panic_with_error!(e, ContractError::InvalidStateTransition);
     }
 
@@ -307,11 +300,11 @@ pub(crate) fn bridge_wrap_in(
 
     if !e.storage().persistent().has(&wrap_key) {
         let record = WrapRecord {
-            timestamp: now,
+            created_at: now,
             data_hash: data_hash.clone(),
             archetype: archetype.clone(),
             period,
-            fsm: WrapLifecycleFSM::new(WrapState::Active, now),
+            lifecycle: WrapLifecycleFSM::new(WrapState::Active, now),
             description: None,
             image_url: None,
         };
@@ -400,7 +393,7 @@ pub(crate) fn bridge_wrap_in(
         }
     } else {
         let mut existing_record: WrapRecord = e.storage().persistent().get(&wrap_key).unwrap();
-        if !existing_record.fsm.restore_from_bridge(now) {
+        if !existing_record.lifecycle.restore_from_bridge(now) {
             panic_with_error!(e, ContractError::InvalidStateTransition);
         }
         e.storage().persistent().set(&wrap_key, &existing_record);
@@ -456,4 +449,3 @@ pub(crate) fn get_outbound_nonce(e: &Env) -> u64 {
     let key = DataKey::OutboundBridgeNonce;
     e.storage().instance().get(&key).unwrap_or(0)
 }
-```

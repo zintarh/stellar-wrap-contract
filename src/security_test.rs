@@ -47,7 +47,6 @@ fn sign_payload(
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #4)")]
 fn test_replay_attack_same_period_fails() {
     let env = Env::default();
     let contract_id = env.register(StellarWrapContract, ());
@@ -90,9 +89,9 @@ fn test_replay_attack_same_period_fails() {
     let wrap = client.get_wrap(&user, &period);
     assert!(wrap.is_some(), "First mint should succeed.");
 
-    // Replay attack: Try to mint again with the exact same parameters
-    // This should PANIC with WrapAlreadyExists error (#4)
-    client.mint_wrap(
+    // Replay attack: Try to mint again with the exact same parameters.
+    let balance_before = client.balance_of(&user);
+    let result = client.try_mint_wrap(
         &user,
         &period,
         &archetype,
@@ -100,12 +99,14 @@ fn test_replay_attack_same_period_fails() {
         &CURRENT_PAYLOAD_VERSION,
         &signature,
     );
+
+    assert!(result.is_err(), "replay mint must fail");
+    assert_eq!(client.balance_of(&user), balance_before);
 }
 
 /// Test 2: Replay Attack with Different Hash (but same period)
 /// Even with a different hash, the same period should be rejected
 #[test]
-#[should_panic(expected = "Error(Contract, #4)")]
 fn test_replay_attack_different_hash_same_period_fails() {
     let env = Env::default();
     let contract_id = env.register(StellarWrapContract, ());
@@ -156,9 +157,9 @@ fn test_replay_attack_different_hash_same_period_fails() {
         CURRENT_PAYLOAD_VERSION,
     );
 
-    // Try to mint again for the same period with a different hash
-    // This should still fail - period is already used
-    client.mint_wrap(
+    // Try to mint again for the same period with a different hash.
+    let balance_before = client.balance_of(&user);
+    let result = client.try_mint_wrap(
         &user,
         &period,
         &archetype,
@@ -166,6 +167,9 @@ fn test_replay_attack_different_hash_same_period_fails() {
         &CURRENT_PAYLOAD_VERSION,
         &signature_2,
     );
+
+    assert!(result.is_err(), "duplicate-period mint must fail");
+    assert_eq!(client.balance_of(&user), balance_before);
 }
 
 /// Test 3: Multiple Valid Periods Work Correctly
@@ -670,7 +674,7 @@ fn test_timestamp_is_from_ledger_not_user() {
 
     // Verify timestamp matches ledger, not any user-provided value
     assert_eq!(
-        wrap.timestamp, 1000000,
+        wrap.created_at, 1000000,
         "Timestamp should come from the ledger."
     );
 
@@ -702,7 +706,7 @@ fn test_timestamp_is_from_ledger_not_user() {
 
     let wrap_2 = client.get_wrap(&user, &period_2).unwrap();
     assert_eq!(
-        wrap_2.timestamp, 2000000,
+        wrap_2.created_at, 2000000,
         "Second timestamp should match the new ledger time."
     );
 }
@@ -1091,12 +1095,18 @@ fn test_update_admin_clears_pending_proposal() {
     client.propose_admin(&proposed_admin);
 
     // BEFORE update_admin: Verify pending proposal exists
-    assert_eq!(client.get_pending_admin().unwrap(), proposed_admin,
-               "pending proposal should exist before update_admin");
+    assert_eq!(
+        client.get_pending_admin().unwrap(),
+        proposed_admin,
+        "pending proposal should exist before update_admin"
+    );
 
     // BEFORE update_admin: Verify current admin is unchanged
-    assert_eq!(client.get_admin().unwrap(), admin,
-               "current admin should be unchanged before update_admin");
+    assert_eq!(
+        client.get_admin().unwrap(),
+        admin,
+        "current admin should be unchanged before update_admin"
+    );
 
     // === ACTION: Bypass two-step flow using single-step update_admin ===
     // This one-step call should clear any in-flight PendingAdmin proposal
@@ -1105,18 +1115,25 @@ fn test_update_admin_clears_pending_proposal() {
     // === VERIFICATION: Verify all expected state changes ===
 
     // 1. NEWLY ASSIGNED ADMIN IS CORRECT
-    assert_eq!(client.get_admin().unwrap(), direct_new_admin,
-               "admin should be updated to the new admin");
+    assert_eq!(
+        client.get_admin().unwrap(),
+        direct_new_admin,
+        "admin should be updated to the new admin"
+    );
 
     // 2. PENDING PROPOSAL IS CLEARED (no orphaned state)
-    assert!(client.get_pending_admin().is_none(),
-            "pending proposal should be cleared after update_admin");
+    assert!(
+        client.get_pending_admin().is_none(),
+        "pending proposal should be cleared after update_admin"
+    );
 
     // 3. NO STALE PENDING-ADMIN STATE REMAINS
     // Verify by attempting to actually retrieve and confirm absence
     let pending_after = client.get_pending_admin();
-    assert!(pending_after.is_none(),
-            "no stale pending-admin state should remain; storage should be clean");
+    assert!(
+        pending_after.is_none(),
+        "no stale pending-admin state should remain; storage should be clean"
+    );
 
     // 4. VERIFY BYPASSED PROPOSED ADMIN CANNOT ACCEPT
     // The proposed_admin who was bypassed should NOT be able to call accept_admin
@@ -1124,15 +1141,20 @@ fn test_update_admin_clears_pending_proposal() {
     let accept_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         client.accept_admin();
     }));
-    assert!(accept_result.is_err(),
-            "accept_admin should fail when no pending proposal exists");
+    assert!(
+        accept_result.is_err(),
+        "accept_admin should fail when no pending proposal exists"
+    );
 
     // 5. VERIFY NEW ADMIN CAN MAKE NEW PROPOSALS
     // The new admin should be able to create a fresh proposal
     let another_admin = Address::generate(&env);
     client.propose_admin(&another_admin);
-    assert_eq!(client.get_pending_admin().unwrap(), another_admin,
-               "new admin should be able to propose a new transfer");
+    assert_eq!(
+        client.get_pending_admin().unwrap(),
+        another_admin,
+        "new admin should be able to propose a new transfer"
+    );
 }
 
 /// Test 20: get_pending_admin Returns None When No Proposal
@@ -1255,10 +1277,17 @@ fn test_all_mutating_entrypoints_honor_pause() {
     assert!(res.is_err(), "transfer_wrap should fail when paused");
 
     let res = client.try_backfill_wrap_periods(&user, &soroban_sdk::vec![&env, 202401]);
-    assert!(res.is_err(), "backfill_wrap_periods should fail when paused");
+    assert!(
+        res.is_err(),
+        "backfill_wrap_periods should fail when paused"
+    );
 
-    let res = client.try_transition_wrap_state(&user, &202401, &crate::storage_types::WrapState::Expired);
-    assert!(res.is_err(), "transition_wrap_state should fail when paused");
+    let res =
+        client.try_transition_wrap_state(&user, &202401, &crate::storage_types::WrapState::Expired);
+    assert!(
+        res.is_err(),
+        "transition_wrap_state should fail when paused"
+    );
 
     let res = client.try_expire_wrap(&user, &202401);
     assert!(res.is_err(), "expire_wrap should fail when paused");
@@ -1339,10 +1368,9 @@ fn test_bridge_wrap_out_nonce_overflow_asserts_arithmetic_overflow() {
     );
 
     env.as_contract(&contract_id, || {
-        env.storage().instance().set(
-            &Symbol::new(&env, "outbound_nonce"),
-            &u32::MAX,
-        );
+        env.storage()
+            .instance()
+            .set(&Symbol::new(&env, "outbound_nonce"), &u32::MAX);
     });
 
     let result = client.try_bridge_wrap_out(&user, &1, &Bytes::new(&env), &period);

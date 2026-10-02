@@ -4,8 +4,8 @@ use alloc::vec;
 use ed25519_dalek::{Signature, VerifyingKey};
 use soroban_sdk::{contracttype, xdr::ToXdr, Address, Bytes, BytesN, Env, Symbol};
 
-use alloc::vec;
 use crate::ContractError;
+use alloc::vec;
 
 /// Domain separator used for mint signatures.
 ///
@@ -316,6 +316,214 @@ mod tests {
     use soroban_sdk::{symbol_short, testutils::Address as _, Address, Bytes, BytesN, Env, Symbol};
 
     use super::*;
-    use crate::
+    use crate::{StellarWrapContract, StellarWrapContractClient};
 
-/* … truncated 11755 chars — edit only what you need near the top … */
+    fn sign_payload(
+        env: &Env,
+        signer: &SigningKey,
+        contract: &Address,
+        user: &Address,
+        period: u64,
+        archetype: &Symbol,
+        data_hash: &BytesN<32>,
+        payload_version: u32,
+    ) -> BytesN<64> {
+        let payload = construct_mint_payload(
+            env,
+            contract,
+            user,
+            period,
+            archetype,
+            data_hash,
+            payload_version,
+        );
+        let mut output = vec![0u8; payload.len() as usize];
+        payload.copy_into_slice(&mut output);
+        BytesN::from_array(env, &signer.sign(&output).to_bytes())
+    }
+
+    #[test]
+    fn test_construct_mint_payload_has_expected_byte_layout() {
+        let env = Env::default();
+        let contract_id = env.register(StellarWrapContract, ());
+        let user = Address::generate(&env);
+        let archetype = symbol_short!("arch");
+        let data_hash = BytesN::from_array(&env, &[42u8; 32]);
+        let period = 202512u64;
+
+        let payload =
+            construct_mint_payload(&env, &contract_id, &user, period, &archetype, &data_hash, 1);
+        let mut expected = Bytes::new(&env);
+        expected.append(&Bytes::from_array(&env, MINT_DOMAIN_SEPARATOR));
+        expected.append(
+            &MintPayload {
+                archetype: archetype.clone(),
+                contract_id: contract_id.clone(),
+                data_hash: data_hash.clone(),
+                payload_version: 1,
+                period,
+                user: user.clone(),
+            }
+            .to_xdr(&env),
+        );
+        assert_eq!(payload, expected);
+    }
+
+    #[test]
+    fn test_verify_mint_signature_accepts_valid_signature() {
+        let env = Env::default();
+        let contract_id = env.register(StellarWrapContract, ());
+        let user = Address::generate(&env);
+        let archetype = symbol_short!("arch");
+        let data_hash = BytesN::from_array(&env, &[7u8; 32]);
+        let period = 202601u64;
+        let signing_key = SigningKey::from_bytes(&[11u8; 32]);
+        let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+        let signature = sign_payload(
+            &env,
+            &signing_key,
+            &contract_id,
+            &user,
+            period,
+            &archetype,
+            &data_hash,
+            1,
+        );
+
+        assert!(verify_mint_signature(
+            &env,
+            &admin_pubkey,
+            &contract_id,
+            &user,
+            period,
+            &archetype,
+            &data_hash,
+            1,
+            &signature,
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn test_verify_mint_signature_rejects_unsupported_version() {
+        let env = Env::default();
+        let contract_id = env.register(StellarWrapContract, ());
+        let user = Address::generate(&env);
+        let archetype = symbol_short!("arch");
+        let data_hash = BytesN::from_array(&env, &[8u8; 32]);
+        let signing_key = SigningKey::from_bytes(&[12u8; 32]);
+        let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+        let signature = sign_payload(
+            &env,
+            &signing_key,
+            &contract_id,
+            &user,
+            202602,
+            &archetype,
+            &data_hash,
+            2,
+        );
+
+        assert_eq!(
+            verify_mint_signature(
+                &env,
+                &admin_pubkey,
+                &contract_id,
+                &user,
+                202602,
+                &archetype,
+                &data_hash,
+                2,
+                &signature,
+            ),
+            Err(ContractError::InvalidSignature)
+        );
+    }
+
+    #[test]
+    fn test_verify_mint_signature_rejects_wrong_key() {
+        let env = Env::default();
+        let contract_id = env.register(StellarWrapContract, ());
+        let user = Address::generate(&env);
+        let archetype = symbol_short!("arch");
+        let data_hash = BytesN::from_array(&env, &[9u8; 32]);
+        let signing_key = SigningKey::from_bytes(&[13u8; 32]);
+        let wrong_signing_key = SigningKey::from_bytes(&[14u8; 32]);
+        let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+        let wrong_signature = sign_payload(
+            &env,
+            &wrong_signing_key,
+            &contract_id,
+            &user,
+            202603,
+            &archetype,
+            &data_hash,
+            1,
+        );
+
+        assert!(verify_mint_signature(
+            &env,
+            &admin_pubkey,
+            &contract_id,
+            &user,
+            202603,
+            &archetype,
+            &data_hash,
+            1,
+            &wrong_signature,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn test_verify_batch_aggregated_signature_success() {
+        let env = Env::default();
+        let contract_id = env.register(StellarWrapContract, ());
+        let archetype = symbol_short!("arch");
+        let data_hash = BytesN::from_array(&env, &[1u8; 32]);
+        let mut items = soroban_sdk::Vec::new(&env);
+        for (user, period) in [
+            (Address::generate(&env), 202601),
+            (Address::generate(&env), 202602),
+        ] {
+            items.push_back(crate::storage_types::BatchWrapItem {
+                user,
+                period,
+                archetype: archetype.clone(),
+                data_hash: data_hash.clone(),
+                payload_version: 1,
+                signature: BytesN::from_array(&env, &[0u8; 64]),
+            });
+        }
+        let signing_key = SigningKey::from_bytes(&[25u8; 32]);
+        let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+        let payload = construct_batch_mint_payload(&env, &contract_id, &items, 1);
+        let mut output = vec![0u8; payload.len() as usize];
+        payload.copy_into_slice(&mut output);
+        let signature = BytesN::from_array(&env, &signing_key.sign(&output).to_bytes());
+
+        assert!(verify_batch_aggregated_signature(
+            &env,
+            &admin_pubkey,
+            &contract_id,
+            &items,
+            1,
+            &signature,
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn test_verify_ed25519_rejects_oversized_payload() {
+        let env = Env::default();
+        let signing_key = SigningKey::from_bytes(&[99u8; 32]);
+        let pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+        let dummy_sig = BytesN::from_array(&env, &[0u8; 64]);
+        let oversized = Bytes::from_slice(&env, &vec![0u8; MAX_VERIFY_PAYLOAD_BYTES + 1]);
+
+        assert_eq!(
+            verify_ed25519(&pubkey, &oversized, &dummy_sig),
+            Err(ContractError::InvalidSignature)
+        );
+    }
+}

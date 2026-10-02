@@ -1,9 +1,3 @@
-use soroban_sdk::{Address, BytesN, Env};
-
-use crate::constants::TTL_ONE_YEAR;
-use crate::errors::Error;
-use crate::DataKey;
-
 //! Alias semantics
 //!
 //! An *alias* is a 32-byte hash that a user may attach to their own address.
@@ -29,6 +23,12 @@ use crate::DataKey;
 //!    user cannot take over a label that another user has registered.
 //!
 //! Both violations are rejected with `Error::AliasConflict`.
+
+use soroban_sdk::{Address, BytesN, Env};
+
+use crate::constants::TTL_ONE_YEAR;
+use crate::errors::Error;
+use crate::DataKey;
 
 /// Store a 32-byte alias hash for the calling user.
 ///

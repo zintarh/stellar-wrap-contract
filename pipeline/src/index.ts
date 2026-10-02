@@ -303,7 +303,7 @@ async function main(): Promise<void> {
   let lastProcessedLedger = startLedger - 1;
 
   while (true) {
-    const batch = await fetcher.fetchEvents(startLedger, config.event_page_size);
+    const batch = await fetcher.fetchEvents(startLedger);
 
     if (batch.events.length === 0) {
       await new Promise((resolve) => setTimeout(resolve, config.poll_interval_ms));
@@ -318,7 +318,7 @@ async function main(): Promise<void> {
       lastProcessedLedger,
     );
 
-    persistStateToDB(db, state, config.contract_id, batchLedger);
+    persistStateToDB(db, state, config.contract_id, batchLedger, batch.events);
     lastProcessedLedger = batchLedger;
     startLedger = batchLedger + 1;
 
