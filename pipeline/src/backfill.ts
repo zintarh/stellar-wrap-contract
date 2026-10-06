@@ -1,4 +1,5 @@
 import { SorobanFetcher } from './fetcher';
+import { isTransientRpcError } from './retry';
 import { IndexerDB } from './db';
 import { processEventBatch, createEmptyState, persistStateToDB } from './processor';
 import type { DerivedState } from './types';
@@ -52,8 +53,12 @@ export async function backfillEvents(opts: BackfillOptions): Promise<{
       currentLedger = nextLedger;
 
     } catch (err) {
+      if (!isTransientRpcError(err)) {
+        // Permanent error (e.g. invalid contract id) will fail forever — don't retry.
+        throw err;
+      }
       console.error(`Error at ledger ${currentLedger}:`, err);
-      // Wait and retry
+      // Transient outage: keep the batch alive so we catch up when RPC recovers.
       await new Promise((resolve) => setTimeout(resolve, 2000));
     }
   }
