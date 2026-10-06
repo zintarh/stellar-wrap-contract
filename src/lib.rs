@@ -753,11 +753,6 @@ impl StellarWrapContract {
         bridge::set_bridge_relayers(&e, chain_id, relayers, threshold);
     }
 
-    /// Admin: Set the legacy single bridge relayer address (for refund auth).
-    pub fn set_bridge_relayer(e: Env, relayer: Address) {
-        bridge::set_bridge_relayer(&e, relayer);
-    }
-
     /// Returns the configured cross-chain token bridge relayers for a given chain.
     pub fn get_bridge_relayers(e: Env, chain_id: u32) -> Option<storage_types::BridgeRelayerSet> {
         bridge::get_bridge_relayers(&e, chain_id)
