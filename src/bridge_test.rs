@@ -8,6 +8,7 @@ use ed25519_dalek::{Signer, SigningKey};
 use soroban_sdk::{symbol_short, testutils::Address as _, Address, Bytes, BytesN, Env, Symbol};
 
 use super::*;
+use crate::mint::CURRENT_PAYLOAD_VERSION;
 use crate::signature::{construct_inbound_bridge_payload, construct_mint_payload};
 
 fn setup_test_env<'a>(
@@ -40,7 +41,7 @@ fn sign_mint_payload(
     archetype: &Symbol,
     data_hash: &BytesN<32>,
 ) -> BytesN<64> {
-    let payload = construct_mint_payload(env, contract, user, period, archetype, data_hash, 1);
+    let payload = construct_mint_payload(env, contract, user, period, archetype, data_hash, 2, u64::MAX);
     let mut out = [0u8; 512];
     let len = payload.len() as usize;
     payload.copy_into_slice(&mut out[..len]);
@@ -222,7 +223,7 @@ fn test_bridge_wrap_out_success() {
         &data_hash,
     );
 
-    client.mint_wrap(&user, &period, &archetype, &data_hash, &1, &signature);
+    client.mint_wrap(&user, &period, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &signature);
 
     let destination_chain = 1u32;
     client.set_chain_status(&destination_chain, &true);
@@ -268,7 +269,7 @@ fn test_bridge_wrap_out_disabled_chain_fails() {
         &archetype,
         &data_hash,
     );
-    client.mint_wrap(&user, &period, &archetype, &data_hash, &1, &signature);
+    client.mint_wrap(&user, &period, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &signature);
 
     let destination_chain = 1u32;
 
@@ -601,7 +602,7 @@ fn test_bridge_paused_blocks_operations() {
         &data_hash,
     );
 
-    client.mint_wrap(&user, &period, &archetype, &data_hash, &1, &sig);
+    client.mint_wrap(&user, &period, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &sig);
 
     client.pause();
 
@@ -674,7 +675,7 @@ fn test_mint_wrap_and_bridge_wrap_in_period_validation_parity() {
         );
 
         let mint_result = catch_unwind(AssertUnwindSafe(|| {
-            client.mint_wrap(&mint_user, &period, &archetype, &data_hash, &1, &sig);
+            client.mint_wrap(&mint_user, &period, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &sig);
         }));
 
         let nonce = period; // unique per iteration
@@ -803,7 +804,7 @@ fn test_bridge_wrap_in_mint_and_transfer_invariants() {
         &archetype,
         &data_hash,
     );
-    client.mint_wrap(&recipient, &period2, &archetype, &data_hash, &1, &sig2);
+    client.mint_wrap(&recipient, &period2, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &sig2);
 
     // 3. transfer_wrap of the bridged-in record succeeds
     client.transfer_wrap(&recipient, &other_user, &period1);
@@ -878,7 +879,7 @@ fn test_bridge_wrap_refund_pending_success() {
         &data_hash,
     );
 
-    client.mint_wrap(&user, &period, &archetype, &data_hash, &1, &sig);
+    client.mint_wrap(&user, &period, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &sig);
 
     let dest_chain = 137u32;
     client.set_chain_status(&dest_chain, &true);
@@ -924,7 +925,7 @@ fn test_bridge_wrap_refund_completed_request_fails() {
         &data_hash,
     );
 
-    client.mint_wrap(&user, &period, &archetype, &data_hash, &1, &sig);
+    client.mint_wrap(&user, &period, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &sig);
 
     let dest_chain = 137u32;
     client.set_chain_status(&dest_chain, &true);
@@ -972,7 +973,7 @@ fn test_bridge_wrap_refund_double_refund_fails() {
         &data_hash,
     );
 
-    client.mint_wrap(&user, &period, &archetype, &data_hash, &1, &sig);
+    client.mint_wrap(&user, &period, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &sig);
 
     let dest_chain = 137u32;
     client.set_chain_status(&dest_chain, &true);
@@ -1021,7 +1022,7 @@ fn test_bridge_wrap_refund_unauthorized_caller_fails() {
         &data_hash,
     );
 
-    client.mint_wrap(&user, &period, &archetype, &data_hash, &1, &sig);
+    client.mint_wrap(&user, &period, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &sig);
 
     let dest_chain = 137u32;
     client.set_chain_status(&dest_chain, &true);
@@ -1062,7 +1063,7 @@ fn test_bridge_wrap_refund_immediate_call_fails() {
         &data_hash,
     );
 
-    client.mint_wrap(&user, &period, &archetype, &data_hash, &1, &sig);
+    client.mint_wrap(&user, &period, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &sig);
 
     let dest_chain = 137u32;
     client.set_chain_status(&dest_chain, &true);
@@ -1105,7 +1106,7 @@ fn test_bridged_wrap_blocks_escape_routes_and_supports_refund() {
         &archetype,
         &data_hash,
     );
-    client.mint_wrap(&user, &period, &archetype, &data_hash, &1, &signature);
+    client.mint_wrap(&user, &period, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &signature);
 
     let destination_chain = 1u32;
     client.set_chain_status(&destination_chain, &true);
@@ -1188,7 +1189,8 @@ fn test_bridge_wrap_in_then_mint_succeeds() {
         &mint_period,
         &mint_archetype,
         &mint_hash,
-        &1,
+        &CURRENT_PAYLOAD_VERSION,
+        &u64::MAX,
         &signature,
     );
 
@@ -1417,7 +1419,7 @@ fn test_bridge_wrap_in_fresh_recipient_then_mint_wrap_succeeds() {
         &data_hash,
     );
 
-    client.mint_wrap(&recipient, &period2, &archetype, &data_hash, &1, &sig);
+    client.mint_wrap(&recipient, &period2, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &sig);
     assert_eq!(client.balance_of(&recipient), 2);
 }
 
@@ -1709,7 +1711,7 @@ fn test_bridge_wrap_out_rejects_transfer_wrap() {
         &archetype,
         &data_hash,
     );
-    client.mint_wrap(&user, &period, &archetype, &data_hash, &1, &signature);
+    client.mint_wrap(&user, &period, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &signature);
 
     let destination_chain = 1u32;
     client.set_chain_status(&destination_chain, &true);
@@ -1743,7 +1745,7 @@ fn test_bridge_wrap_out_rejects_burn_wrap() {
         &archetype,
         &data_hash,
     );
-    client.mint_wrap(&user, &period, &archetype, &data_hash, &1, &signature);
+    client.mint_wrap(&user, &period, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &signature);
 
     let destination_chain = 1u32;
     client.set_chain_status(&destination_chain, &true);
@@ -1776,7 +1778,7 @@ fn test_bridge_wrap_out_rejects_second_bridge_wrap_out() {
         &archetype,
         &data_hash,
     );
-    client.mint_wrap(&user, &period, &archetype, &data_hash, &1, &signature);
+    client.mint_wrap(&user, &period, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &signature);
 
     let destination_chain = 1u32;
     client.set_chain_status(&destination_chain, &true);
@@ -1809,7 +1811,7 @@ fn test_bridge_wrap_out_rejects_transition_to_active() {
         &archetype,
         &data_hash,
     );
-    client.mint_wrap(&user, &period, &archetype, &data_hash, &1, &signature);
+    client.mint_wrap(&user, &period, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &signature);
 
     let destination_chain = 1u32;
     client.set_chain_status(&destination_chain, &true);
@@ -1842,7 +1844,7 @@ fn test_get_outbound_bridge_request_fields() {
         &archetype,
         &data_hash,
     );
-    client.mint_wrap(&user, &period, &archetype, &data_hash, &1, &signature);
+    client.mint_wrap(&user, &period, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &signature);
 
     let destination_chain = 1u32;
     client.set_chain_status(&destination_chain, &true);

@@ -57,7 +57,7 @@ fn setup_minted_wrap(
         &archetype,
         &hash,
     );
-    client.mint_wrap(&user, &period, &archetype, &hash, &1u32, &signature);
+    client.mint_wrap(&user, &period, &archetype, &hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &signature);
 
     (client, contract_id, admin, user)
 }

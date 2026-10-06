@@ -13,6 +13,7 @@ use soroban_sdk::{
 use crate::signature::{construct_batch_mint_payload, construct_mint_payload};
 
 /// Signs the same payload layout the contract rebuilds in `mint::mint_wrap`.
+/// Uses payload version 2 and sets valid_until to u64::MAX (never expires).
 #[allow(dead_code)]
 pub(crate) fn sign_payload(
     env: &Env,
@@ -23,7 +24,7 @@ pub(crate) fn sign_payload(
     archetype: &Symbol,
     data_hash: &BytesN<32>,
 ) -> BytesN<64> {
-    sign_payload_versioned(env, signer, contract, user, period, archetype, data_hash, 1)
+    sign_payload_versioned(env, signer, contract, user, period, archetype, data_hash, 2, u64::MAX)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -36,6 +37,7 @@ pub(crate) fn sign_payload_versioned(
     archetype: &Symbol,
     data_hash: &BytesN<32>,
     payload_version: u32,
+    valid_until: u64,
 ) -> BytesN<64> {
     let payload = construct_mint_payload(
         env,
@@ -45,6 +47,7 @@ pub(crate) fn sign_payload_versioned(
         archetype,
         data_hash,
         payload_version,
+        valid_until,
     );
     let len = payload.len() as usize;
     let mut out = vec![0u8; len];
@@ -132,7 +135,7 @@ mod get_wraps_tests {
         env.invoke_contract::<()>(
             contract,
             "mint_wrap",
-            (user.clone(), period, archetype.clone(), data_hash.clone(), signature),
+            (user.clone(), period, archetype.clone(), data_hash.clone(), crate::mint::CURRENT_PAYLOAD_VERSION, u64::MAX, signature),
         );
     }
 

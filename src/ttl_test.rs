@@ -103,6 +103,7 @@ fn test_extend_ttl_extends_expiry() {
         &archetype,
         &data_hash,
         &CURRENT_PAYLOAD_VERSION,
+        &u64::MAX,
         &signature,
     );
 
@@ -159,6 +160,7 @@ fn test_extend_ttl_post_revocation() {
         &archetype,
         &data_hash,
         &CURRENT_PAYLOAD_VERSION,
+        &u64::MAX,
         &signature,
     );
 

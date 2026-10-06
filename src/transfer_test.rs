@@ -72,7 +72,7 @@ fn mint(fixture: &Fixture, owner: &Address, period: u64, hash_byte: u8) {
         &archetype,
         &data_hash,
     );
-    client.mint_wrap(owner, &period, &archetype, &data_hash, &1u32, &signature);
+    client.mint_wrap(owner, &period, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &signature);
 }
 
 #[test]
@@ -353,9 +353,7 @@ fn legacy_owner_must_be_backfilled_before_another_mint() {
             &fixture.from,
             &202402,
             &archetype,
-            &data_hash,
-            &1u32,
-            &signature
+            &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &signature
         )
         .is_err());
     assert!(client.get_wrap(&fixture.from, &202402).is_none());
@@ -366,9 +364,7 @@ fn legacy_owner_must_be_backfilled_before_another_mint() {
         &fixture.from,
         &202402,
         &archetype,
-        &data_hash,
-        &1u32,
-        &signature,
+        &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &signature,
     );
     assert_eq!(client.balance_of(&fixture.from), 2);
 }

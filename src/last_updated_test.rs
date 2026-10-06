@@ -33,7 +33,7 @@ fn mint_wrap_at_current_time(
         &archetype,
         &data_hash,
     );
-    client.mint_wrap(user, &period, &archetype, &data_hash, &1u32, &signature);
+    client.mint_wrap(user, &period, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &signature);
 }
 
 fn setup(env: &Env, client: &StellarWrapContractClient) -> (SigningKey, Address, Address) {

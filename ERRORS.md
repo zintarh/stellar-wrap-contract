@@ -20,12 +20,20 @@ The codes are defined by the Rust `ContractError` enum in `src/lib.rs`.
 | 4 | `WrapAlreadyExists` | A wrap record already exists for the `(user, period)` pair | Retrying the same mint, or attempting to mint twice for same user+period | 1) Check whether `get_wrap(user, period)` already returns a record. 2) If your UI retries, make the client idempotent. 3) If you intended a new wrap, use a new `period`. |
 | 5 | `InvalidSignature` | Ed25519 signature verification failed against the contract's admin public key | - Wrong signature for the payload
 - Wrong `contract_id` / payload fields
-- Signature generated for a different user/period/archetype/data_hash | 1) Regenerate the signature using the correct canonical payload (see "Payload & signing notes" below).
+- Signature generated for a different user/period/archetype/data_hash
+- **v1 payload submitted** — `CURRENT_PAYLOAD_VERSION` was bumped to 2 and old payloads are now rejected unconditionally | 1) Regenerate the signature using the correct canonical v2 payload (see `docs/signing-payload.md`), including the new `valid_until` field and `payload_version = 2`.
 2) Confirm the signature corresponds to the correct contract instance (`contract_id` / `current_contract_address()`).
-3) Confirm you sign for the correct `user`, `period`, `archetype`, and `data_hash`.
-4) Ensure you pass the 64-byte signature bytes (not base64/hex-decoded to the wrong length). |
+3) Confirm you sign for the correct `user`, `period`, `archetype`, `data_hash`, and `valid_until`.
+4) Ensure you pass the 64-byte signature bytes (not base64/hex-decoded to the wrong length).
+5) If you recently upgraded the contract, verify your backend migrated from payload v1 to v2. |
 | 6 | `InvalidPeriod` | The period value is malformed or out of range | Period does not follow `YYYYMM` format (year 2024–2100, month 01–12) | Ensure `period` uses a valid year (2024–2100) and month (01–12). |
 | 7 | `WrapNotFound` | A wrap record was not found for the `(user, period)` pair | Revoking a wrap that never existed, or period mismatch | 1) Use `get_wrap(user, period)` to confirm existence. 2) Ensure you are passing the exact same `period` value used when the wrap was minted. 3) If the record may have been revoked, mint again or fetch the correct period. |
+| 57 | `SignatureExpired` | The mint signature's `valid_until` ledger timestamp has been exceeded (signature is no longer valid) | - The user submitted a mint transaction too slowly and the short-lived bearer signature expired
+- A cached or leaked signature from a backend log/support ticket was replayed well after its intended lifetime
+- `valid_until` was set too aggressively (e.g. 10 seconds, slower than the actual submit-to-ledger latency) | 1) Request a **fresh signature** from the backend signing service. The backend should issue signatures with `valid_until = now + T` where `T` covers the expected submit-to-ledger window plus some buffer (e.g. 15–30 minutes, not days).
+2) If you are building a UI, surface this error as "Your link has expired. Please request a new one." rather than a generic crypto failure.
+3) If you are the signing service, check that your clock is roughly in sync with the Stellar ledger (the contract compares `valid_until` against `e.ledger().timestamp()`, not wall-clock time on the signer).
+4) For one-off manual ops, `u64::MAX` is a legal "never expires" value — avoid it for automated paths, but it is acceptable for backfills. |
 
 ---
 

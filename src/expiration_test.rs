@@ -901,3 +901,201 @@ fn test_expire_multiple_users_independently() {
     let wrap_b = client.get_wrap(&user_b, &period).unwrap();
     assert_eq!(wrap_b.lifecycle.state, WrapState::Draft);
 }
+
+// ─── Signature-expiry deadline edge cases ────────────────────────────────
+//
+// The mint-entry gate is `ledger.timestamp() > valid_until`, i.e. the deadline
+// is an INCLUSIVE upper bound.  The following three tests pin the behaviour at
+// the three interesting points around the boundary so a future refactor cannot
+// silently flip the strictness of the comparison.
+
+mod signature_expiry {
+    use super::*;
+    use crate::mint::CURRENT_PAYLOAD_VERSION;
+    use crate::signature::construct_mint_payload;
+    use ed25519_dalek::{Signer, SigningKey};
+
+    const VALID_UNTIL: u64 = 1_000_000u64;
+
+    #[allow(clippy::too_many_arguments)]
+    fn sign_payload(
+        env: &Env,
+        signer: &SigningKey,
+        contract: &Address,
+        user: &Address,
+        period: u64,
+        archetype: &Symbol,
+        data_hash: &BytesN<32>,
+        valid_until: u64,
+    ) -> BytesN<64> {
+        let payload = construct_mint_payload(
+            env,
+            contract,
+            user,
+            period,
+            archetype,
+            data_hash,
+            CURRENT_PAYLOAD_VERSION,
+            valid_until,
+        );
+
+        let mut buf = [0u8; 512];
+        let len = payload.len() as usize;
+        payload.copy_into_slice(&mut buf[..len]);
+
+        let signature = signer.sign(&buf[..len]);
+        BytesN::from_array(env, &signature.to_bytes())
+    }
+
+    /// One ledger second *before* `valid_until` → signature is fully usable.
+    #[test]
+    fn test_signature_expiry_just_before_deadline_succeeds() {
+        let env = Env::default();
+        let contract_id = env.register(StellarWrapContract, ());
+        let client = StellarWrapContractClient::new(&env, &contract_id);
+
+        let signing_key = SigningKey::from_bytes(&[21u8; 32]);
+        let admin_pubkey =
+            BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+        let admin = Address::generate(&env);
+        let user = Address::generate(&env);
+
+        env.mock_all_auths();
+        client.initialize(&admin, &admin_pubkey);
+
+        let data_hash = BytesN::from_array(&env, &[33u8; 32]);
+        let archetype = symbol_short!("exp_t1");
+        let period = 202603u64;
+
+        let signature = sign_payload(
+            &env,
+            &signing_key,
+            &contract_id,
+            &user,
+            period,
+            &archetype,
+            &data_hash,
+            VALID_UNTIL,
+        );
+
+        // Just before the inclusive deadline.
+        env.ledger().with_mut(|li| {
+            li.timestamp = VALID_UNTIL - 1; // 999_999
+        });
+
+        client.mint_wrap(
+            &user,
+            &period,
+            &archetype,
+            &data_hash,
+            &CURRENT_PAYLOAD_VERSION,
+            &VALID_UNTIL,
+            &signature,
+        );
+
+        let wrap = client.get_wrap(&user, &period).expect("wrap must exist");
+        assert_eq!(wrap.period, period);
+        assert_eq!(wrap.fsm.state, WrapState::Active);
+    }
+
+    /// Exactly at `valid_until` → signature still accepted because the check
+    /// is strict greater-than (`timestamp > valid_until`).
+    #[test]
+    fn test_signature_expiry_at_exact_deadline_succeeds() {
+        let env = Env::default();
+        let contract_id = env.register(StellarWrapContract, ());
+        let client = StellarWrapContractClient::new(&env, &contract_id);
+
+        let signing_key = SigningKey::from_bytes(&[22u8; 32]);
+        let admin_pubkey =
+            BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+        let admin = Address::generate(&env);
+        let user = Address::generate(&env);
+
+        env.mock_all_auths();
+        client.initialize(&admin, &admin_pubkey);
+
+        let data_hash = BytesN::from_array(&env, &[34u8; 32]);
+        let archetype = symbol_short!("exp_t2");
+        let period = 202604u64;
+
+        let signature = sign_payload(
+            &env,
+            &signing_key,
+            &contract_id,
+            &user,
+            period,
+            &archetype,
+            &data_hash,
+            VALID_UNTIL,
+        );
+
+        // Exactly on the inclusive boundary.
+        env.ledger().with_mut(|li| {
+            li.timestamp = VALID_UNTIL; // 1_000_000
+        });
+
+        client.mint_wrap(
+            &user,
+            &period,
+            &archetype,
+            &data_hash,
+            &CURRENT_PAYLOAD_VERSION,
+            &VALID_UNTIL,
+            &signature,
+        );
+
+        let wrap = client.get_wrap(&user, &period).expect("wrap must exist");
+        assert_eq!(wrap.period, period);
+        assert_eq!(wrap.fsm.state, WrapState::Active);
+    }
+
+    /// One ledger second *after* `valid_until` → the signature must be
+    /// rejected with `SignatureExpired` (contract error #57).
+    #[test]
+    #[should_panic(expected = "Error(Contract, #57)")]
+    fn test_signature_expiry_just_after_deadline_fails() {
+        let env = Env::default();
+        let contract_id = env.register(StellarWrapContract, ());
+        let client = StellarWrapContractClient::new(&env, &contract_id);
+
+        let signing_key = SigningKey::from_bytes(&[23u8; 32]);
+        let admin_pubkey =
+            BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+        let admin = Address::generate(&env);
+        let user = Address::generate(&env);
+
+        env.mock_all_auths();
+        client.initialize(&admin, &admin_pubkey);
+
+        let data_hash = BytesN::from_array(&env, &[35u8; 32]);
+        let archetype = symbol_short!("exp_t3");
+        let period = 202605u64;
+
+        let signature = sign_payload(
+            &env,
+            &signing_key,
+            &contract_id,
+            &user,
+            period,
+            &archetype,
+            &data_hash,
+            VALID_UNTIL,
+        );
+
+        // One tick past the inclusive deadline.
+        env.ledger().with_mut(|li| {
+            li.timestamp = VALID_UNTIL + 1; // 1_000_001
+        });
+
+        client.mint_wrap(
+            &user,
+            &period,
+            &archetype,
+            &data_hash,
+            &CURRENT_PAYLOAD_VERSION,
+            &VALID_UNTIL,
+            &signature,
+        );
+    }
+}

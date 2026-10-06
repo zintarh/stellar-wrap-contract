@@ -35,7 +35,7 @@ fn test_mint_wrap_batch_happy_path() {
     let period = 202401u64;
     let archetype = symbol_short!("arch");
     let data_hash = BytesN::from_array(&env, &[42u8; 32]);
-    let payload_version = 1u32;
+    let payload_version = CURRENT_PAYLOAD_VERSION;
 
     let sig1 = sign_payload(
         &env,
@@ -71,6 +71,7 @@ fn test_mint_wrap_batch_happy_path() {
         archetype: archetype.clone(),
         data_hash: data_hash.clone(),
         payload_version,
+        valid_until: u64::MAX,
         signature: sig1,
     };
     let item2 = BatchWrapItem {
@@ -79,6 +80,7 @@ fn test_mint_wrap_batch_happy_path() {
         archetype: archetype.clone(),
         data_hash: data_hash.clone(),
         payload_version,
+        valid_until: u64::MAX,
         signature: sig2,
     };
     let item3 = BatchWrapItem {
@@ -87,6 +89,7 @@ fn test_mint_wrap_batch_happy_path() {
         archetype: archetype.clone(),
         data_hash: data_hash.clone(),
         payload_version,
+        valid_until: u64::MAX,
         signature: sig3,
     };
 

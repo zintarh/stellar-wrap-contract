@@ -36,6 +36,7 @@ fn sign_payload(
         archetype,
         data_hash,
         payload_version,
+        u64::MAX,
     );
 
     let mut out = [0u8; 512];
@@ -82,6 +83,7 @@ fn test_replay_attack_same_period_fails() {
         &archetype,
         &data_hash,
         &CURRENT_PAYLOAD_VERSION,
+        &u64::MAX,
         &signature,
     );
 
@@ -97,6 +99,7 @@ fn test_replay_attack_same_period_fails() {
         &archetype,
         &data_hash,
         &CURRENT_PAYLOAD_VERSION,
+        &u64::MAX,
         &signature,
     );
 
@@ -143,6 +146,7 @@ fn test_replay_attack_different_hash_same_period_fails() {
         &archetype,
         &data_hash_1,
         &CURRENT_PAYLOAD_VERSION,
+        &u64::MAX,
         &signature_1,
     );
 
@@ -165,6 +169,7 @@ fn test_replay_attack_different_hash_same_period_fails() {
         &archetype,
         &data_hash_2,
         &CURRENT_PAYLOAD_VERSION,
+        &u64::MAX,
         &signature_2,
     );
 
@@ -235,6 +240,7 @@ fn test_multiple_periods_for_same_user_success() {
         &archetype,
         &data_hash_1,
         &CURRENT_PAYLOAD_VERSION,
+        &u64::MAX,
         &signature_1,
     );
     client.mint_wrap(
@@ -243,6 +249,7 @@ fn test_multiple_periods_for_same_user_success() {
         &archetype,
         &data_hash_2,
         &CURRENT_PAYLOAD_VERSION,
+        &u64::MAX,
         &signature_2,
     );
     client.mint_wrap(
@@ -251,6 +258,7 @@ fn test_multiple_periods_for_same_user_success() {
         &archetype,
         &data_hash_3,
         &CURRENT_PAYLOAD_VERSION,
+        &u64::MAX,
         &signature_3,
     );
 
@@ -304,6 +312,7 @@ fn test_signature_cannot_be_stolen_by_another_user() {
         &archetype,
         &data_hash_for_a,
         &CURRENT_PAYLOAD_VERSION,
+        &u64::MAX,
         &signature_a,
     );
 
@@ -332,6 +341,7 @@ fn test_signature_cannot_be_stolen_by_another_user() {
         &archetype,
         &data_hash_for_b,
         &CURRENT_PAYLOAD_VERSION,
+        &u64::MAX,
         &signature_b,
     );
 
@@ -395,6 +405,7 @@ fn test_cross_contract_replay_protection() {
         &archetype,
         &data_hash,
         &CURRENT_PAYLOAD_VERSION,
+        &u64::MAX,
         &signature_v1,
     );
 
@@ -414,6 +425,7 @@ fn test_cross_contract_replay_protection() {
         &archetype,
         &data_hash,
         CURRENT_PAYLOAD_VERSION,
+        u64::MAX,
     );
     let payload_v2 = construct_mint_payload(
         &env,
@@ -423,6 +435,7 @@ fn test_cross_contract_replay_protection() {
         &archetype,
         &data_hash,
         CURRENT_PAYLOAD_VERSION,
+        u64::MAX,
     );
     assert_ne!(
         payload_v1, payload_v2,
@@ -437,6 +450,7 @@ fn test_cross_contract_replay_protection() {
             &archetype,
             &data_hash,
             &CURRENT_PAYLOAD_VERSION,
+            &u64::MAX,
             &signature_v1,
         );
     }));
@@ -469,6 +483,7 @@ fn test_cross_contract_replay_protection() {
         &archetype,
         &data_hash,
         &CURRENT_PAYLOAD_VERSION,
+        &u64::MAX,
         &signature_v2,
     );
 
@@ -520,6 +535,7 @@ fn test_gas_analysis_mint_operation() {
         &archetype,
         &data_hash,
         &CURRENT_PAYLOAD_VERSION,
+        &u64::MAX,
         &signature,
     );
 
@@ -604,6 +620,7 @@ fn test_gas_analysis_multiple_mints() {
             &archetype,
             &data_hash,
             &CURRENT_PAYLOAD_VERSION,
+            &u64::MAX,
             &signature,
         );
     }
@@ -667,6 +684,7 @@ fn test_timestamp_is_from_ledger_not_user() {
         &archetype,
         &data_hash,
         &CURRENT_PAYLOAD_VERSION,
+        &u64::MAX,
         &signature,
     );
 
@@ -701,6 +719,7 @@ fn test_timestamp_is_from_ledger_not_user() {
         &archetype,
         &data_hash,
         &CURRENT_PAYLOAD_VERSION,
+        &u64::MAX,
         &signature_2,
     );
 
@@ -750,6 +769,7 @@ fn test_edge_case_long_symbols() {
         &archetype,
         &data_hash,
         &CURRENT_PAYLOAD_VERSION,
+        &u64::MAX,
         &signature,
     );
 
@@ -800,6 +820,7 @@ fn test_non_admin_cannot_mint() {
         &archetype,
         &data_hash,
         &CURRENT_PAYLOAD_VERSION,
+        &u64::MAX,
         &signature,
     );
 }
@@ -1259,7 +1280,7 @@ fn test_all_mutating_entrypoints_honor_pause() {
     let data_hash = BytesN::from_array(&env, &[0u8; 32]);
     let signature = BytesN::from_array(&env, &[0u8; 64]);
 
-    let res = client.try_mint_wrap(&user, &202401, &archetype, &data_hash, &1u32, &signature);
+    let res = client.try_mint_wrap(&user, &202401, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &signature);
     assert!(res.is_err(), "mint_wrap should fail when paused");
 
     // Attacker submits hash B together with the signature that was made for hash A.
@@ -1270,6 +1291,7 @@ fn test_all_mutating_entrypoints_honor_pause() {
         &archetype,
         &data_hash_b, // tampered: different from what was signed
         &CURRENT_PAYLOAD_VERSION,
+        &u64::MAX,
         &signature,
     );
 
@@ -1364,6 +1386,7 @@ fn test_bridge_wrap_out_nonce_overflow_asserts_arithmetic_overflow() {
         &archetype,
         &data_hash,
         &CURRENT_PAYLOAD_VERSION,
+        &u64::MAX,
         &signature,
     );
 

@@ -96,6 +96,7 @@ pub struct BatchWrapItem {
     pub archetype: Symbol,
     pub data_hash: BytesN<32>,
     pub payload_version: u32,
+    pub valid_until: u64,
     pub signature: BytesN<64>,
 }
 

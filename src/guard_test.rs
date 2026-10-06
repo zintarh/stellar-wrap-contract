@@ -55,7 +55,7 @@ fn sign_for_test(
     payload_version: u32,
 ) -> BytesN<64> {
     let payload =
-        construct_mint_payload(env, contract, user, period, archetype, data_hash, payload_version);
+        construct_mint_payload(env, contract, user, period, archetype, data_hash, payload_version, u64::MAX);
 
     let mut buf = [0u8; 512];
     let len = payload.len() as usize;
@@ -118,6 +118,7 @@ fn test_zero_hash_mint_failure_leaves_no_guard_entry() {
         &archetype,
         &zero_hash,
         &CURRENT_PAYLOAD_VERSION,
+        &u64::MAX,
         &sig,
     );
 
@@ -181,7 +182,7 @@ fn test_successful_mint_leaves_no_guard_entry() {
     );
 
     // Successful mint.
-    client.mint_wrap(&user, &period, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &sig);
+    client.mint_wrap(&user, &period, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &sig);
 
     // Guard must be gone after the transaction completes.
     let guard_key = DataKey::MintGuard(user.clone());
@@ -232,7 +233,7 @@ fn test_duplicate_mint_failure_leaves_no_guard_entry() {
     );
 
     // First mint succeeds.
-    client.mint_wrap(&user, &period, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &sig);
+    client.mint_wrap(&user, &period, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &sig);
 
     // Second mint with the same parameters must fail with WrapAlreadyExists.
     let result = client.try_mint_wrap(
@@ -241,6 +242,7 @@ fn test_duplicate_mint_failure_leaves_no_guard_entry() {
         &archetype,
         &data_hash,
         &CURRENT_PAYLOAD_VERSION,
+        &u64::MAX,
         &sig,
     );
     assert!(result.is_err(), "Duplicate mint should fail.");

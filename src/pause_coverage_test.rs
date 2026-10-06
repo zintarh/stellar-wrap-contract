@@ -32,7 +32,7 @@ fn sign_mint_payload(
     archetype: &Symbol,
     data_hash: &BytesN<32>,
 ) -> BytesN<64> {
-    let payload = construct_mint_payload(env, contract, user, period, archetype, data_hash, 1);
+    let payload = construct_mint_payload(env, contract, user, period, archetype, data_hash, 2, u64::MAX);
     let mut out = [0u8; 512];
     let len = payload.len() as usize;
     payload.copy_into_slice(&mut out[..len]);
@@ -97,7 +97,7 @@ fn test_pause_blocks_all_require_not_paused_entrypoints() {
         &archetype,
         &data_hash,
     );
-    client.mint_wrap(&user, &period, &archetype, &data_hash, &1, &sig);
+    client.mint_wrap(&user, &period, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &sig);
 
     // Set up stake config
     let config = StakeConfig {
@@ -122,7 +122,7 @@ fn test_pause_blocks_all_require_not_paused_entrypoints() {
         &data_hash,
     );
     let result = catch_unwind(AssertUnwindSafe(|| {
-        client.mint_wrap(&user, &period, &archetype, &data_hash, &1, &sig2);
+        client.mint_wrap(&user, &period, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &sig2);
     }));
     assert!(result.is_err(), "mint_wrap must be blocked while paused");
 
@@ -133,7 +133,8 @@ fn test_pause_blocks_all_require_not_paused_entrypoints() {
         period,
         archetype: archetype.clone(),
         data_hash: data_hash.clone(),
-        payload_version: 1,
+        payload_version: CURRENT_PAYLOAD_VERSION,
+        valid_until: u64::MAX,
         signature: sig2.clone(),
     };
     items.push_back(batch_item);
@@ -246,7 +247,7 @@ fn test_pause_allows_documented_entrypoints() {
         &archetype,
         &data_hash,
     );
-    client.mint_wrap(&user, &period, &archetype, &data_hash, &1, &sig);
+    client.mint_wrap(&user, &period, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &sig);
 
     // Prepare a wrap that is bridged out, so we can test refund while paused
     let bridge_period = 202609u64;
@@ -323,7 +324,8 @@ fn test_pause_allows_documented_entrypoints() {
         &burn_period,
         &archetype,
         &data_hash,
-        &1,
+        &CURRENT_PAYLOAD_VERSION,
+        &u64::MAX,
         &burn_sig,
     );
     client.burn_wrap(&burn_user, &burn_period);
@@ -407,7 +409,7 @@ fn test_unpause_restores_blocked_entrypoints() {
         &data_hash,
     );
     let paused_result = catch_unwind(AssertUnwindSafe(|| {
-        client.mint_wrap(&user, &period, &archetype, &data_hash, &1, &sig);
+        client.mint_wrap(&user, &period, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &sig);
     }));
     assert!(
         paused_result.is_err(),
@@ -426,7 +428,7 @@ fn test_unpause_restores_blocked_entrypoints() {
         &data_hash,
     );
     let unpaused_result = catch_unwind(AssertUnwindSafe(|| {
-        client.mint_wrap(&user, &period + 1, &archetype, &data_hash, &1, &sig2);
+        client.mint_wrap(&user, &period + 1, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &sig2);
     }));
     assert!(
         unpaused_result.is_ok(),

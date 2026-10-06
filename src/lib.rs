@@ -195,6 +195,8 @@ impl StellarWrapContract {
     ///   value (year 2024-2100, month 01-12).
     /// - [`ContractError::InvalidSignature`] if `payload_version` is not the
     ///   current version, or the admin signature does not verify.
+    /// - [`ContractError::SignatureExpired`] if the current ledger timestamp
+    ///   is past `valid_until`.
     /// - [`ContractError::NotInitialized`] if the admin public key has not been set.
     /// - [`ContractError::UserOptedOut`] if `user` has opted out of wraps.
     /// - [`ContractError::WrapAlreadyExists`] if a wrap already exists for
@@ -210,6 +212,7 @@ impl StellarWrapContract {
         archetype: Symbol,
         data_hash: BytesN<32>,
         payload_version: u32,
+        valid_until: u64,
         signature: BytesN<64>,
     ) {
         mint::mint_wrap(
@@ -219,6 +222,7 @@ impl StellarWrapContract {
             archetype,
             data_hash,
             payload_version,
+            valid_until,
             signature,
         );
     }
@@ -1031,54 +1035,93 @@ mod timelock_test;
 mod transfer_test;
 #[cfg(test)]
 mod ttl_test;
+#[cfg(test)]
+mod signature_expiry_test;
 
 #[cfg(test)]
 mod invalid_signature_test {
     use super::*;
-    use crate::test_utils::generate_signature;
+    use ed25519_dalek::{Signer, SigningKey};
     use soroban_sdk::testutils::Address as _;
+
+    fn sign_payload(
+        env: &Env,
+        signer: &SigningKey,
+        contract: &Address,
+        user: &Address,
+        period: u64,
+        archetype: &Symbol,
+        data_hash: &BytesN<32>,
+        payload_version: u32,
+        valid_until: u64,
+    ) -> BytesN<64> {
+        let payload = crate::signature::construct_mint_payload(
+            env,
+            contract,
+            user,
+            period,
+            archetype,
+            data_hash,
+            payload_version,
+            valid_until,
+        );
+
+        let len = payload.len() as usize;
+        let mut out = std::vec![0u8; len];
+        payload.copy_into_slice(&mut out);
+
+        let signature = signer.sign(&out);
+        BytesN::from_array(env, &signature.to_bytes())
+    }
 
     #[test]
     fn test_invalid_signature_with_wrong_admin_pubkey() {
         let e = Env::default();
         e.mock_all_auths();
 
+        let contract_id = e.register(StellarWrapContract, ());
+        let client = StellarWrapContractClient::new(&e, &contract_id);
+
         let admin_a = Address::generate(&e);
-        let admin_b = Address::generate(&e);
 
-        let pubkey_a: BytesN<32> = BytesN::from_array(&e, &[0u8; 32]);
-        let pubkey_b: BytesN<32> = BytesN::from_array(&e, &[1u8; 32]);
+        let signer_a = SigningKey::from_bytes(&[0u8; 32]);
+        let signer_b = SigningKey::from_bytes(&[1u8; 32]);
+        let pubkey_a: BytesN<32> = BytesN::from_array(&e, &signer_a.verifying_key().to_bytes());
+        let pubkey_b: BytesN<32> = BytesN::from_array(&e, &signer_b.verifying_key().to_bytes());
 
-        StellarWrapContract::initialize(&e, admin_a.clone(), pubkey_a);
+        client.initialize(&admin_a, &pubkey_a);
 
         let user = Address::generate(&e);
         let period = 202501u64;
         let archetype = Symbol::new(&e, "TEST");
         let data_hash: BytesN<32> = BytesN::from_array(&e, &[2u8; 32]);
         let payload_version = 1u32;
+        let valid_until = u64::MAX; // effectively infinite for test
 
-        let signature = generate_signature(
+        // Sign with signer_b, but contract is initialized with pubkey_a
+        let signature = sign_payload(
             &e,
-            &admin_b,
-            &pubkey_b,
+            &signer_b,
+            &contract_id,
             &user,
             period,
-            archetype,
+            &archetype,
             &data_hash,
             payload_version,
+            valid_until,
         );
 
-        assert!(StellarWrapContract::mint_wrap(
-            &e,
-            user.clone(),
-            period,
-            archetype,
-            data_hash,
-            payload_version,
-            signature,
-        )
-        .is_err());
+        let result = client.try_mint_wrap(
+            &user,
+            &period,
+            &archetype,
+            &data_hash,
+            &payload_version,
+            &valid_until,
+            &signature,
+        );
 
+        assert!(result.is_err());
         assert_eq!(StellarWrapContract::balance_of(&e, user.clone()), 0i128);
         assert_eq!(StellarWrapContract::get_latest_wrap(&e, user), None);
     }

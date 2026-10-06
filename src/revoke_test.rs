@@ -45,6 +45,7 @@ fn test_total_revoked_counter() {
             &archetype,
             &hash,
             &CURRENT_PAYLOAD_VERSION,
+            &u64::MAX,
             &sig,
         );
     }
@@ -65,6 +66,7 @@ fn test_total_revoked_counter() {
         &archetype,
         &hash,
         &CURRENT_PAYLOAD_VERSION,
+        &u64::MAX,
         &sig2,
     );
 
@@ -95,6 +97,7 @@ fn test_total_revoked_counter() {
         &archetype,
         &hash,
         &CURRENT_PAYLOAD_VERSION,
+        &u64::MAX,
         &sig3,
     );
 

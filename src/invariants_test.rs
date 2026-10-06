@@ -29,7 +29,7 @@ fn test_healthy_user_invariants() {
     let archetype = Symbol::new(&env, "arch");
     let data_hash = BytesN::from_array(&env, &[0; 32]);
     let signature = BytesN::from_array(&env, &[0; 64]);
-    client.mint_wrap(&user, &202401, &archetype, &data_hash, &1u32, &signature);
+    client.mint_wrap(&user, &202401, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &signature);
 
     // Check invariants again
     let report = client.check_user_invariants(&user);
@@ -58,7 +58,7 @@ fn test_post_revoke_invariants() {
     let archetype = Symbol::new(&env, "arch");
     let data_hash = BytesN::from_array(&env, &[0; 32]);
     let signature = BytesN::from_array(&env, &[0; 64]);
-    client.mint_wrap(&user, &202401, &archetype, &data_hash, &1u32, &signature);
+    client.mint_wrap(&user, &202401, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &signature);
 
     // Revoke
     client.revoke_wrap(&user, &202401, &BytesN::from_array(&env, &[0; 32]));
@@ -88,7 +88,7 @@ fn test_post_burn_invariants() {
     let archetype = Symbol::new(&env, "arch");
     let data_hash = BytesN::from_array(&env, &[0; 32]);
     let signature = BytesN::from_array(&env, &[0; 64]);
-    client.mint_wrap(&user, &202401, &archetype, &data_hash, &1u32, &signature);
+    client.mint_wrap(&user, &202401, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &signature);
 
     // Burn
     client.burn_wrap(&user, &202401);

@@ -45,7 +45,7 @@ fn sign_for_mint(
     archetype: &soroban_sdk::Symbol,
     data_hash: &BytesN<32>,
 ) -> BytesN<64> {
-    let payload = construct_mint_payload(env, contract_id, user, period, archetype, data_hash, 1);
+    let payload = construct_mint_payload(env, contract_id, user, period, archetype, data_hash, 2, u64::MAX);
     let mut buf = [0u8; 512];
     let len = payload.len() as usize;
     payload.copy_into_slice(&mut buf[..len]);
@@ -86,7 +86,7 @@ fn test_mint_wrap_rejected_for_opted_out_user() {
     client.opt_out(&user);
 
     let sig = sign_for_mint(&env, &key, &cid, &user, PERIOD, &archetype, &data_hash);
-    let result = client.try_mint_wrap(&user, &PERIOD, &archetype, &data_hash, &1u32, &sig);
+    let result = client.try_mint_wrap(&user, &PERIOD, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &sig);
 
     assert!(result.is_err(), "mint_wrap must fail for opted-out user");
     assert_eq!(
@@ -109,7 +109,7 @@ fn test_mint_wrap_succeeds_after_opt_in() {
     client.opt_in(&user);
 
     let sig = sign_for_mint(&env, &key, &cid, &user, PERIOD, &archetype, &data_hash);
-    client.mint_wrap(&user, &PERIOD, &archetype, &data_hash, &1u32, &sig);
+    client.mint_wrap(&user, &PERIOD, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &sig);
 
     assert!(
         client.get_wrap(&user, &PERIOD).is_some(),
@@ -179,7 +179,7 @@ fn test_opt_out_does_not_alter_existing_wraps() {
     let data_hash = BytesN::from_array(&env, &[0x42u8; 32]);
 
     let sig = sign_for_mint(&env, &key, &cid, &user, PERIOD, &archetype, &data_hash);
-    client.mint_wrap(&user, &PERIOD, &archetype, &data_hash, &1u32, &sig);
+    client.mint_wrap(&user, &PERIOD, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &sig);
 
     let wrap_before = client.get_wrap(&user, &PERIOD).expect("wrap exists");
     let balance_before = client.balance_of(&user);
@@ -227,7 +227,8 @@ fn test_mint_wrap_batch_rejects_opted_out_user() {
         period: period_ok,
         archetype: archetype.clone(),
         data_hash: data_hash.clone(),
-        payload_version: 1,
+        payload_version: CURRENT_PAYLOAD_VERSION,
+        valid_until: u64::MAX,
         signature: sig_ok,
     });
     items.push_back(storage_types::BatchWrapItem {
@@ -235,7 +236,8 @@ fn test_mint_wrap_batch_rejects_opted_out_user() {
         period: period_out,
         archetype: archetype.clone(),
         data_hash: data_hash.clone(),
-        payload_version: 1,
+        payload_version: CURRENT_PAYLOAD_VERSION,
+        valid_until: u64::MAX,
         signature: sig_out,
     });
 

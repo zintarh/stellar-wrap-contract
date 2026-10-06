@@ -82,6 +82,7 @@ fn sign_mint(
         archetype,
         data_hash,
         payload_version,
+        u64::MAX,
     );
 
     let mut buf = [0u8; 512];
@@ -170,7 +171,7 @@ proptest! {
 
         let sig = sign_mint(&env, &signing_key, &contract_id, &user, period, &archetype, &data_hash, CURRENT_PAYLOAD_VERSION);
 
-        client.mint_wrap(&user, &period, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &sig);
+        client.mint_wrap(&user, &period, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &sig);
 
         let record = client.get_wrap(&user, &period)
             .expect("get_wrap must return Some after successful mint");
@@ -200,7 +201,7 @@ proptest! {
 
             let sig = sign_mint(&env, &signing_key, &contract_id, &user, period, &archetype, &data_hash, CURRENT_PAYLOAD_VERSION);
 
-            client.mint_wrap(&user, &period, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &sig);
+            client.mint_wrap(&user, &period, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &sig);
 
             let expected_balance = (k as i128) + 1;
             prop_assert_eq!(client.balance_of(&user), expected_balance);
@@ -269,6 +270,7 @@ proptest! {
             &archetype,
             &data_hash,
             &CURRENT_PAYLOAD_VERSION,
+            &u64::MAX,
             &bad_sig,
         );
         prop_assert!(result.is_err());
@@ -296,7 +298,7 @@ proptest! {
             let data_hash = make_data_hash(&env, [(k as u8).wrapping_add(2); 32]);
             let sig = sign_mint(&env, &signing_key, &contract_id, &user, period, &archetype, &data_hash, CURRENT_PAYLOAD_VERSION);
 
-            client.mint_wrap(&user, &period, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &sig);
+            client.mint_wrap(&user, &period, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &sig);
 
             let new_balance = client.balance_of(&user);
             prop_assert!(new_balance > prev_balance);

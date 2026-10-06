@@ -10,7 +10,7 @@ use crate::{
     ContractError, DataKey, WrapRecord,
 };
 
-pub const CURRENT_PAYLOAD_VERSION: u32 = 1;
+pub const CURRENT_PAYLOAD_VERSION: u32 = 2;
 /// Default expiration duration for unverified wraps: 7 days in seconds.
 const DEFAULT_EXPIRATION_SECONDS: u64 = 7 * 24 * 60 * 60;
 pub const MIN_PERIOD_YEAR: u64 = 2024;
@@ -208,6 +208,7 @@ pub(crate) fn mint_wrap(
     archetype: Symbol,
     data_hash: BytesN<32>,
     payload_version: u32,
+    valid_until: u64,
     signature: BytesN<64>,
 ) {
     crate::admin::require_not_paused(&e);
@@ -215,6 +216,10 @@ pub(crate) fn mint_wrap(
 
     validate_period(&e, period);
     validate_payload_version(&e, payload_version);
+
+    if e.ledger().timestamp() > valid_until {
+        panic_with_error!(e, ContractError::SignatureExpired);
+    }
 
     let admin_pubkey = get_admin_pubkey(&e);
     if let Err(err) = verify_mint_signature(
@@ -226,6 +231,7 @@ pub(crate) fn mint_wrap(
         &archetype,
         &data_hash,
         payload_version,
+        valid_until,
         &signature,
     ) {
         panic_with_error!(e, err);
@@ -289,10 +295,14 @@ pub(crate) fn mint_wrap_batch(
     }
 
     if let Some(agg_sig) = aggregated_signature {
-        // Validate payload version of items
+        // Validate payload version and expiry of items
+        let now = e.ledger().timestamp();
         for item in items.iter() {
             validate_period(&e, item.period);
             validate_payload_version(&e, item.payload_version);
+            if now > item.valid_until {
+                panic_with_error!(&e, ContractError::SignatureExpired);
+            }
         }
         let payload_version = items.get(0).unwrap().payload_version;
         if let Err(err) = crate::signature::verify_batch_aggregated_signature(
@@ -307,9 +317,13 @@ pub(crate) fn mint_wrap_batch(
         }
     } else {
         // Individual signatures inside batch items
+        let now = e.ledger().timestamp();
         for item in items.iter() {
             validate_period(&e, item.period);
             validate_payload_version(&e, item.payload_version);
+            if now > item.valid_until {
+                panic_with_error!(&e, ContractError::SignatureExpired);
+            }
 
             if let Err(err) = verify_mint_signature(
                 &e,
@@ -320,6 +334,7 @@ pub(crate) fn mint_wrap_batch(
                 &item.archetype,
                 &item.data_hash,
                 item.payload_version,
+                item.valid_until,
                 &item.signature,
             ) {
                 panic_with_error!(e, err);
