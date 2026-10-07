@@ -1,22 +1,41 @@
 import { rpc, xdr, Address } from '@stellar/stellar-sdk';
 import type { ContractEvent, StorageEntry } from './types';
 import { decodeEventTopic, decodeEventData, decodeLedgerEntry } from './decoder';
+import { DEFAULT_RETRY, withRetries, type WithRetriesOptions } from './retry';
+
+/**
+ * The subset of `rpc.Server` the fetcher needs, expressed as an interface so
+ * tests can inject a failing mock and assert retry behavior without a network.
+ */
+export interface SorobanRpcClient {
+  getEvents(
+    request: Parameters<rpc.Server['getEvents']>[0],
+  ): Promise<rpc.Api.GetEventsResponse>;
+  getLedgerEntries(...keys: xdr.LedgerKey[]): Promise<rpc.Api.GetLedgerEntriesResponse>;
+  getLatestLedger(): Promise<rpc.Api.GetLatestLedgerResponse>;
+}
 
 export interface FetcherOptions {
   rpcUrl: string;
   contractId: string;
   eventPageSize: number;
+  /** Retry/backoff policy for transient RPC failures (see `retry.ts`). */
+  retry?: WithRetriesOptions;
+  /** Inject a mock RPC client (tests only). */
+  server?: SorobanRpcClient;
 }
 
 export class SorobanFetcher {
-  private server: rpc.Server;
+  private server: SorobanRpcClient;
   private contractId: string;
   private eventPageSize: number;
+  private retry: WithRetriesOptions;
 
   constructor(opts: FetcherOptions) {
-    this.server = new rpc.Server(opts.rpcUrl);
+    this.server = opts.server ?? new rpc.Server(opts.rpcUrl);
     this.contractId = opts.contractId;
     this.eventPageSize = opts.eventPageSize;
+    this.retry = { ...DEFAULT_RETRY, ...opts.retry };
   }
 
   /**
@@ -44,12 +63,17 @@ export class SorobanFetcher {
     let latestLedger = startLedger;
     let pageSize: number;
     do {
-      const response = await this.server.getEvents({
-        startLedger,
-        cursor,
-        filters,
-        limit: this.eventPageSize,
-      });
+      const response = await withRetries(
+        `getEvents(startLedger=${startLedger}${cursor ? `, cursor=${cursor}` : ''})`,
+        () =>
+          this.server.getEvents({
+            startLedger,
+            cursor,
+            filters,
+            limit: this.eventPageSize,
+          }),
+        this.retry,
+      );
       const page = response.events || [];
       events.push(...page.map((event) => this.parseRawEvent(event)));
       const previousCursor = cursor;
@@ -91,7 +115,11 @@ export class SorobanFetcher {
    * This returns the latest state, not historical snapshots.
    */
   async fetchStorageEntries(): Promise<StorageEntry[]> {
-    const response = await this.server.getLedgerEntries();
+    const response = await withRetries(
+      'getLedgerEntries()',
+      () => this.server.getLedgerEntries(),
+      this.retry,
+    );
     const entries: StorageEntry[] = [];
 
     for (const rawEntry of response.entries || []) {
@@ -123,7 +151,11 @@ export class SorobanFetcher {
   async fetchStorageByKeys(ledgerKeys: xdr.LedgerKey[]): Promise<StorageEntry[]> {
     if (ledgerKeys.length === 0) return [];
 
-    const response = await this.server.getLedgerEntries(...ledgerKeys);
+    const response = await withRetries(
+      `getLedgerEntries(${ledgerKeys.length} keys)`,
+      () => this.server.getLedgerEntries(...ledgerKeys),
+      this.retry,
+    );
     const entries: StorageEntry[] = [];
 
     for (const rawEntry of response.entries || []) {
@@ -171,7 +203,11 @@ export class SorobanFetcher {
    * Fetch the latest ledger sequence from the network.
    */
   async getLatestLedger(): Promise<number> {
-    const info = await this.server.getLatestLedger();
+    const info = await withRetries(
+      'getLatestLedger()',
+      () => this.server.getLatestLedger(),
+      this.retry,
+    );
     return info.sequence;
   }
 
