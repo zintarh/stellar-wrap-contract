@@ -1,4 +1,4 @@
-.PHONY: build test fuzz fuzz-build fmt fmt-check lint doc clean deploy-testnet wasm-build wasm-optimize soroban-build check-wasm-size wasm-size docker-build docker-build-verify coverage verify-release release-gate help test-contracts test-frontend test-pipeline test-verbose test-gas-report clean-snapshots clean-all
+.PHONY: build test fuzz fuzz-build fmt fmt-check lint doc clean deploy-testnet wasm-build wasm-optimize soroban-build check-wasm-size wasm-size docker-build docker-build-verify coverage verify-release release-gate help test-contracts test-frontend test-pipeline test-verbose test-gas-report check-test-auth clean-snapshots clean-all
 
 WASM_PATH := target/wasm32-unknown-unknown/release/stellar_wrap_contract.wasm
 OPTIMIZED_WASM_PATH := target/wasm32-unknown-unknown/release/stellar_wrap_contract.optimized.wasm
@@ -42,6 +42,10 @@ test-pipeline:
 ## test-verbose: Run all tests with stdout output (useful for gas analysis)
 test-verbose:
 	cargo test -- --nocapture --test-threads=1
+
+## check-test-auth: Fail if mock_all_auths() usage grows beyond the allowed count
+check-test-auth:
+	python3 scripts/check_mock_all_auths.py
 
 ## coverage: Run cargo-tarpaulin and generate HTML + XML reports in coverage/
 ##   Requires cargo-tarpaulin: cargo install cargo-tarpaulin --locked

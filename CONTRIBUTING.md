@@ -22,6 +22,14 @@ The repository does not enforce a Markdown formatter or linter. Markdown is revi
 
 Before submitting documentation changes, review the rendered Markdown and check that fences are balanced, links resolve, and no accidental trailing whitespace was introduced. These checks are manual and are not currently part of CI.
 
+### Test Authorization Policy
+
+`Env::mock_all_auths()` accepts every `require_auth` call, so a test that uses it still passes when an entrypoint authorises the wrong address. Auth bugs are the most common Soroban vulnerability class, so this hides the bugs we most need to catch.
+
+- **Write-path tests** (any entrypoint that mutates state) must scope auth exactly: `env.mock_auths(&[MockAuth { address, invoke }])` or `client.mock_auths(...)` for the one call under test. Alternatively, call `mock_all_auths()` for setup, then assert on `env.auths()` after the call and check the `(address, function)` tree matches the intended signer.
+- **Read-only tests and setup** (`initialize`, fixture funding, read entrypoints) may keep `mock_all_auths()`.
+- `make check-test-auth` (`scripts/check_mock_all_auths.py`) fails if the number of `mock_all_auths()` call sites grows. When you convert a file to exact auth mocks, lower `MAX_ALLOWED` in the script to the new total in the same PR.
+
 **Step 2.1: Install Git Hooks (Required)**
 1. Install pre-commit once on your machine:
 	- `pip install pre-commit`
