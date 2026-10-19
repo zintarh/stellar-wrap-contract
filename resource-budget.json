@@ -1,0 +1,40 @@
+{
+  "_comment": "Resource budget baseline per write entrypoint. Measurements captured via env.cost_estimate() at realistic sizes (user with 24 wraps). CI fails when a measurement exceeds baseline + 10%. Regenerate with `--update-baseline`.",
+  "threshold_percent": 10,
+  "scenario": {
+    "description": "user with 24 wraps",
+    "wraps": 24
+  },
+  "entrypoints": {
+    "mint_wrap": {
+      "cpu_instructions": 0,
+      "memory_bytes": 0,
+      "ledger_read_bytes": 0,
+      "ledger_write_bytes": 0
+    },
+    "transfer_wrap": {
+      "cpu_instructions": 0,
+      "memory_bytes": 0,
+      "ledger_read_bytes": 0,
+      "ledger_write_bytes": 0
+    },
+    "burn_wrap": {
+      "cpu_instructions": 0,
+      "memory_bytes": 0,
+      "ledger_read_bytes": 0,
+      "ledger_write_bytes": 0
+    },
+    "approve": {
+      "cpu_instructions": 0,
+      "memory_bytes": 0,
+      "ledger_read_bytes": 0,
+      "ledger_write_bytes": 0
+    },
+    "set_admin": {
+      "cpu_instructions": 0,
+      "memory_bytes": 0,
+      "ledger_read_bytes": 0,
+      "ledger_write_bytes": 0
+    }
+  }
+}
