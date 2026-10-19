@@ -1361,3 +1361,6 @@ Notes for indexers:
 
 <!-- handsoff-issue-456 -->
 - #456: [Refactor] Use `env.storage().persistent()` optimally for WrapRecords
+
+<!-- handsoff-issue-967 -->
+- #967: [Architecture] Extract a `wrap-crypto` crate for payload construction, Ed25519 verification and merkle proofs
