@@ -32,7 +32,7 @@ pub(crate) const MAX_PENDING_OPERATIONS: u32 = 10;
 /// to Persistent storage (e.g. name/symbol metadata).  One day provides
 /// a safe buffer for eventual renewal without paying the cost of a full
 /// year of rent for entries that may be overwritten soon.
-pub(crate) const TTL_TEMP: u32 = 17_280;
+pub(crate) const TTL_METADATA_MIN: u32 = 17_280;
 
 /// Domain separator for merkle leaves: all leaf preimages are prefixed with
 /// 0x00 before hashing.
