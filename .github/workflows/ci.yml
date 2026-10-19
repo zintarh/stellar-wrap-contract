@@ -1,18 +1,63 @@
-name: Frontend
+name: CI
 
 on:
   pull_request:
     paths:
       - 'frontend/**'
+      - 'src/**'
+      - 'contracts/**'
+      - 'spec/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
       - '.github/workflows/ci.yml'
   push:
     branches:
       - main
     paths:
       - 'frontend/**'
+      - 'src/**'
+      - 'contracts/**'
+      - 'spec/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
       - '.github/workflows/ci.yml'
 
 jobs:
+  contract-spec:
+    name: Contract Spec Snapshot
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install Stellar CLI
+        run: cargo install stellar-cli --locked
+
+      - name: Build WASM (release)
+        run: cargo build --release --target wasm32-unknown-unknown
+
+      - name: Inspect contract spec
+        run: |
+          set -euo pipefail
+          stellar contract inspect \
+            --wasm target/wasm32-unknown-unknown/release/stellar_wrap_contract.wasm \
+            --output json > /tmp/registry.json
+
+      - name: Fail on unreviewed spec drift
+        run: |
+          set -euo pipefail
+          if ! diff -u spec/registry.json /tmp/registry.json; then
+            echo "::error::Contract spec differs from spec/registry.json. Review the ABI change, then run 'make spec-snapshot' and commit the updated snapshot."
+            exit 1
+          fi
+
   frontend:
     name: Lint, Typecheck, Test & Build
     runs-on: ubuntu-latest

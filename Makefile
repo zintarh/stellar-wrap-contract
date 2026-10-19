@@ -1,4 +1,4 @@
-.PHONY: build test fuzz fuzz-build fmt fmt-check lint doc clean deploy-testnet wasm-build wasm-optimize soroban-build check-wasm-size wasm-size docker-build docker-build-verify coverage verify-release release-gate help test-contracts test-frontend test-pipeline test-verbose test-gas-report clean-snapshots clean-all
+.PHONY: build test fuzz fuzz-build fmt fmt-check lint doc clean deploy-testnet wasm-build wasm-optimize soroban-build check-wasm-size wasm-size docker-build docker-build-verify coverage verify-release release-gate help spec-snapshot test-contracts test-frontend test-pipeline test-verbose test-gas-report clean-snapshots clean-all
 
 WASM_PATH := target/wasm32-unknown-unknown/release/stellar_wrap_contract.wasm
 OPTIMIZED_WASM_PATH := target/wasm32-unknown-unknown/release/stellar_wrap_contract.optimized.wasm
@@ -114,6 +114,13 @@ deploy-testnet: wasm-build
 			--network testnet \
 			--source "$(STELLAR_DEPLOYER_SECRET)"; \
 	fi
+
+# ── Spec ─────────────────────────────────────────────────────────────────────
+
+## spec-snapshot: Regenerate spec/registry.json from the release WASM (CI diffs against it)
+##   Requires: stellar CLI. Review and commit the resulting diff deliberately.
+spec-snapshot: wasm-build
+	stellar contract inspect --wasm $(WASM_PATH) --output json > spec/registry.json
 
 # ── Release ──────────────────────────────────────────────────────────────────
 
