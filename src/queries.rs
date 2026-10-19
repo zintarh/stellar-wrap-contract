@@ -14,6 +14,8 @@ use soroban_sdk::{Address, Bytes, BytesN, Env, String, Symbol, Vec};
 
 use crate::{ContractHealth, DataKey, InvariantReport, TransferFeeConfig, WrapRecord, WrapSummary};
 
+const MAX_WRAP_PAGE_SIZE: u32 = 50;
+
 pub(crate) fn get_wrap(e: Env, user: Address, period: u64) -> Option<WrapRecord> {
     e.storage().persistent().get(&DataKey::Wrap(user, period))
 }
@@ -117,6 +119,7 @@ pub(crate) fn get_wraps(
     limit: u32,
 ) -> soroban_sdk::Vec<WrapRecord> {
     let mut results = soroban_sdk::Vec::new(&e);
+    let limit = core::cmp::min(limit, MAX_WRAP_PAGE_SIZE);
     let user_periods_key = DataKey::UserPeriods(user.clone());
 
     if let Some(periods) = e
