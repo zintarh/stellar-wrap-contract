@@ -53,3 +53,18 @@ pub(crate) const MERKLE_NODE_PREFIX: u8 = 0x01;
 /// 32 levels supports trees up to 2^32 leaves (about 4 billion members) while
 /// bounding verification cost to 32 SHA-256 calls.
 pub(crate) const MAX_PROOF_DEPTH: u32 = 32;
+
+/// Maximum number of records a single paginated query may read.
+///
+/// `queries::get_wraps` clamps the caller-supplied `limit` to this value so
+/// that pagination actually bounds resource usage instead of relying on
+/// clients to behave.  Callers that need more records must page using the
+/// returned `next_start`.
+pub(crate) const MAX_PAGE_SIZE: u32 = 50;
+
+/// Documented upper bound on the total number of records
+/// `get_all_wraps_for_user` will read by paging internally.
+///
+/// Requests beyond this bound fail clearly rather than reading an unbounded
+/// number of records in a single call.
+pub(crate) const MAX_ALL_WRAPS: u32 = 200;

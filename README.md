@@ -1361,3 +1361,6 @@ Notes for indexers:
 
 <!-- handsoff-issue-456 -->
 - #456: [Refactor] Use `env.storage().persistent()` optimally for WrapRecords
+
+<!-- handsoff-issue-989 -->
+- #989: [Security] Add a per-key signature counter / nonce so a leaked signature can be invalidated before `valid_until`
