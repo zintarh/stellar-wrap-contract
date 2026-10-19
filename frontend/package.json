@@ -1,8 +1,9 @@
 {
-  "name": "stellar-wrap-dapp",
+  "name": "stellar-wrap-admin-console",
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "description": "Admin/operator console for the stellar-wrap contract (pause, roles, TTL renewal). Consumes @stellar-wrap/contract-client.",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -14,6 +15,7 @@
     "a11y": "eslint . --max-warnings=0"
   },
   "dependencies": {
+    "@stellar-wrap/contract-client": "workspace:*",
     "@stellar/freighter-api": "6.0.1",
     "@stellar/stellar-sdk": "16.2.0",
     "react": "19.2.8",

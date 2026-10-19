@@ -256,6 +256,66 @@ export interface DerivedState {
   symbol: string | null;
 }
 
+// ─── Read API response types ────────────────────────────────────────────
+
+/**
+ * Period selector accepted by `GET /wraps/:address/:period`.
+ * `all` returns the full paginated history; `latest` returns the most
+ * recent wrap only.
+ */
+export type WrapPeriod = 'all' | 'latest' | number;
+
+/**
+ * Envelope shared by every read API response. `ledger` is the ledger
+ * sequence the payload is consistent with, so clients can detect lag
+ * against the chain head reported by `/health`.
+ */
+export interface ApiEnvelope<T> {
+  data: T;
+  ledger: number;
+}
+
+export interface ApiWrap {
+  user: string;
+  period: number;
+  created_at: number;
+  data_hash: string;
+  archetype: string;
+  state: WrapState;
+  state_updated_at: number;
+}
+
+export interface ApiWrapList {
+  address: string;
+  wraps: ApiWrap[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface ApiStats {
+  contract_id: string;
+  total_wraps: number;
+  total_revoked: number;
+  unique_users: number;
+  archetype_distribution: Record<string, number>;
+  leaderboard: ApiLeaderboardEntry[];
+}
+
+export interface ApiLeaderboardEntry {
+  address: string;
+  wrap_count: number;
+  latest_period: number | null;
+}
+
+export interface ApiHealth {
+  status: 'ok' | 'degraded';
+  indexed_ledger: number;
+  chain_head_ledger: number;
+  lag_ledgers: number;
+  contract_id: string;
+}
+
 // ─── Configuration ──────────────────────────────────────────────────────
 
 export interface IndexerConfig {

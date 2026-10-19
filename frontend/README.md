@@ -1,8 +1,29 @@
-# Stellar Wrap — Frontend
+# Stellar Wrap — Admin Console
 
-The frontend is a Vite + React + TypeScript single-page app that talks to the
-`stellar-wrap` Soroban contract on Stellar testnet. This README walks you from a
-fresh clone to a running app connected to a deployed contract.
+This app is the **admin and operator console** for the `stellar-wrap` Soroban
+contract. It is a Vite + React + TypeScript single-page app intended for
+operators who administer a deployed contract on Stellar testnet — not for end
+users. The product-facing UI lives in the separate
+[`zintarh/stellar-wrap-frontend`](https://github.com/zintarh/stellar-wrap-frontend)
+(Next.js) repository.
+
+## Purpose and audience
+
+This console is scoped to administrative and operator actions against the
+contract, such as:
+
+- **Pause / unpause** the contract.
+- **Role management** (granting and revoking operator/admin roles).
+- **TTL renewal** for contract storage entries.
+
+It is meant for maintainers and operators of a deployment. If you are looking
+for the end-user experience, use the product frontend instead.
+
+> **Note on contract bindings:** this app is intended to consume the generated
+> `@stellar-wrap/contract-client` package rather than hand-maintained bindings,
+> so it stays in sync with the contract ABI. See
+> [`docs/architecture-v2.md`](../docs/architecture-v2.md) for the recorded
+decision on the future of this app.
 
 ## Prerequisites
 

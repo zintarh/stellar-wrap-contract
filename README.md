@@ -1361,3 +1361,6 @@ Notes for indexers:
 
 <!-- handsoff-issue-456 -->
 - #456: [Refactor] Use `env.storage().persistent()` optimally for WrapRecords
+
+<!-- handsoff-issue-983 -->
+- #983: [Architecture] Publish a machine-readable event schema shared by contract, pipeline and frontend
