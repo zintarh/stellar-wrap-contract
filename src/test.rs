@@ -4135,3 +4135,58 @@ fn test_mint_wrap_invalid_period_month() {
     let sig = BytesN::from_array(&env, &[0u8; 64]);
     client.mint_wrap(&user, &invalid_period, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &sig);
 }
+
+// ── Release WASM smoke tests ─────────────────────────────────────────────────
+// The tests above run against the native build. These run the same core flows
+// against the optimised WASM that is actually deployed, catching differences
+// in overflow handling, panic behaviour and binary size. They need the artifact
+// from `make wasm-optimize`, so they are ignored by default; run them with
+// `make test-wasm`.
+
+const OPTIMIZED_WASM_PATH: &str =
+    "target/wasm32-unknown-unknown/release/stellar_wrap_contract.optimized.wasm";
+
+fn register_release_wasm(env: &Env) -> Address {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(OPTIMIZED_WASM_PATH);
+    let wasm = std::fs::read(&path).unwrap_or_else(|_| {
+        panic!("missing {}; run `make wasm-optimize` first", path.display())
+    });
+    env.register_contract_wasm(None, Bytes::from_slice(env, &wasm))
+}
+
+#[test]
+#[ignore = "requires `make wasm-optimize`; run via `make test-wasm`"]
+fn test_release_wasm_mint_ttl_revoke_burn() {
+    let env = Env::default();
+    let contract_id = register_release_wasm(&env);
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let signing_key = SigningKey::from_bytes(&[77u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    env.mock_all_auths();
+    client.initialize(&admin, &admin_pubkey);
+
+    let archetype = symbol_short!("arch");
+    let period = 202401u64;
+    let hash = BytesN::from_array(&env, &[9u8; 32]);
+    let signature = sign_payload(&env, &signing_key, &contract_id, &user, period, &archetype, &hash);
+
+    // Mint
+    client.mint_wrap(&user, &period, &archetype, &hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &signature);
+    assert_eq!(client.get_wrap(&user, &period).unwrap().data_hash, hash);
+
+    // TTL
+    client.extend_ttl(&user, &period);
+    assert!(client.get_wrap(&user, &period).is_some());
+
+    // Revoke
+    let reason = BytesN::from_array(&env, &[3u8; 32]);
+    client.revoke_wrap(&user, &period, &reason);
+
+    // Burn
+    client.burn_wrap(&user, &period);
+    assert!(client.get_wrap(&user, &period).is_none());
+}
