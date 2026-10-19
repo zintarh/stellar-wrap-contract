@@ -14,8 +14,6 @@ path = "src/lib.rs"
 [features]
 # Enables SorobanArbitrary / testutils codegen required by cargo-fuzz targets.
 testutils = ["soroban-sdk/testutils"]
-# Enables the proxy contract for batching mint_wrap calls atomically.
-proxy = []
 
 [dependencies]
 soroban-sdk = "=27.0.3"
