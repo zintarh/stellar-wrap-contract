@@ -25,6 +25,15 @@ pub fn validate_period(e: &Env, period: u64) {
     }
 }
 
+/// Rejects an all-zero `data_hash`. A zero hash usually means the signer read
+/// from an uninitialised buffer, and storing it would permanently record a
+/// meaningless wrap.
+pub fn validate_data_hash(e: &Env, data_hash: &BytesN<32>) {
+    if *data_hash == BytesN::from_array(e, &[0u8; 32]) {
+        panic_with_error!(e, ContractError::InvalidDataHash);
+    }
+}
+
 fn validate_payload_version(e: &Env, version: u32) {
     if version != CURRENT_PAYLOAD_VERSION {
         panic_with_error!(e, ContractError::InvalidSignature);
@@ -216,6 +225,7 @@ pub(crate) fn mint_wrap(
 
     validate_period(&e, period);
     validate_payload_version(&e, payload_version);
+    validate_data_hash(&e, &data_hash);
 
     if e.ledger().timestamp() > valid_until {
         panic_with_error!(e, ContractError::SignatureExpired);
@@ -281,6 +291,10 @@ pub(crate) fn mint_wrap_batch(
             }
             seen_pairs.push_back(pair);
         }
+    }
+
+    for item in items.iter() {
+        validate_data_hash(&e, &item.data_hash);
     }
 
     let admin_pubkey = get_admin_pubkey(&e);

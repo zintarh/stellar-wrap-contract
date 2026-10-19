@@ -334,5 +334,11 @@
     "code": 56,
     "actionable": false,
     "message": "That timelocked operation has not expired yet."
+  },
+  {
+    "variant": "InvalidDataHash",
+    "code": 63,
+    "actionable": true,
+    "message": "The data hash is all zeros. Recompute it from the wrap data and resubmit."
   }
 ]
