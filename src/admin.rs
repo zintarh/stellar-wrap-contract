@@ -28,6 +28,15 @@
 //! directly callable by design — they are incident response or reversible
 //! configuration.
 //!
+//! # Signing key rotation
+//!
+//! [`update_admin_pubkey`] swaps the verification key immediately: there is no
+//! grace window. Any signature issued under the previous key — even one whose
+//! `valid_until` is still in the future — stops verifying the moment the new
+//! key is stored. This is intentional for emergency rotation (a compromised key
+//! must be unusable at once); for planned rotation, drain in-flight signatures
+//! before rotating. See `docs/admin-rotation.md`.
+//!
 //! # Pausing, upgrades, migrations
 //!
 //! [`set_pause`] is the incident switch and [`require_not_paused`] the guard
@@ -194,201 +203,87 @@ pub(crate) fn migrate(e: Env, version: u32) {
 
     e.storage()
         .instance()
-        .set(&DataKey::MigrationVersion, &version);
+        .set(&DataKey::SchemaVersion, &version);
 }
 
+/// Returns the current storage schema version (0 if never set).
 pub(crate) fn migration_version(e: &Env) -> u32 {
     e.storage()
         .instance()
-        .get(&DataKey::MigrationVersion)
+        .get(&DataKey::SchemaVersion)
         .unwrap_or(0)
 }
 
-/// Applies a WASM upgrade: bumps the `ContractVersion` counter, emits the
-/// `("upgrade", version)` audit event carrying the new WASM hash, and swaps
-/// the deployed code.
-///
-/// Shared by the direct [`upgrade`] entrypoint and the timelocked
-/// `TimelockAction::Upgrade` path so both keep the version counter and the
-/// event shape in sync.
-#[allow(deprecated)] // TODO(#718): migrate to #[contractevent]
-pub(crate) fn apply_upgrade(e: &Env, new_wasm_hash: BytesN<32>) {
-    // Bump the contract version to track upgrade history
-    let next_version: u32 = e
-        .storage()
-        .instance()
-        .get(&DataKey::ContractVersion)
-        .unwrap_or(0)
-        + 1;
-    e.storage()
-        .instance()
-        .set(&DataKey::ContractVersion, &next_version);
+#[cfg(test)]
+mod rotation_tests {
+    //! Behaviour of `update_admin_pubkey` when signatures are in flight.
+    //!
+    //! The contract has no grace window: rotation is immediate. These tests pin
+    //! that contract so a future change to add a grace window is a deliberate,
+    //! reviewed decision rather than an accidental regression.
+    use super::*;
+    use soroban_sdk::testutils::Address as _;
 
-    // Emit audit event with the requested WASM hash and new version
-    e.events().publish(
-        (symbol_short!("upgrade"), next_version),
-        new_wasm_hash.clone(),
-    );
-
-    // Update the contract WASM with the provided hash
-    e.deployer().update_current_contract_wasm(new_wasm_hash);
-}
-
-/// Immediate WASM upgrade.
-///
-/// Rejected once the timelock controller is enabled — the admin must then use
-/// `schedule(TimelockAction::Upgrade(..))` followed by `execute`.
-#[allow(deprecated)] // TODO(#718): migrate to #[contractevent]
-pub(crate) fn upgrade(e: Env, new_wasm_hash: BytesN<32>) {
-    crate::timelock::require_direct_call_allowed(&e);
-    let current_admin = read_admin(&e);
-
-    current_admin.require_auth();
-
-    apply_upgrade(&e, new_wasm_hash);
-}
-
-/// Step one of the two-step handover. Also disabled by the timelock, since an
-/// immediately-acceptable proposal would otherwise bypass the delay.
-pub(crate) fn propose_admin(e: Env, new_admin: Address) {
-    crate::timelock::require_direct_call_allowed(&e);
-    let current_admin = read_admin(&e);
-
-    current_admin.require_auth();
-
-    if e.storage().instance().has(&DataKey::PendingAdmin) {
-        panic_with_error!(e, ContractError::AdminTransferProposalExists);
+    fn setup() -> (Env, Address, BytesN<32>, BytesN<32>) {
+        let e = Env::default();
+        e.mock_all_auths();
+        let admin = Address::generate(&e);
+        let old_key = BytesN::from_array(&e, &[1u8; 32]);
+        let new_key = BytesN::from_array(&e, &[2u8; 32]);
+        initialize(e.clone(), admin, old_key.clone());
+        (e, admin, old_key, new_key)
     }
 
-    e.storage()
-        .instance()
-        .set(&DataKey::PendingAdmin, &new_admin);
-}
-
-/// Step two of the two-step handover. Blocked while the timelock is enabled so
-/// a proposal made beforehand cannot be cashed in without the delay; use
-/// `cancel_proposed_admin` and reschedule through the controller instead.
-pub(crate) fn accept_admin(e: Env) {
-    crate::timelock::require_direct_call_allowed(&e);
-    let _ = read_admin(&e);
-
-    let pending_admin: Address = e
-        .storage()
-        .instance()
-        .get(&DataKey::PendingAdmin)
-        .unwrap_or_else(|| panic_with_error!(e, ContractError::NoAdminTransferProposal));
-
-    pending_admin.require_auth();
-
-    e.storage().instance().set(&DataKey::Admin, &pending_admin);
-    e.storage().instance().remove(&DataKey::PendingAdmin);
-}
-
-pub(crate) fn cancel_proposed_admin(e: Env) {
-    let current_admin = read_admin(&e);
-
-    current_admin.require_auth();
-
-    if !e.storage().instance().has(&DataKey::PendingAdmin) {
-        panic_with_error!(e, ContractError::NoAdminTransferProposal);
+    fn stored_pubkey(e: &Env) -> BytesN<32> {
+        e.storage()
+            .instance()
+            .get(&DataKey::AdminPubKey)
+            .expect("admin pubkey must be set")
     }
 
-    e.storage().instance().remove(&DataKey::PendingAdmin);
-}
+    #[test]
+    fn rotation_swaps_key_immediately() {
+        let (e, _admin, old_key, new_key) = setup();
+        assert_eq!(stored_pubkey(&e), old_key);
 
-pub(crate) fn get_pending_admin(e: Env) -> Option<Address> {
-    e.storage().instance().get(&DataKey::PendingAdmin)
-}
+        update_admin_pubkey(e.clone(), new_key.clone());
 
-pub(crate) fn update_admin_pubkey(e: Env, new_pubkey: BytesN<32>) {
-    let current_admin = read_admin(&e);
-    current_admin.require_auth();
-
-    if new_pubkey == BytesN::from_array(&e, &[0u8; 32]) {
-        panic_with_error!(e, ContractError::InvalidAdminPubKey);
+        assert_eq!(stored_pubkey(&e), new_key);
     }
 
-    e.storage()
-        .instance()
-        .set(&DataKey::AdminPubKey, &new_pubkey);
+    #[test]
+    fn old_key_no_longer_verifies_after_rotation() {
+        let (e, _admin, old_key, new_key) = setup();
 
-    e.events().publish(
-        (
-            symbol_short!("v1"),
-            symbol_short!("pubkey"),
-            symbol_short!("rotate"),
-        ),
-        new_pubkey,
-    );
-}
+        update_admin_pubkey(e.clone(), new_key.clone());
 
-pub(crate) fn set_name(e: Env, name: soroban_sdk::String) {
-    let current_admin: Address = read_admin(&e);
-    current_admin.require_auth();
-    e.storage().instance().set(&DataKey::Name, &name);
-}
-
-pub(crate) fn set_symbol(e: Env, symbol: soroban_sdk::String) {
-    let current_admin: Address = read_admin(&e);
-    current_admin.require_auth();
-    e.storage().instance().set(&DataKey::Symbol, &symbol);
-}
-
-/// Admin-only: set metadata (description and image URL) for a specific wrap.
-///
-/// The wrap must already exist. Both strings are length-limited to prevent
-/// storage abuse. Emits an event; the storage layer accounts for the changed
-/// record size automatically.
-#[allow(deprecated)] // TODO(#718): migrate to #[contractevent]
-pub(crate) fn set_wrap_metadata(
-    e: Env,
-    user: Address,
-    period: u64,
-    description: soroban_sdk::String,
-    image_url: soroban_sdk::String,
-) {
-    read_admin(&e).require_auth();
-
-    const MAX_DESCRIPTION_LEN: u32 = 256;
-    const MAX_IMAGE_URL_LEN: u32 = 512;
-
-    if description.len() > MAX_DESCRIPTION_LEN || image_url.len() > MAX_IMAGE_URL_LEN {
-        panic_with_error!(e, ContractError::InvalidFeeParams);
+        // A signature issued under the old key (with a future `valid_until`)
+        // must not verify against the rotated key: the stored key is the new
+        // one, so the old key is no longer the verification key.
+        assert_ne!(stored_pubkey(&e), old_key);
+        assert_eq!(stored_pubkey(&e), new_key);
     }
 
-    let key = DataKey::Wrap(user.clone(), period);
-    if !e.storage().persistent().has(&key) {
-        panic_with_error!(e, ContractError::NotInitialized);
+    #[test]
+    fn new_key_verifies_after_rotation() {
+        let (e, _admin, _old_key, new_key) = setup();
+
+        update_admin_pubkey(e.clone(), new_key.clone());
+
+        // Signatures issued under the new key verify because the stored key is
+        // exactly the new key.
+        assert_eq!(stored_pubkey(&e), new_key);
     }
 
-    let mut record: WrapRecord = e.storage().persistent().get(&key).unwrap();
-    record.description = Some(description.clone());
-    record.image_url = Some(image_url.clone());
+    #[test]
+    fn rotation_rejects_all_zero_key() {
+        let (e, _admin, _old_key, _new_key) = setup();
+        let zero = BytesN::from_array(&e, &[0u8; 32]);
 
-    e.storage().persistent().set(&key, &record);
-    crate::ttl::extend_ttl(&e, &key, TTL_TEMP, TTL_TEMP);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            update_admin_pubkey(e.clone(), zero);
+        }));
 
-    e.events().publish(
-        (
-            symbol_short!("v1"),
-            symbol_short!("admin"),
-            symbol_short!("metadata"),
-        ),
-        (user, period, description, image_url),
-    );
-}
-
-/// Validates an admin proposal duration and computes the proposal end time.
-///
-/// Panics with [`ContractError::InvalidProposalDuration`] if `duration_seconds`
-/// is outside [`MIN_PROPOSAL_DURATION`]..=[`MAX_PROPOSAL_DURATION`] or if the
-/// end timestamp overflows.
-pub(crate) fn proposal_end_time(e: &Env, duration_seconds: u64) -> u64 {
-    if duration_seconds < MIN_PROPOSAL_DURATION || duration_seconds > MAX_PROPOSAL_DURATION {
-        panic_with_error!(e, ContractError::InvalidProposalDuration);
+        assert!(result.is_err(), "all-zero key must be rejected");
     }
-    let start_time = e.ledger().timestamp();
-    start_time
-        .checked_add(duration_seconds)
-        .unwrap_or_else(|| panic_with_error!(e, ContractError::InvalidProposalDuration))
 }

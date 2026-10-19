@@ -56,3 +56,41 @@ jobs:
 
       - name: Accessibility check
         run: npx --yes @axe-core/cli http://127.0.0.1:3000 --exit
+
+  resource-budget:
+    name: Resource Budget
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-budget-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Measure resource budgets
+        run: |
+          cargo test --test resource_budget -- --nocapture 2>&1 | tee /tmp/resource-budget.log
+
+      - name: Enforce resource budget
+        run: |
+          cargo run --quiet --bin resource_budget_check -- \
+            --baseline resource-budget.json \
+            --measurements /tmp/resource-budget.log \
+            --threshold 0.10 \
+            --summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload budget log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: resource-budget-log
+          path: /tmp/resource-budget.log

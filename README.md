@@ -1361,3 +1361,6 @@ Notes for indexers:
 
 <!-- handsoff-issue-456 -->
 - #456: [Refactor] Use `env.storage().persistent()` optimally for WrapRecords
+
+<!-- handsoff-issue-988 -->
+- #988: [Bug] README documents the mint payload as concatenated XDR fields, but the code signs XDR of a `MintPayload` struct including `valid_until`

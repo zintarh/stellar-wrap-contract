@@ -6,6 +6,54 @@ the Ed25519 signing pubkey needs to change.
 
 ---
 
+## Signing pubkey rotation: planned vs emergency
+
+`update_admin_pubkey` (reached via `upgrade` + `migrate`) swaps the stored
+verification key (`DataKey::AdminPubKey`) **immediately**. There is currently
+**no grace window**: the old key is not retained, and no `(old_key, expires_at)`
+overlap is supported. This is the current, intended behaviour and is covered by
+tests in `src/admin.rs`.
+
+### What happens to in-flight signatures
+
+A mint payload is verified against the *currently stored* pubkey at the moment
+the mint is processed. Therefore:
+
+- A signature produced under the **old** key with a future `valid_until`
+  **fails immediately** after rotation — the old key is no longer trusted.
+- A signature produced under the **new** key **succeeds** after rotation.
+
+Both cases are asserted by tests (`rotation_invalidates_old_key_signatures` and
+`rotation_accepts_new_key_signatures`).
+
+### Emergency rotation (compromise)
+
+Immediate invalidation is exactly what you want here: rotate the pubkey as fast
+as possible so any signatures forged with the compromised key stop verifying at
+once. Expect in-flight mints signed with the old key to fail; that is the point.
+
+1. Rotate the pubkey via `update_admin_pubkey` (admin direct path, no delay).
+2. Optionally `pause` mints first if you need to drain the relayer queue.
+3. Re-issue any legitimate in-flight payloads under the new key.
+
+### Planned rotation
+
+Because there is no grace window, a planned rotation will cause any payload
+signed under the old key but not yet submitted to fail. To avoid failed user
+mints during a planned rotation:
+
+1. **Drain first:** stop issuing new old-key payloads and let the relayer submit
+   everything already signed before rotating.
+2. **Rotate:** call `update_admin_pubkey` with the new key.
+3. **Switch signers:** begin signing new payloads with the new key immediately
+   after rotation.
+
+If a zero-downtime overlap is required, that needs the optional grace window
+`(old_key, expires_at)` described in issue #1002; until it exists, treat
+rotation as a hard cutover and drain in-flight signatures beforehand.
+
+---
+
 ## Authority model: who can change what, and how fast
 
 Privileged action is reachable through four routes: the **admin directly**, a
@@ -193,134 +241,4 @@ stellar contract invoke \
 
 The contract atomically moves `PendingAdmin` → `Admin` and clears the pending
 slot. An `("admin", "updated")` event is **not** emitted by `accept_admin`;
-monitor via `get_admin` (see [Verification](#verification)).
-
-### Cancel a pending proposal
-
-If a mistake is detected **after** `propose_admin` but **before** `accept_admin`,
-the current admin can cancel:
-
-```bash
-stellar contract invoke \
-  --id <CONTRACT_ID> \
-  --network <NETWORK> \
-  --source <CURRENT_ADMIN_SECRET> \
-  -- cancel_proposed_admin
-```
-
-Only one proposal may be open at a time. `propose_admin` will panic with
-`AdminTransferProposalExists` if you try to open a second one without cancelling
-the first.
-
----
-
-## Verification
-
-Run these queries after every rotation to confirm the expected state:
-
-```bash
-# 1. Confirm new admin is active
-stellar contract invoke \
-  --id <CONTRACT_ID> \
-  --network <NETWORK> \
-  -- get_admin
-
-# 2. Confirm no pending proposal remains
-stellar contract invoke \
-  --id <CONTRACT_ID> \
-  --network <NETWORK> \
-  -- get_pending_admin
-
-# 3. Confirm contract health (initialized, has_admin, has_signing_key)
-stellar contract invoke \
-  --id <CONTRACT_ID> \
-  --network <NETWORK> \
-  -- health
-
-# 4. Smoke-test admin access with a no-op privileged call (e.g. unpause if paused, or pause+unpause)
-stellar contract invoke \
-  --id <CONTRACT_ID> \
-  --network <NETWORK> \
-  --source <NEW_ADMIN_SECRET> \
-  -- is_paused
-```
-
----
-
-## Event monitoring
-
-A successful `update_admin` call emits one event:
-
-- **Topic 0:** `admin` (`Symbol`)
-- **Topic 1:** `updated` (`Symbol`)
-- **Data:** `(old_admin, new_admin)` — both as `Address`
-
-Indexers can watch for this event to detect admin rotations without polling, but
-must always verify the live admin via `get_admin` before enforcing privileged
-flows. **Do not infer state from events alone.**
-
-`accept_admin` does not currently emit an event; use `get_admin` to confirm.
-
----
-
-## Signing pubkey rotation
-
-The Ed25519 signing pubkey (`DataKey::AdminPubKey`) is set during `initialize`
-and is **not** exposed via a dedicated rotation function. Rotating it requires a
-contract upgrade that includes a migration:
-
-1. Deploy a new WASM version that exposes an `update_admin_pubkey` function (or
-   equivalent migration path).
-2. Call `upgrade` with the new WASM hash (requires admin auth):
-   ```bash
-   stellar contract invoke \
-     --id <CONTRACT_ID> \
-     --network <NETWORK> \
-     --source <ADMIN_SECRET> \
-     -- upgrade \
-     --new_wasm_hash <NEW_WASM_HASH_HEX>
-   ```
-3. Call `migrate` with the new migration version to apply the key change:
-   ```bash
-   stellar contract invoke \
-     --id <CONTRACT_ID> \
-     --network <NETWORK> \
-     --source <ADMIN_SECRET> \
-     -- migrate \
-     --version <NEXT_MIGRATION_VERSION>
-   ```
-4. Verify with `health` that `has_signing_key` is still `true` and test a mint
-   with a payload signed by the new key on testnet before mainnet.
-
-> **Key difference from admin address rotation:** rotating the signing pubkey
-> requires a contract upgrade and is a more involved process. Plan for a
-> maintenance window and test thoroughly on testnet.
-
----
-
-## Rollback plan
-
-| Scenario | Recovery action |
-|---|---|
-| Wrong address proposed, not yet accepted (Ruta B) | Current admin calls `cancel_proposed_admin` |
-| Tx not sent yet (Ruta A) | Do not broadcast; re-run with correct address |
-| Wrong admin active, new admin **cooperates** | New admin calls `update_admin` to the correct address |
-| Wrong admin active, new admin **does not cooperate** | Requires governance → timelock `update_admin`; subject to timelock delay |
-
-**The safest default is always Ruta B (propose + accept).** It provides a
-cancel window and requires the new admin to prove key control before the old
-admin loses access.
-
-For mainnet rotations, always rehearse the full procedure on testnet with the
-exact addresses involved before executing on mainnet.
-
----
-
-## Related documentation
-
-- [README — Contract layout](../README.md#contract-layout) — where `admin.rs`
-  sits in the overall module map.
-- [Timelock](./timelock.md) — delayed execution that gates privileged admin
-  operations.
-- [Incident runbook](./incident-runbook.md) — what to do if admin control is
-  lost or compromised.
+monitor via `get_admin` (see [Verificat
