@@ -9,6 +9,8 @@
 
 ### Changed
 
+- Removed the unused `MintedPeriod(Address, u32)` storage key. Duplicate mint
+  prevention continues to rely on the existing `Wrap(Address, u64)` record.
 - `pause` / `unpause` now emit direction-distinguishable events with the acting
   admin as the payload, instead of a shared `("pause",)` topic carrying a
   boolean payload:

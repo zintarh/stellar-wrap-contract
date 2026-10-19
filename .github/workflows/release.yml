@@ -18,6 +18,16 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
 
+      - name: Install Stellar CLI
+        run: cargo install stellar-cli --locked
+
+      - name: Generate TypeScript contract bindings
+        run: |
+          cargo build --release --target wasm32-unknown-unknown
+          stellar contract bindings typescript \
+            --wasm target/wasm32-unknown-unknown/release/stellar_wrap_contract.wasm \
+            --output-dir "$RUNNER_TEMP/contract-client"
+
       - name: Verify version consistency
         run: |
           set -euo pipefail

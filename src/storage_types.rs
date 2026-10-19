@@ -256,8 +256,6 @@ pub enum DataKey {
     LastUpdated(Address),
     /// Temporary mint reentrancy / double-call guard (temporary tier).
     MintGuard(Address),
-    /// Period that has been minted for a specific user, to prevent double minting.
-    MintedPeriod(Address, u32),
     // New instance storage keys for accounting / fee system:
     /// Estimated persistent storage bytes used by this contract (instance-level)
     StorageBytes,

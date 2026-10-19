@@ -8,15 +8,12 @@
 //
 // Opting out is *forward-looking only*: it prevents any future wrap from
 // being minted for the user, but it does **not** remove or otherwise mutate
-// records that already exist. Balances, minted-period records, and any other
-// state written before the opt-out remain intact and readable.
+// records that already exist. Balances and any other state written before the
+// opt-out remain intact and readable.
 //
 // Opt-out is reversible via [`opt_in`]. Re-opting-in only clears the flag so
-// that future mints are allowed again; it does **not** reset or forget the
-// periods that were already minted. The once-per-period guarantee is enforced
-// by the mint path's existing period records, which are independent of the
-// opt-out flag, so a period that was minted before opting out cannot be
-// re-minted after opting back in.
+// that future mints are allowed again. Duplicate periods remain rejected by
+// the existing wrap record, independently of the opt-out flag.
 //
 // The flag is keyed by [`DataKey::OptOut(user)`], and both [`opt_out`] and
 // [`opt_in`] call `user.require_auth()`, so a caller can only set or clear
@@ -73,49 +70,7 @@ pub(crate) fn require_not_opted_out(e: &Env, user: &Address) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::testutils::{Address as _, Ledger as _};
-
-    /// Round trip: mint a period, opt out, opt back in, then attempt to
-    /// re-mint the same period. The opt-out flag must not erase the period
-    /// record, so the once-per-period guarantee still rejects the re-mint.
-    #[test]
-    fn opt_out_opt_in_does_not_allow_reminting_a_minted_period() {
-        let e = Env::default();
-        e.mock_all_auths();
-
-        let user = Address::generate(&e);
-        let period = 42u32;
-
-        // Simulate the mint path recording the period for the user.
-        let period_key = DataKey::MintedPeriod(user.clone(), period);
-        e.storage().persistent().set(&period_key, &true);
-
-        // Opt out, then opt back in.
-        opt_out(e.clone(), user.clone());
-        assert!(is_opted_out(&e, &user));
-        opt_in(e.clone(), user.clone());
-        assert!(!is_opted_out(&e, &user));
-
-        // The previously minted period record survives the opt-out round trip,
-        // so the once-per-period guarantee still holds.
-        assert!(e.storage().persistent().has(&period_key));
-    }
-
-    /// Opting out must not remove existing records.
-    #[test]
-    fn opt_out_preserves_existing_records() {
-        let e = Env::default();
-        e.mock_all_auths();
-
-        let user = Address::generate(&e);
-        let period_key = DataKey::MintedPeriod(user.clone(), 7u32);
-        e.storage().persistent().set(&period_key, &true);
-
-        opt_out(e.clone(), user.clone());
-
-        assert!(is_opted_out(&e, &user));
-        assert!(e.storage().persistent().has(&period_key));
-    }
+    use soroban_sdk::testutils::Address as _;
 
     /// Opt-out cannot be set on another user's behalf: the flag is keyed by
     /// the authenticated caller.
