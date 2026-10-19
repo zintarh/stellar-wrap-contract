@@ -42,7 +42,7 @@
 use soroban_sdk::{panic_with_error, symbol_short, Address, BytesN, Env};
 
 use crate::{
-    ttl::TTL_TEMP, ContractError, DataKey, TransferFeeConfig, WrapRecord,
+    constants::TTL_METADATA_MIN, ContractError, DataKey, TransferFeeConfig, WrapRecord,
 };
 
 /// Minimum duration for an admin proposal, in seconds (1 hour).
@@ -366,7 +366,7 @@ pub(crate) fn set_wrap_metadata(
     record.image_url = Some(image_url.clone());
 
     e.storage().persistent().set(&key, &record);
-    crate::ttl::extend_ttl(&e, &key, TTL_TEMP, TTL_TEMP);
+    crate::ttl::extend_ttl(&e, &key, TTL_METADATA_MIN, TTL_METADATA_MIN);
 
     e.events().publish(
         (
