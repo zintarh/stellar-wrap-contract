@@ -132,7 +132,7 @@ Mint signatures are now versioned. Clients must sign the canonical payload with 
 
 #### Expanded query surface
 
-The documented public interface now includes additional query helpers such as `get_mint_timestamp`, `total_wrap_count`, `get_wraps`, `get_last_updated`, `get_all_wraps_for_user`, `check_user_invariants`, `has_wrap`, `get_admin_pubkey`, `get_transfer_fee`, `get_stake_*`, `get_outbound_bridge_request`, `get_inbound_bridge_record`, and `timelock_*`. Consumers that rely on older assumptions about the contract surface should review the current method list before building or updating clients.
+The documented public interface now includes additional query helpers such as `get_mint_timestamp`, `total_wrap_count`, `get_wraps`, `get_last_updated`, `get_all_wraps_for_user`, `check_user_invariants`, `has_wrap`, `get_admin_pubkey`, `get_stake_*`, `get_outbound_bridge_request`, `get_inbound_bridge_record`, and `timelock_*`. Consumers that rely on older assumptions about the contract surface should review the current method list before building or updating clients.
 
 #### Non-transferable wraps and revoke semantics
 

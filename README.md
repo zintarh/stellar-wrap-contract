@@ -50,13 +50,12 @@ Wrap records are implemented as non-transferable (soulbound) entries. The contra
 
 - `balance_of(user)` returns the number of wrap records minted for `user`, not a tradable token balance.
 - records cannot be transferred between addresses as arbitrary token quantities.
-- wrap record movement is scoped to specific periods via `transfer_wrap(from, to, period)`.
 
 ## Token interface compatibility
 
 This contract functions as a **soulbound registry**, not a conventional SEP-41 fungible token. While it exposes `token::TokenInterface` for broad compatibility with Soroban tooling, it intentionally implements only a deliberate subset of token-interface functionality.
 
-The presence of methods such as `name`, `symbol`, `decimals`, and `balance_of` does **not** mean the contract is a fully usable fungible token. Wallets, block explorers, and other integrators must not interpret `balance_of` as a fungible token balance or present standard token transfer UI. Furthermore, `transfer_wrap` has registry-specific semantics (moving a specific wrap record identified by `period`) and is not equivalent to a standard fungible-token `transfer`.
+The presence of methods such as `name`, `symbol`, `decimals`, and `balance_of` does **not** mean the contract is a fully usable fungible token. Wallets, block explorers, and other integrators must not interpret `balance_of` as a fungible token balance or present standard token transfer UI.
 
 ### Implemented
 
@@ -121,9 +120,7 @@ The following table documents which state-mutating entrypoints honor the pause (
 | `renew_all_ttls(user)` | admin |
 | `extend_ttl(user, period)` | anyone |
 | `extend_ttl_batch(user, periods)` | anyone |
-| `set_transfer_fee(token, recipient, amount)` | admin |
-| `clear_transfer_fee()` | admin |
-| `get_transfer_fee()` | — |
+
 | `set_expiration_duration(duration)` | admin |
 | `expiration_duration()` | — |
 
@@ -136,7 +133,6 @@ The following table documents which state-mutating entrypoints honor the pause (
 - `mint_wrap(e: Env, user: Address, period: u64, archetype: Symbol, data_hash: BytesN<32>, payload_version: u32, signature: BytesN<64>)`
 - `mint_wrap_batch(e: Env, items: Vec<BatchWrapItem>, aggregated_signature: Option<BytesN<64>>)`
 - `revoke_wrap(e: Env, user: Address, period: u64, reason_hash: BytesN<32>)`
-- `transfer_wrap(e: Env, from: Address, to: Address, period: u64)`
 - `expire_wrap(e: Env, user: Address, period: u64)`
 - `migrate(e: Env, version: u32)`
 - `upgrade(e: Env, new_wasm_hash: BytesN<32>)`
@@ -160,16 +156,6 @@ of:
 clients must sign this exact byte layout. See
 [docs/signing-payload.md](docs/signing-payload.md) for the full reference and a
 TypeScript signer example.
-
-### Transfer
-
-| Entrypoint | Auth |
-| --- | --- |
-| `transfer_wrap(from, to, period)` | `from` (charges the configured fee) |
-| `set_transfer_fee(recipient, token, amount)` | admin |
-| `get_transfer_fee()` | — |
-| `clear_transfer_fee()` | admin |
-| `backfill_wrap_periods(user, periods)` | admin |
 
 ### Queries
 
@@ -458,12 +444,11 @@ The following capabilities exist in the contract but are **not yet wired into th
 mint path**. They are listed so the README does not overstate behaviour:
 
 - **Whitelist gating** — `set_whitelist_root` / `verify_whitelist` and the
-  internal `require_whitelisted` gate exist, but no mint or transfer entrypoint
+  internal `require_whitelisted` gate exist, but no mint entrypoint
   calls them. Publishing a root does not yet restrict who can mint.
 - **Fee collection** — the storage-accounting fee model (`current_fee`,
   `set_fee_params`, `fee_params`) is computed on-chain, but `mint_wrap` does not
-  charge it. `transfer_wrap` charges a separate, fixed `set_transfer_fee`
-  amount unrelated to the storage fee.
+  charge it.
 - **Staking discounts** — `get_discounted_fee` computes a discount from a user's
   stake, but mints do not apply it, so staking affects priority numbers only,
   not the fees a user actually pays.
@@ -1007,6 +992,7 @@ storage layout must ship as a numbered migration:
 
 Documentation contributions follow the manual Markdown formatting guidance in [CONTRIBUTING.md](CONTRIBUTING.md).
 
+- [Architecture v2 decisions](docs/architecture-v2.md) — product and architecture decisions for the v2 rewrite, including the removal of `transfer_wrap`
 - [Canonical signed payload encoding](docs/signing-payload.md) — exact field order, XDR encoding rules, and test vectors required by backend signing services (issue #213)
 - [Admin rotation procedure](docs/admin-rotation.md) — safe procedure for rotating the admin address and signing pubkey, including verification, event monitoring, and rollback plan
 - [Timelock controller](docs/timelock.md) — architecture and operator runbook for the admin timelock
@@ -1298,17 +1284,12 @@ shapes. `<..>` marks a value that varies per call.
 | `initialize` | `v1 / admin / init` | `Event::AdminInit(admin)` |
 | `pause, unpause` | `v1 / admin / pause` | `Event::AdminPause(paused)` |
 | `update_admin` | `v1 / admin / updated` | `(current_admin, new_admin)` |
-| `set_transfer_fee` | `fee` | `(token, recipient, amount)` |
-| `clear_transfer_fee` | `fee_clr` | `()` |
 | `upgrade` | `upgrade / <version>` | `wasm_hash: BytesN<32>` |
 | `update_admin_pubkey` | `v1 / pubkey / rotate` | `new_pubkey: BytesN<32>` |
 | `set_wrap_metadata` | `v1 / admin / metadata` | `(user, period, description, image_url)` |
 | `mint_wrap` | `v1 / wrap / mint` | `Event::Mint(user, period, archetype)` |
 | `mint_wrap_batch` | `Mint / <user> / <period>` | `MintEventData::Mint(user, period, archetype)` |
 | `expire_wrap` | `expire / <user> / <period>` | `symbol_short!(\` |
-| `transfer_wrap (no fee)` | `transfer / <from> / <to> / <period>` | `()` |
-| `transfer_wrap (fee charged)` | `transfer / <from> / <to> / <period>` | `(token, recipient, amount)` |
-| `backfill_wrap_periods` | `backfill / <user>` | `period_count: u32` |
 | `revoke_wrap` | `revoke / <user> / <period>` | `reason_hash: BytesN<32>` |
 | `burn_wrap` | `burn / <user> / <period>` | `user: Address` |
 | `stake (first stake)` | `stake / <user> / init` | `amount: i128` |

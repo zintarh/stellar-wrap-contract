@@ -50,10 +50,9 @@ The following entrypoints remain callable while paused because they are needed f
 | `timelock_schedule` / `timelock_execute` / `timelock_cancel` | Timelock operations must be manageable |
 | `set_bridge_relayer` / `set_bridge_relayers` / `set_chain_status` | Bridge configuration must be fixable |
 | `set_whitelist_root` / `clear_whitelist_root` | Whitelist must be recoverable |
-| `set_fee_params` / `set_transfer_fee` / `clear_transfer_fee` | Fee config must be recoverable |
+| `set_fee_params` | Fee config must be recoverable |
 | `revoke_wrap` | Admin revocation for compliance |
 | `burn_wrap` | User-initiated irreversible burn |
-| `transfer_wrap` | User-initiated wrap transfer |
 | `set_name` / `set_symbol` | Metadata |
 | `set_alias_hash` / `opt_out` / `opt_in` | User preferences |
 | `extend_ttl` / `renew_all_ttls` | Storage preservation |
@@ -76,7 +75,7 @@ If the timelock is **not enabled**, the compromised admin can immediately:
 3. **Upgrade the WASM** via `upgrade` — deploy malicious code.
 4. **Change the whitelist root** via `set_whitelist_root` — open or close allowlists.
 5. **Change bridge relayers** via `set_bridge_relayers` / `set_bridge_relayer` — redirect inbound bridge flows.
-6. **Change fee params** via `set_fee_params` / `set_transfer_fee` — extract value.
+6. **Change fee params** via `set_fee_params` — extract value.
 
 ### 2.2 Timelocked actions (if timelock is enabled)
 
@@ -114,11 +113,11 @@ The bridge relayer compromise has a **different blast radius** from an admin com
 | | Admin compromised | Bridge relayer compromised |
 |---|---|---|
 | Can mint new wraps | Yes (via `mint_wrap` with stolen signing key) | Yes (via `bridge_wrap_in` with stolen relayer key) |
-| Can steal existing wraps | Yes (via `transfer_wrap` if admin can auth, or by rotating admin then transferring) | No (outbound requires user auth) |
+| Can steal existing wraps | Yes (by rotating admin then transferring, or by malicious admin) | No (outbound requires user auth) |
 | Can change contract code | Yes (via `upgrade`) | No |
 | Can change admin | Yes | No |
 | Can change bridge config | Yes | Yes (via `set_bridge_relayers`) |
-| Can drain fees | Yes (via `set_transfer_fee` redirect) | No |
+| Can drain fees | Yes (via `set_fee_params` redirect) | No |
 
 ---
 
@@ -233,7 +232,7 @@ If the attacker has already called `update_admin` and the admin is now under the
 |---|---|---|
 | Mint new wraps | Yes (signing key) | Yes (inbound bridge) |
 | Mint wraps for specific user | Yes | Yes (any recipient) |
-| Steal existing wraps | Yes (via transfer) | No |
+| Steal existing wraps | Yes (via malicious admin or admin rotation) | No |
 | Change contract code | Yes | No |
 | Change admin | Yes | No |
 | Redirect bridge refunds | Yes (via bridge config) | Yes (relayer is refund auth) |
@@ -253,7 +252,7 @@ After containing the incident and rotating credentials:
 - [ ] Signing pubkey is rotated if the old key was compromised.
 - [ ] Bridge relayers are set to trusted addresses.
 - [ ] Whitelist root is set to the correct value.
-- [ ] Transfer fee params are correct (not redirected).
+- [ ] Fee params are correct (not redirected).
 - [ ] All user wrap records are intact (no unauthorized burns or revokes).
 - [ ] Governance proposals are reviewed for any malicious proposals.
 - [ ] Monitoring alerts are re-enabled and tested.

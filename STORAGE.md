@@ -29,7 +29,7 @@ Soroban provides three storage tiers with distinct persistence, TTL, and rent pr
    - Baseline renewal policy: Extended to **~1 year** (`TTL_ONE_YEAR` from `constants.rs` = 6,307,200 ledgers) on creation and modification.
 
 3. **Temporary Storage (`e.storage().temporary()`)**:
-   - Ephemeral reentrancy guards (`MintGuard`, `TransferGuard`).
+   - Ephemeral reentrancy guards (`MintGuard`).
    - Cleared automatically upon transaction completion or TTL expiry, preventing persistent state bloat.
 
 ---
@@ -46,9 +46,7 @@ Every variant of the `DataKey` enum is documented below with its assigned storag
 | `Wrap(Address, u64)` | Persistent | `WrapRecord` | 1 Year (`6,307,200` ledgers) | ~64–100 bytes | Core user wrap record keyed by `(user, period)`. Unbounded collection. |
 | `WrapCount(Address)` | Persistent | `u32` | 1 Year (`6,307,200` ledgers) | 4 bytes | Number of active wraps owned by a user. |
 | `LatestPeriod(Address)` | Persistent | `u64` | 1 Year (`6,307,200` ledgers) | 8 bytes | Highest period index minted for a user. |
-| `WrapPeriods(Address)` | Persistent | `Vec<u64>` | 1 Year (`6,307,200` ledgers) | Bounded by user wrap count | List of periods owned by user to enable O(1) balance lookups and transfer updates. |
-| `TransferFee` | Instance | `TransferFeeConfig` | Contract Instance Lifetime | ~72 bytes | Token fee configuration (`amount`, `recipient`, `token`) for `transfer_wrap`. |
-| `TransferGuard` | Temporary | `bool` | Transaction Lifespan | 1 byte | Ephemeral reentrancy guard for wrap transfers. |
+| `WrapPeriods(Address)` | Persistent | `Vec<u64>` | 1 Year (`6,307,200` ledgers) | Bounded by user wrap count | List of periods owned by user to enable O(1) balance lookups. |
 | `MigrationVersion` | Instance | `u32` | Contract Instance Lifetime | 4 bytes | Tracks applied schema/storage migration version. |
 | `UserPeriods(Address)` | Persistent | `Vec<u64>` | 1 Year (`6,307,200` ledgers) | Bounded by user history | Historical mint period record for each user. |
 | `TotalWrapCount` | Persistent | `u32` | 1 Year (`6,307,200` ledgers) | 4 bytes | Global count of all wraps minted across all users. |
