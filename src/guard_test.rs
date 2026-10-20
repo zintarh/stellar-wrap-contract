@@ -39,6 +39,7 @@ use soroban_sdk::{
 use crate::mint::CURRENT_PAYLOAD_VERSION;
 use crate::signature::construct_mint_payload;
 use crate::storage_types::DataKey;
+use crate::test_utils::default_test_env;
 
 // ── Helper ────────────────────────────────────────────────────────────────────
 
@@ -76,7 +77,7 @@ fn sign_for_test(
 ///   3. Assert no temporary or persistent guard entry remains.   ✓
 #[test]
 fn test_zero_hash_mint_failure_leaves_no_guard_entry() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -154,7 +155,7 @@ fn test_zero_hash_mint_failure_leaves_no_guard_entry() {
 /// inspection also sees a clean state.
 #[test]
 fn test_successful_mint_leaves_no_guard_entry() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -205,7 +206,7 @@ fn test_successful_mint_leaves_no_guard_entry() {
 /// (`WrapAlreadyExists`, #4) also leaves no guard entry.
 #[test]
 fn test_duplicate_mint_failure_leaves_no_guard_entry() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 

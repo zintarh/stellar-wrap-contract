@@ -10,12 +10,12 @@ use soroban_sdk::{
 use super::*;
 use crate::{
     storage_types::BatchWrapItem,
-    test_utils::{decode_events, sign_payload},
+    test_utils::{decode_events, default_test_env, sign_payload},
 };
 
 #[test]
 fn test_mint_wrap_batch_happy_path() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -153,7 +153,7 @@ use crate::test_utils::sign_batch_payload;
 
 #[test]
 fn test_mint_wrap_batch_aggregated_signature_success() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -219,7 +219,7 @@ fn test_mint_wrap_batch_aggregated_signature_success() {
 
 #[test]
 fn test_mint_wrap_batch_aggregated_signature_rejects_reordered_items() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -277,7 +277,7 @@ fn test_mint_wrap_batch_aggregated_signature_rejects_reordered_items() {
 
 #[test]
 fn test_mint_wrap_batch_aggregated_signature_rejects_mutated_data_hash() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -334,7 +334,7 @@ fn test_mint_wrap_batch_aggregated_signature_rejects_mutated_data_hash() {
 
 #[test]
 fn test_mint_wrap_batch_aggregated_signature_rejects_wrong_key() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 

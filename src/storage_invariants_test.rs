@@ -26,7 +26,7 @@ use soroban_sdk::{
 };
 
 use crate::{
-    test_utils::sign_payload,
+    test_utils::{default_test_env, sign_payload},
     DataKey, StellarWrapContract, StellarWrapContractClient,
 };
 
@@ -196,7 +196,7 @@ struct TestFixture {
 
 impl TestFixture {
     fn new() -> Self {
-        let env = Env::default();
+        let env = default_test_env();
         let contract_id = env.register(StellarWrapContract, ());
         let client = StellarWrapContractClient::new(&env, &contract_id);
 

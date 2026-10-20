@@ -10,7 +10,7 @@ use soroban_sdk::{
 };
 
 use super::*;
-use crate::test_utils::sign_payload;
+use crate::test_utils::{default_test_env, sign_payload};
 
 /// Helper: mint one wrap for `user` at the current ledger time using the
 /// contract admin key.
@@ -49,7 +49,7 @@ fn setup(env: &Env, client: &StellarWrapContractClient) -> (SigningKey, Address,
 
 #[test]
 fn test_last_updated_none_before_any_action() {
-    let env = Env::default();
+    let env = default_test_env();
     env.ledger().with_mut(|li| li.timestamp = 1_000_000);
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
@@ -61,7 +61,7 @@ fn test_last_updated_none_before_any_action() {
 
 #[test]
 fn test_last_updated_after_mint_matches_ledger_time() {
-    let env = Env::default();
+    let env = default_test_env();
     env.ledger().with_mut(|li| li.timestamp = 1_000_000);
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
@@ -75,7 +75,7 @@ fn test_last_updated_after_mint_matches_ledger_time() {
 
 #[test]
 fn test_last_updated_monotonic_across_mints() {
-    let env = Env::default();
+    let env = default_test_env();
     env.ledger().with_mut(|li| li.timestamp = 1_000_000);
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
@@ -98,7 +98,7 @@ fn test_last_updated_monotonic_across_mints() {
 
 #[test]
 fn test_last_updated_updated_on_revoke() {
-    let env = Env::default();
+    let env = default_test_env();
     env.ledger().with_mut(|li| li.timestamp = 1_000_000);
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
@@ -117,7 +117,7 @@ fn test_last_updated_updated_on_revoke() {
 
 #[test]
 fn test_last_updated_independent_per_user() {
-    let env = Env::default();
+    let env = default_test_env();
     env.ledger().with_mut(|li| li.timestamp = 1_000_000);
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);

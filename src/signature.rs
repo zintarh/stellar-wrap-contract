@@ -321,6 +321,7 @@ mod tests {
 
     use super::*;
     use crate::{StellarWrapContract, StellarWrapContractClient};
+    use crate::test_utils::default_test_env;
 
     fn sign_payload(
         env: &Env,
@@ -350,7 +351,7 @@ mod tests {
 
     #[test]
     fn test_construct_mint_payload_has_expected_byte_layout() {
-        let env = Env::default();
+        let env = default_test_env();
         let contract_id = env.register(StellarWrapContract, ());
         let user = Address::generate(&env);
         let archetype = symbol_short!("arch");
@@ -403,7 +404,7 @@ mod tests {
 
     #[test]
     fn test_verify_mint_signature_accepts_valid_signature() {
-        let env = Env::default();
+        let env = default_test_env();
         let contract_id = env.register(StellarWrapContract, ());
         let user = Address::generate(&env);
         let archetype = symbol_short!("arch");
@@ -442,7 +443,7 @@ mod tests {
 
     #[test]
     fn test_verify_mint_signature_rejects_invalid_signature() {
-        let env = Env::default();
+        let env = default_test_env();
         let contract_id = env.register(StellarWrapContract, ());
         let user = Address::generate(&env);
         let archetype = symbol_short!("arch");
@@ -475,7 +476,7 @@ mod tests {
 
     #[test]
     fn test_verify_mint_signature_rejects_unsupported_version() {
-        let env = Env::default();
+        let env = default_test_env();
         let contract_id = env.register(StellarWrapContract, ());
         let user = Address::generate(&env);
         let archetype = symbol_short!("arch");
@@ -511,7 +512,7 @@ mod tests {
 
     #[test]
     fn test_verify_mint_signature_rejects_wrong_key() {
-        let env = Env::default();
+        let env = default_test_env();
         let contract_id = env.register(StellarWrapContract, ());
         let user = Address::generate(&env);
         let archetype = symbol_short!("arch");
@@ -546,7 +547,7 @@ mod tests {
 
     #[test]
     fn test_mint_wrap_rejects_invalid_signature_length() {
-        let env = Env::default();
+        let env = default_test_env();
         let contract_id = env.register(StellarWrapContract, ());
         let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -572,7 +573,7 @@ mod tests {
 
     #[test]
     fn test_verify_batch_aggregated_signature_success() {
-        let env = Env::default();
+        let env = default_test_env();
         let contract_id = env.register(StellarWrapContract, ());
         let archetype = symbol_short!("arch");
         let data_hash = BytesN::from_array(&env, &[1u8; 32]);
@@ -610,7 +611,7 @@ mod tests {
 
     #[test]
     fn test_verify_batch_max_size_does_not_panic() {
-        let env = Env::default();
+        let env = default_test_env();
         let contract_id = env.register(StellarWrapContract, ());
         let signing_key = SigningKey::from_bytes(&[77u8; 32]);
         let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
@@ -656,7 +657,7 @@ mod tests {
 
     #[test]
     fn test_verify_mint_max_archetype_does_not_panic() {
-        let env = Env::default();
+        let env = default_test_env();
         let contract_id = env.register(StellarWrapContract, ());
         let user = Address::generate(&env);
         let archetype = Symbol::new(&env, "abcdefghijklmnopqrstuvwxyzabcdef");
@@ -695,7 +696,7 @@ mod tests {
 
     #[test]
     fn test_verify_ed25519_rejects_oversized_payload() {
-        let env = Env::default();
+        let env = default_test_env();
         let signing_key = SigningKey::from_bytes(&[99u8; 32]);
         let pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
         let dummy_sig = BytesN::from_array(&env, &[0u8; 64]);

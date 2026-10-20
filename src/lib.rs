@@ -56,7 +56,7 @@ mod ttl;
 mod wrap_record_helpers;
 
 pub use errors::ContractError;
-pub use mint::{validate_period, CURRENT_PAYLOAD_VERSION, MAX_PERIOD_YEAR, MIN_PERIOD_YEAR};
+pub use mint::{validate_period, timestamp_to_period, CURRENT_PAYLOAD_VERSION, MAX_PERIOD_YEAR, MIN_PERIOD_YEAR};
 pub use oracle::DataHashOracle;
 pub use storage_types::{
     AdminProposal, BatchWrapItem, ContractHealth, DataKey, InboundBridgeRecord, InvariantReport,
@@ -193,6 +193,8 @@ impl StellarWrapContract {
     /// - [`ContractError::Paused`] if the contract is paused.
     /// - [`ContractError::InvalidPeriod`] if `period` is not a valid `YYYYMM`
     ///   value (year 2024-2100, month 01-12).
+    /// - [`ContractError::PeriodInFuture`] if `period` is ahead of the current
+    ///   ledger timestamp (the month has not started yet).
     /// - [`ContractError::InvalidSignature`] if `payload_version` is not the
     ///   current version, or the admin signature does not verify.
     /// - [`ContractError::SignatureExpired`] if the current ledger timestamp
@@ -1010,6 +1012,8 @@ mod oracle_test;
 #[cfg(test)]
 mod pause_coverage_test;
 #[cfg(test)]
+mod period_future_test;
+#[cfg(test)]
 mod prop_test;
 #[cfg(test)]
 mod queries_test;
@@ -1077,6 +1081,7 @@ mod invalid_signature_test {
     #[test]
     fn test_invalid_signature_with_wrong_admin_pubkey() {
         let e = Env::default();
+        e.ledger().set_timestamp(crate::test_utils::TEST_LEDGER_TIMESTAMP);
         e.mock_all_auths();
 
         let contract_id = e.register(StellarWrapContract, ());

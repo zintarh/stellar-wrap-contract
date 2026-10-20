@@ -18,7 +18,7 @@
 extern crate std;
 
 use super::*;
-use crate::test_utils::sign_payload;
+use crate::test_utils::{default_test_env, sign_payload};
 use ed25519_dalek::SigningKey;
 use soroban_sdk::{symbol_short, testutils::{Address as _, Ledger}, Address, BytesN, Env};
 
@@ -80,14 +80,14 @@ fn observe(client: &StellarWrapContractClient, user: &Address) -> (bool, i128, b
 #[test]
 fn test_revoke_and_burn_leave_identical_state() {
     // ── Path A: mint → revoke ────────────────────────────────────────────
-    let env_a = Env::default();
+    let env_a = default_test_env();
     let (client_a, _, _, user_a) = setup_minted_wrap(&env_a, 0xAA);
     let reason = BytesN::from_array(&env_a, &[0u8; 32]);
     client_a.revoke_wrap(&user_a, &PERIOD, &reason);
     let state_a = observe(&client_a, &user_a);
 
     // ── Path B: mint → burn ──────────────────────────────────────────────
-    let env_b = Env::default();
+    let env_b = default_test_env();
     let (client_b, _, _, user_b) = setup_minted_wrap(&env_b, 0xBB);
     client_b.burn_wrap(&user_b, &PERIOD);
     let state_b = observe(&client_b, &user_b);
@@ -146,7 +146,7 @@ fn test_revoke_and_burn_leave_identical_state() {
 /// removed via either revoke or burn (previously neither path decremented it).
 #[test]
 fn test_revoke_decrements_total_wrap_count() {
-    let env = Env::default();
+    let env = default_test_env();
     let (client, _, _, user) = setup_minted_wrap(&env, 0x01);
 
     assert_eq!(client.total_wrap_count(), 1, "should have 1 wrap after mint");
@@ -161,7 +161,7 @@ fn test_revoke_decrements_total_wrap_count() {
 
 #[test]
 fn test_burn_decrements_total_wrap_count() {
-    let env = Env::default();
+    let env = default_test_env();
     let (client, _, _, user) = setup_minted_wrap(&env, 0x02);
 
     assert_eq!(client.total_wrap_count(), 1, "should have 1 wrap after mint");
@@ -176,7 +176,7 @@ fn test_burn_decrements_total_wrap_count() {
 /// Verify that burn now sets LastUpdated (previously it did not).
 #[test]
 fn test_burn_sets_last_updated() {
-    let env = Env::default();
+    let env = default_test_env();
     let (client, _, _, user) = setup_minted_wrap(&env, 0x03);
 
     // Advance ledger time so the mint's timestamp and the burn's timestamp differ.

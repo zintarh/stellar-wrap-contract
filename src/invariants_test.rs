@@ -1,11 +1,12 @@
 #![cfg(test)]
 
 use crate::{StellarWrapContract, StellarWrapContractClient};
+use crate::test_utils::default_test_env;
 use soroban_sdk::{testutils::Address as _, Address, BytesN, Env, Symbol};
 
 #[test]
 fn test_healthy_user_invariants() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register_contract(None, StellarWrapContract);
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -44,7 +45,7 @@ fn test_healthy_user_invariants() {
 
 #[test]
 fn test_post_revoke_invariants() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register_contract(None, StellarWrapContract);
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -74,7 +75,7 @@ fn test_post_revoke_invariants() {
 
 #[test]
 fn test_post_burn_invariants() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register_contract(None, StellarWrapContract);
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -101,7 +102,7 @@ fn test_post_burn_invariants() {
 
 #[test]
 fn test_post_bridge_in_invariants() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register_contract(None, StellarWrapContract);
     let client = StellarWrapContractClient::new(&env, &contract_id);
 

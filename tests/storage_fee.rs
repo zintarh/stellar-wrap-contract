@@ -34,6 +34,7 @@ fn setup() -> (
     SigningKey,
 ) {
     let env = Env::default();
+    env.ledger().set_timestamp(4_133_980_800); // 2100-12-31+, all valid YYYYMM periods are in the past
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 

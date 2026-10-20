@@ -6,11 +6,11 @@ use ed25519_dalek::SigningKey;
 use soroban_sdk::{symbol_short, testutils::Address as _, Address, BytesN, Env};
 use std::string::ToString;
 
-use crate::{test_utils::sign_payload, StellarWrapContract, StellarWrapContractClient};
+use crate::{test_utils::{default_test_env, sign_payload}, StellarWrapContract, StellarWrapContractClient};
 
 #[test]
 fn test_has_wrap_agrees_with_get_wrap() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -64,7 +64,7 @@ fn test_has_wrap_agrees_with_get_wrap() {
 #[test]
 fn test_version_format() {
     extern crate std;
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -98,7 +98,7 @@ fn test_version_format() {
 
 #[test]
 fn test_get_admin_pubkey() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -119,7 +119,7 @@ fn test_get_admin_pubkey() {
 
 #[test]
 fn test_contract_version() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -129,7 +129,7 @@ fn test_contract_version() {
 
 #[test]
 fn test_health() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -156,7 +156,7 @@ fn test_health() {
 
 #[test]
 fn test_get_wrap_summary_after_one_mint() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -200,7 +200,7 @@ fn test_get_wrap_summary_after_one_mint() {
 
 #[test]
 fn test_get_wrap_summary_after_three_mints() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -242,7 +242,7 @@ fn test_get_wrap_summary_after_three_mints() {
 
 #[test]
 fn test_get_wrap_summary_after_revoke() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 

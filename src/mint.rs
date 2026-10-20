@@ -16,12 +16,48 @@ const DEFAULT_EXPIRATION_SECONDS: u64 = 7 * 24 * 60 * 60;
 pub const MIN_PERIOD_YEAR: u64 = 2024;
 pub const MAX_PERIOD_YEAR: u64 = 2100;
 
+/// Converts a Unix timestamp (seconds since epoch) to a YYYYMM period value.
+///
+/// This is used to derive the "current period" from the ledger clock so that
+/// `validate_period` can reject periods that have not yet started.
+///
+/// The calculation avoids floating-point and any external crates by working
+/// directly with the well-known constants for Gregorian calendar arithmetic.
+pub(crate) fn timestamp_to_period(timestamp: u64) -> u64 {
+    // Number of days since the Unix epoch (1970-01-01).
+    let days = timestamp / 86_400;
+
+    // Shift to the civil calendar era used by the algorithm below.
+    // Algorithm: "civil_from_days" by Howard Hinnant (public domain).
+    // See: https://howardhinnant.github.io/date_algorithms.html
+    let z = days + 719_468; // shift to era starting at 0000-03-01
+    let era = z / 146_097; // 400-year era
+    let doe = z - era * 146_097; // day of era [0, 146096]
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365; // year of era [0, 399]
+    let y = yoe + era * 400; // proleptic year
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100); // day of year [0, 365]
+    let mp = (5 * doy + 2) / 153; // month of year in [0, 11] starting from March
+    let m = if mp < 10 { mp + 3 } else { mp - 9 }; // calendar month [1, 12]
+    let y = if m <= 2 { y + 1 } else { y }; // adjust year for Jan/Feb
+
+    y * 100 + m
+}
+
 pub fn validate_period(e: &Env, period: u64) {
     let year = period / 100;
     let month = period % 100;
 
     if !(MIN_PERIOD_YEAR..=MAX_PERIOD_YEAR).contains(&year) || !(1..=12).contains(&month) {
         panic_with_error!(e, ContractError::InvalidPeriod);
+    }
+
+    // Defense-in-depth: reject periods that have not yet started.
+    // Derive the current YYYYMM from the ledger clock so that a valid
+    // admin signature for a future month cannot be accepted even if the
+    // signer makes a mistake.
+    let current_period = timestamp_to_period(e.ledger().timestamp());
+    if period > current_period {
+        panic_with_error!(e, ContractError::PeriodInFuture);
     }
 }
 

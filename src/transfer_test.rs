@@ -11,7 +11,7 @@ use soroban_sdk::{
 };
 
 use super::*;
-use crate::test_utils::sign_payload;
+use crate::test_utils::{default_test_env, sign_payload};
 
 struct Fixture {
     contract_id: Address,
@@ -24,7 +24,7 @@ struct Fixture {
 }
 
 fn fixture(fee_amount: Option<i128>, sender_token_balance: i128) -> Fixture {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 

@@ -5,6 +5,7 @@ extern crate std;
 use super::*;
 use crate::signature::{construct_inbound_bridge_payload, construct_mint_payload};
 use crate::storage_types::StakeConfig;
+use crate::test_utils::default_test_env;
 use ed25519_dalek::{Signer, SigningKey};
 use soroban_sdk::{symbol_short, testutils::Address as _, Address, Bytes, BytesN, Env, Symbol};
 use std::panic::{catch_unwind, AssertUnwindSafe};
@@ -70,7 +71,7 @@ fn sign_inbound_payload(
 
 #[test]
 fn test_pause_blocks_all_require_not_paused_entrypoints() {
-    let env = Env::default();
+    let env = default_test_env();
     env.mock_all_auths();
 
     let (client, _admin, relayer, signing_key) = setup_test_env(&env);
@@ -228,7 +229,7 @@ fn test_pause_blocks_all_require_not_paused_entrypoints() {
 
 #[test]
 fn test_pause_allows_documented_entrypoints() {
-    let env = Env::default();
+    let env = default_test_env();
     env.mock_all_auths();
 
     let (client, _admin, _relayer, signing_key) = setup_test_env(&env);
@@ -386,7 +387,7 @@ fn test_pause_allows_documented_entrypoints() {
 
 #[test]
 fn test_unpause_restores_blocked_entrypoints() {
-    let env = Env::default();
+    let env = default_test_env();
     env.mock_all_auths();
 
     let (client, _admin, _relayer, signing_key) = setup_test_env(&env);

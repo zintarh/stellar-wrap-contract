@@ -33,7 +33,7 @@ use soroban_sdk::{
 };
 
 use super::*;
-use crate::test_utils::{decode_events, sign_batch_payload, sign_payload};
+use crate::test_utils::{decode_events, default_test_env, sign_batch_payload, sign_payload};
 
 // ── Catalogue ───────────────────────────────────────────────────────────────
 
@@ -366,7 +366,7 @@ fn test_readme_documents_every_pinned_shape() {
 
 #[test]
 fn test_initialize_publishes_typed_v1_topics() {
-    let env = Env::default();
+    let env = default_test_env();
     let (_, _, _, _admin) = setup(&env, 71);
 
     let (topics, _data) = last_event(&env);
@@ -375,7 +375,7 @@ fn test_initialize_publishes_typed_v1_topics() {
 
 #[test]
 fn test_pause_and_unpause_publish_typed_v1_topics() {
-    let env = Env::default();
+    let env = default_test_env();
     let (_, client, _, _) = setup(&env, 72);
 
     client.pause();
@@ -389,7 +389,7 @@ fn test_pause_and_unpause_publish_typed_v1_topics() {
 
 #[test]
 fn test_update_admin_publishes_previous_and_new_admin() {
-    let env = Env::default();
+    let env = default_test_env();
     let (_, client, _, admin) = setup(&env, 73);
     let new_admin = Address::generate(&env);
 
@@ -404,7 +404,7 @@ fn test_update_admin_publishes_previous_and_new_admin() {
 
 #[test]
 fn test_transfer_fee_events_are_single_topic_and_match_the_config() {
-    let env = Env::default();
+    let env = default_test_env();
     let (_, client, _, _) = setup(&env, 74);
     let token = Address::generate(&env);
     let recipient = Address::generate(&env);
@@ -427,7 +427,7 @@ fn test_transfer_fee_events_are_single_topic_and_match_the_config() {
 
 #[test]
 fn test_update_admin_pubkey_publishes_rotated_key() {
-    let env = Env::default();
+    let env = default_test_env();
     let (_, client, _, _) = setup(&env, 75);
     let new_pubkey = BytesN::from_array(&env, &[9u8; 32]);
 
@@ -441,7 +441,7 @@ fn test_update_admin_pubkey_publishes_rotated_key() {
 
 #[test]
 fn test_set_wrap_metadata_publishes_user_period_and_metadata() {
-    let env = Env::default();
+    let env = default_test_env();
     let (contract_id, client, signing_key, _) = setup(&env, 76);
     let user = Address::generate(&env);
     let period = 202_401u64;
@@ -486,7 +486,7 @@ fn test_set_wrap_metadata_publishes_user_period_and_metadata() {
 
 #[test]
 fn test_mint_wrap_publishes_typed_v1_topics() {
-    let env = Env::default();
+    let env = default_test_env();
     let (contract_id, client, signing_key, _) = setup(&env, 77);
     let user = Address::generate(&env);
     let period = 202_402u64;
@@ -510,7 +510,7 @@ fn test_mint_wrap_publishes_typed_v1_topics() {
 
 #[test]
 fn test_mint_wrap_batch_publishes_one_event_per_item() {
-    let env = Env::default();
+    let env = default_test_env();
     let (contract_id, client, signing_key, _) = setup(&env, 78);
     let user = Address::generate(&env);
     let archetype = symbol_short!("arch");
@@ -569,7 +569,7 @@ fn test_mint_wrap_batch_publishes_one_event_per_item() {
 
 #[test]
 fn test_expire_wrap_publishes_period_and_marker() {
-    let env = Env::default();
+    let env = default_test_env();
     let (contract_id, client, signing_key, _) = setup(&env, 79);
     let user = Address::generate(&env);
     let period = 202_404u64;
@@ -604,7 +604,7 @@ fn test_expire_wrap_publishes_period_and_marker() {
 
 #[test]
 fn test_transfer_wrap_without_fee_publishes_empty_data() {
-    let env = Env::default();
+    let env = default_test_env();
     let (contract_id, client, signing_key, _) = setup(&env, 80);
     let from = Address::generate(&env);
     let to = Address::generate(&env);
@@ -640,7 +640,7 @@ fn test_transfer_wrap_without_fee_publishes_empty_data() {
 
 #[test]
 fn test_revoke_wrap_publishes_reason_hash() {
-    let env = Env::default();
+    let env = default_test_env();
     let (contract_id, client, signing_key, _) = setup(&env, 81);
     let user = Address::generate(&env);
     let period = 202_406u64;
@@ -674,7 +674,7 @@ fn test_revoke_wrap_publishes_reason_hash() {
 
 #[test]
 fn test_burn_wrap_publishes_owner_as_data() {
-    let env = Env::default();
+    let env = default_test_env();
     let (contract_id, client, signing_key, _) = setup(&env, 82);
     let user = Address::generate(&env);
     let period = 202_407u64;
@@ -709,7 +709,7 @@ fn test_burn_wrap_publishes_owner_as_data() {
 
 #[test]
 fn test_stake_events_distinguish_first_stake_from_top_up() {
-    let env = Env::default();
+    let env = default_test_env();
     let (_, client, _, _) = setup(&env, 83);
     let user = Address::generate(&env);
 
@@ -734,7 +734,7 @@ fn test_stake_events_distinguish_first_stake_from_top_up() {
 
 #[test]
 fn test_unstake_and_withdraw_publish_two_topic_shapes() {
-    let env = Env::default();
+    let env = default_test_env();
     let (_, client, _, _) = setup(&env, 84);
     let user = Address::generate(&env);
 
@@ -766,7 +766,7 @@ fn test_unstake_and_withdraw_publish_two_topic_shapes() {
 
 #[test]
 fn test_set_stake_config_publishes_the_config_as_data() {
-    let env = Env::default();
+    let env = default_test_env();
     let (_, client, _, _) = setup(&env, 85);
 
     let config = StakeConfig {
@@ -787,7 +787,7 @@ fn test_set_stake_config_publishes_the_config_as_data() {
 
 #[test]
 fn test_enable_timelock_publishes_the_delay() {
-    let env = Env::default();
+    let env = default_test_env();
     let (_, client, _, _) = setup(&env, 86);
 
     client.enable_timelock(&3_600u64);
@@ -800,7 +800,7 @@ fn test_enable_timelock_publishes_the_delay() {
 
 #[test]
 fn test_timelock_schedule_and_cancel_publish_the_operation_id() {
-    let env = Env::default();
+    let env = default_test_env();
     let (_, client, _, admin) = setup(&env, 87);
     client.enable_timelock(&3_600u64);
 
@@ -827,7 +827,7 @@ fn test_timelock_schedule_and_cancel_publish_the_operation_id() {
 
 #[test]
 fn test_governance_proposal_and_vote_shapes() {
-    let env = Env::default();
+    let env = default_test_env();
     let (_, client, _, _) = setup(&env, 88);
     let proposer = client.get_admin().unwrap();
     let proposed_admin = Address::generate(&env);
@@ -854,7 +854,7 @@ fn test_governance_proposal_and_vote_shapes() {
 
 #[test]
 fn test_cancel_admin_proposal_publishes_caller() {
-    let env = Env::default();
+    let env = default_test_env();
     let (_, client, _, _) = setup(&env, 89);
     let proposer = client.get_admin().unwrap();
     let proposed_admin = Address::generate(&env);
@@ -873,7 +873,7 @@ fn test_cancel_admin_proposal_publishes_caller() {
 
 #[test]
 fn test_bridge_wrap_out_publishes_nonce_recipient_and_period() {
-    let env = Env::default();
+    let env = default_test_env();
     let (contract_id, client, signing_key, _) = setup(&env, 90);
     let user = Address::generate(&env);
     let period = 202_408u64;

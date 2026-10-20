@@ -282,10 +282,10 @@
     "message": "The expiration duration is not valid."
   },
   {
-    "variant": "TransferFeeNotConfigured",
+    "variant": "TransferFeeAlreadyConfigured",
     "code": 48,
     "actionable": false,
-    "message": "The transfer fee is not configured."
+    "message": "The transfer fee is already configured."
   },
   {
     "variant": "InvalidTransfer",
@@ -334,5 +334,47 @@
     "code": 56,
     "actionable": false,
     "message": "That timelocked operation has not expired yet."
+  },
+  {
+    "variant": "BridgeRequestNotPending",
+    "code": 57,
+    "actionable": false,
+    "message": "That bridge request is not in a pending state."
+  },
+  {
+    "variant": "BridgeRefundDelayNotElapsed",
+    "code": 58,
+    "actionable": true,
+    "message": "The bridge refund delay has not elapsed. Wait and try again."
+  },
+  {
+    "variant": "BridgeRequestAlreadyRefunded",
+    "code": 59,
+    "actionable": false,
+    "message": "That bridge request has already been refunded."
+  },
+  {
+    "variant": "StaleProposal",
+    "code": 60,
+    "actionable": false,
+    "message": "This proposal is stale because the admin changed after it was created."
+  },
+  {
+    "variant": "InvalidRelayerSet",
+    "code": 61,
+    "actionable": false,
+    "message": "The bridge relayer set is not valid."
+  },
+  {
+    "variant": "SignatureExpired",
+    "code": 62,
+    "actionable": true,
+    "message": "The mint signature has expired. Request a new signature and try again."
+  },
+  {
+    "variant": "PeriodInFuture",
+    "code": 63,
+    "actionable": true,
+    "message": "That period is in the future. Minting is only allowed for periods that have already started."
   }
 ]

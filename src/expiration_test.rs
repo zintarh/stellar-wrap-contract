@@ -9,6 +9,7 @@ use soroban_sdk::{
 
 use super::*;
 use crate::storage_types::{WrapLifecycleFSM, WrapRecord, WrapState};
+use crate::test_utils::default_test_env;
 
 // ─── FSM transition unit tests ──────────────────────────────────────────
 
@@ -102,7 +103,7 @@ fn insert_wrap_in_state(
 
 #[test]
 fn test_expire_draft_wrap_after_deadline_succeeds() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -144,7 +145,7 @@ fn test_expire_draft_wrap_after_deadline_succeeds() {
 
 #[test]
 fn test_expire_pending_wrap_after_deadline_succeeds() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -180,7 +181,7 @@ fn test_expire_pending_wrap_after_deadline_succeeds() {
 #[test]
 #[should_panic(expected = "Error(Contract, #46)")]
 fn test_expire_wrap_before_deadline_fails() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -213,7 +214,7 @@ fn test_expire_wrap_before_deadline_fails() {
 #[test]
 #[should_panic(expected = "Error(Contract, #9)")]
 fn test_expire_nonexistent_wrap_fails() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -236,7 +237,7 @@ fn test_expire_nonexistent_wrap_fails() {
 #[test]
 #[should_panic(expected = "Error(Contract, #8)")]
 fn test_expire_active_wrap_fails() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -269,7 +270,7 @@ fn test_expire_active_wrap_fails() {
 #[test]
 #[should_panic(expected = "Error(Contract, #8)")]
 fn test_expire_archived_wrap_fails() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -302,7 +303,7 @@ fn test_expire_archived_wrap_fails() {
 #[test]
 #[should_panic(expected = "Error(Contract, #8)")]
 fn test_expire_cancelled_wrap_fails() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -335,7 +336,7 @@ fn test_expire_cancelled_wrap_fails() {
 #[test]
 #[should_panic(expected = "Error(Contract, #8)")]
 fn test_expire_already_expired_wrap_fails() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -372,7 +373,7 @@ fn test_expire_already_expired_wrap_fails() {
 fn test_expire_at_exact_deadline_boundary_fails() {
     // The check is `now < expires_at`, so at exactly the deadline the wrap
     // is NOT yet expired (strict less-than).
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -405,7 +406,7 @@ fn test_expire_at_exact_deadline_boundary_fails() {
 
 #[test]
 fn test_expire_just_past_deadline_succeeds() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -442,7 +443,7 @@ fn test_expire_just_past_deadline_succeeds() {
 
 #[test]
 fn test_expire_wrap_emits_event() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -507,7 +508,7 @@ fn test_expire_wrap_emits_event() {
 
 #[test]
 fn test_default_expiration_duration_is_seven_days() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -522,7 +523,7 @@ fn test_default_expiration_duration_is_seven_days() {
 
 #[test]
 fn test_set_and_get_custom_expiration_duration() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -544,7 +545,7 @@ fn test_set_and_get_custom_expiration_duration() {
 
 #[test]
 fn test_custom_duration_affects_expire_behavior() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -584,7 +585,7 @@ fn test_custom_duration_affects_expire_behavior() {
 #[test]
 #[should_panic(expected = "Error(Contract, #47)")]
 fn test_set_expiration_duration_zero_fails() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -599,7 +600,7 @@ fn test_set_expiration_duration_zero_fails() {
 #[test]
 #[should_panic(expected = "Error(Contract, #47)")]
 fn test_set_expiration_duration_below_min_fails() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -614,7 +615,7 @@ fn test_set_expiration_duration_below_min_fails() {
 #[test]
 #[should_panic(expected = "Error(Contract, #47)")]
 fn test_set_expiration_duration_above_max_fails() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -629,7 +630,7 @@ fn test_set_expiration_duration_above_max_fails() {
 #[test]
 #[should_panic(expected = "Error(Contract, #47)")]
 fn test_set_expiration_duration_u64_max_fails() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -643,7 +644,7 @@ fn test_set_expiration_duration_u64_max_fails() {
 
 #[test]
 fn test_set_expiration_duration_min_succeeds() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -659,7 +660,7 @@ fn test_set_expiration_duration_min_succeeds() {
 
 #[test]
 fn test_set_expiration_duration_max_succeeds() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -676,7 +677,7 @@ fn test_set_expiration_duration_max_succeeds() {
 #[test]
 #[should_panic]
 fn test_set_expiration_duration_non_admin_fails() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -695,7 +696,7 @@ fn test_set_expiration_duration_non_admin_fails() {
 #[test]
 #[should_panic(expected = "Error(Contract, #12)")]
 fn test_expire_wrap_when_paused_fails() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -732,7 +733,7 @@ fn test_expire_wrap_when_paused_fails() {
 #[test]
 #[should_panic(expected = "Error(Contract, #46)")]
 fn test_expire_with_max_timestamp_does_not_overflow() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -772,7 +773,7 @@ fn test_expire_wrap_does_not_require_auth() {
     // even without any mocked authorizations. Here we call it before the
     // deadline, so it panics with WrapNotExpired, confirming that auth
     // did NOT fail first (which would be a host-level panic).
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -802,7 +803,7 @@ fn test_expire_wrap_does_not_require_auth() {
 
 #[test]
 fn test_expire_one_wrap_does_not_affect_others() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -854,7 +855,7 @@ fn test_expire_one_wrap_does_not_affect_others() {
 
 #[test]
 fn test_expire_multiple_users_independently() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -950,7 +951,7 @@ mod signature_expiry {
     /// One ledger second *before* `valid_until` → signature is fully usable.
     #[test]
     fn test_signature_expiry_just_before_deadline_succeeds() {
-        let env = Env::default();
+        let env = default_test_env();
         let contract_id = env.register(StellarWrapContract, ());
         let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -1002,7 +1003,7 @@ mod signature_expiry {
     /// is strict greater-than (`timestamp > valid_until`).
     #[test]
     fn test_signature_expiry_at_exact_deadline_succeeds() {
-        let env = Env::default();
+        let env = default_test_env();
         let contract_id = env.register(StellarWrapContract, ());
         let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -1055,7 +1056,7 @@ mod signature_expiry {
     #[test]
     #[should_panic(expected = "Error(Contract, #57)")]
     fn test_signature_expiry_just_after_deadline_fails() {
-        let env = Env::default();
+        let env = default_test_env();
         let contract_id = env.register(StellarWrapContract, ());
         let client = StellarWrapContractClient::new(&env, &contract_id);
 

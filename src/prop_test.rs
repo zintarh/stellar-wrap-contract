@@ -10,6 +10,7 @@ use soroban_sdk::{testutils::Address as _, Address, BytesN, Env, String, Symbol}
 
 use super::*;
 use crate::{merkle, mint::CURRENT_PAYLOAD_VERSION, signature::construct_mint_payload};
+use crate::test_utils::default_test_env;
 
 // ── Shared test constants ────────────────────────────────────────────────────
 
@@ -34,7 +35,7 @@ fn setup_env() -> (
     SigningKey,
     [u8; 32],
 ) {
-    let env = Env::default();
+    let env = default_test_env();
     env.mock_all_auths();
 
     let contract_id = env.register(StellarWrapContract, ());
@@ -324,7 +325,7 @@ proptest! {
     fn prop_merkle_proof_verification(
         (tree_size, member_idx) in (1..=64usize).prop_flat_map(|size| (Just(size), 0..size)),
     ) {
-        let env = Env::default();
+        let env = default_test_env();
         let addresses: std::vec::Vec<Address> = (0..tree_size).map(|_| Address::generate(&env)).collect();
         let leaves: std::vec::Vec<BytesN<32>> = addresses
             .iter()

@@ -10,6 +10,7 @@ use soroban_sdk::{symbol_short, testutils::Address as _, Address, Bytes, BytesN,
 use super::*;
 use crate::mint::CURRENT_PAYLOAD_VERSION;
 use crate::signature::{construct_inbound_bridge_payload, construct_mint_payload};
+use crate::test_utils::default_test_env;
 
 fn setup_test_env<'a>(
     env: &'a Env,
@@ -150,7 +151,7 @@ fn setup_single_relayer_bridge_in(
 
 #[test]
 fn test_set_and_get_bridge_relayers() {
-    let env = Env::default();
+    let env = default_test_env();
     env.mock_all_auths();
 
     let (client, _admin, _relayer, _signing_key) = setup_test_env(&env);
@@ -173,7 +174,7 @@ fn test_set_and_get_bridge_relayers() {
 
 #[test]
 fn test_set_and_check_chain_status() {
-    let env = Env::default();
+    let env = default_test_env();
     env.mock_all_auths();
 
     let (client, _admin, _relayer, _signing_key) = setup_test_env(&env);
@@ -194,7 +195,7 @@ fn test_set_and_check_chain_status() {
 
 #[test]
 fn test_invalid_chain_zero() {
-    let env = Env::default();
+    let env = default_test_env();
     env.mock_all_auths();
 
     let (client, _admin, _relayer, _signing_key) = setup_test_env(&env);
@@ -203,7 +204,7 @@ fn test_invalid_chain_zero() {
 
 #[test]
 fn test_bridge_wrap_out_success() {
-    let env = Env::default();
+    let env = default_test_env();
     env.mock_all_auths();
 
     let (client, _admin, _relayer, signing_key) = setup_test_env(&env);
@@ -250,7 +251,7 @@ fn test_bridge_wrap_out_success() {
 
 #[test]
 fn test_bridge_wrap_out_disabled_chain_fails() {
-    let env = Env::default();
+    let env = default_test_env();
     env.mock_all_auths();
 
     let (client, _admin, _relayer, signing_key) = setup_test_env(&env);
@@ -282,7 +283,7 @@ fn test_bridge_wrap_out_disabled_chain_fails() {
 
 #[test]
 fn test_bridge_wrap_in_success() {
-    let env = Env::default();
+    let env = default_test_env();
     env.mock_all_auths();
 
     let (client, _admin, _relayer, _signing_key) = setup_test_env(&env);
@@ -366,7 +367,7 @@ fn test_bridge_wrap_in_success() {
 
 #[test]
 fn test_bridge_wrap_in_replay_attack_fails() {
-    let env = Env::default();
+    let env = default_test_env();
     env.mock_all_auths();
 
     let (client, _admin, _relayer, _signing_key) = setup_test_env(&env);
@@ -429,7 +430,7 @@ fn test_bridge_wrap_in_replay_attack_fails() {
 
 #[test]
 fn test_bridge_wrap_in_threshold_signatures() {
-    let env = Env::default();
+    let env = default_test_env();
     env.mock_all_auths();
 
     let (client, _admin, _relayer, _key) = setup_test_env(&env);
@@ -519,7 +520,7 @@ fn test_bridge_wrap_in_threshold_signatures() {
 
 #[test]
 fn test_set_bridge_relayers_rejects_duplicates() {
-    let env = Env::default();
+    let env = default_test_env();
     env.mock_all_auths();
     let (client, _admin, _relayer, _key) = setup_test_env(&env);
 
@@ -539,7 +540,7 @@ fn test_set_bridge_relayers_rejects_duplicates() {
 
 #[test]
 fn test_set_bridge_relayers_rejects_empty_set() {
-    let env = Env::default();
+    let env = default_test_env();
     env.mock_all_auths();
     let (client, _admin, _relayer, _key) = setup_test_env(&env);
 
@@ -552,7 +553,7 @@ fn test_set_bridge_relayers_rejects_empty_set() {
 
 #[test]
 fn test_set_bridge_relayers_rejects_threshold_exceeding_set() {
-    let env = Env::default();
+    let env = default_test_env();
     env.mock_all_auths();
     let (client, _admin, _relayer, _key) = setup_test_env(&env);
 
@@ -574,7 +575,7 @@ fn test_set_bridge_relayers_rejects_threshold_exceeding_set() {
 
 #[test]
 fn test_bridge_paused_blocks_operations() {
-    let env = Env::default();
+    let env = default_test_env();
     env.mock_all_auths();
 
     let (client, _admin, relayer_key, signing_key) = setup_test_env(&env);
@@ -631,7 +632,7 @@ fn test_bridge_paused_blocks_operations() {
 
 #[test]
 fn test_mint_wrap_and_bridge_wrap_in_period_validation_parity() {
-    let env = Env::default();
+    let env = default_test_env();
     env.mock_all_auths();
 
     let (client, _admin, relayer_key, signing_key) = setup_test_env(&env);
@@ -732,7 +733,7 @@ fn test_mint_wrap_and_bridge_wrap_in_period_validation_parity() {
 
 #[test]
 fn test_bridge_wrap_in_mint_and_transfer_invariants() {
-    let env = Env::default();
+    let env = default_test_env();
     env.mock_all_auths();
 
     let (client, _admin, relayer_key, signing_key) = setup_test_env(&env);
@@ -859,7 +860,7 @@ fn test_bridge_wrap_in_mint_and_transfer_invariants() {
 
 #[test]
 fn test_bridge_wrap_refund_pending_success() {
-    let env = Env::default();
+    let env = default_test_env();
     env.mock_all_auths();
 
     let (client, _admin, _relayer, signing_key) = setup_test_env(&env);
@@ -905,7 +906,7 @@ fn test_bridge_wrap_refund_pending_success() {
 
 #[test]
 fn test_bridge_wrap_refund_completed_request_fails() {
-    let env = Env::default();
+    let env = default_test_env();
     env.mock_all_auths();
 
     let (client, _admin, _relayer, signing_key) = setup_test_env(&env);
@@ -953,7 +954,7 @@ fn test_bridge_wrap_refund_completed_request_fails() {
 
 #[test]
 fn test_bridge_wrap_refund_double_refund_fails() {
-    let env = Env::default();
+    let env = default_test_env();
     env.mock_all_auths();
 
     let (client, _admin, _relayer, signing_key) = setup_test_env(&env);
@@ -1001,7 +1002,7 @@ fn test_bridge_wrap_refund_double_refund_fails() {
 
 #[test]
 fn test_bridge_wrap_refund_unauthorized_caller_fails() {
-    let env = Env::default();
+    let env = default_test_env();
     env.mock_all_auths();
 
     let (client, _admin, _relayer, signing_key) = setup_test_env(&env);
@@ -1043,7 +1044,7 @@ fn test_bridge_wrap_refund_unauthorized_caller_fails() {
 
 #[test]
 fn test_bridge_wrap_refund_immediate_call_fails() {
-    let env = Env::default();
+    let env = default_test_env();
     env.mock_all_auths();
 
     let (client, _admin, _relayer, signing_key) = setup_test_env(&env);
@@ -1084,7 +1085,7 @@ fn test_bridge_wrap_refund_immediate_call_fails() {
 
 #[test]
 fn test_bridged_wrap_blocks_escape_routes_and_supports_refund() {
-    let env = Env::default();
+    let env = default_test_env();
     env.mock_all_auths();
 
     let (client, _admin, _relayer, signing_key) = setup_test_env(&env);
@@ -1146,7 +1147,7 @@ fn test_bridged_wrap_blocks_escape_routes_and_supports_refund() {
 
 #[test]
 fn test_bridge_wrap_in_then_mint_succeeds() {
-    let env = Env::default();
+    let env = default_test_env();
     env.mock_all_auths();
 
     let (client, _admin, _relayer, signing_key) = setup_test_env(&env);
@@ -1202,7 +1203,7 @@ fn test_bridge_wrap_in_then_mint_succeeds() {
 
 #[test]
 fn test_bridge_wrap_in_then_transfer_succeeds() {
-    let env = Env::default();
+    let env = default_test_env();
     env.mock_all_auths();
 
     let (client, _admin, _relayer, signing_key) = setup_test_env(&env);
@@ -1241,7 +1242,7 @@ fn test_bridge_wrap_in_then_transfer_succeeds() {
 
 #[test]
 fn test_bridge_wrap_in_rejects_opted_out_recipient() {
-    let env = Env::default();
+    let env = default_test_env();
     env.mock_all_auths();
 
     let (client, _admin, relayer_key, signing_key) = setup_test_env(&env);
@@ -1295,7 +1296,7 @@ fn test_bridge_wrap_in_rejects_opted_out_recipient() {
 
 #[test]
 fn test_bridge_wrap_in_rejects_terminal_states() {
-    let env = Env::default();
+    let env = default_test_env();
     env.mock_all_auths();
 
     let (client, _admin, relayer_key, signing_key) = setup_test_env(&env);
@@ -1367,7 +1368,7 @@ fn test_bridge_wrap_in_rejects_terminal_states() {
 
 #[test]
 fn test_bridge_wrap_in_fresh_recipient_then_mint_wrap_succeeds() {
-    let env = Env::default();
+    let env = default_test_env();
     env.mock_all_auths();
 
     let (client, _admin, _relayer, signing_key) = setup_test_env(&env);
@@ -1425,7 +1426,7 @@ fn test_bridge_wrap_in_fresh_recipient_then_mint_wrap_succeeds() {
 
 #[test]
 fn test_transfer_wrap_of_bridged_record_succeeds() {
-    let env = Env::default();
+    let env = default_test_env();
     env.mock_all_auths();
 
     let (client, _admin, _relayer, signing_key) = setup_test_env(&env);
@@ -1469,7 +1470,7 @@ fn test_transfer_wrap_of_bridged_record_succeeds() {
 
 #[test]
 fn test_bridge_wrap_in_index_invariants() {
-    let env = Env::default();
+    let env = default_test_env();
     env.mock_all_auths();
 
     let (client, _admin, _relayer, signing_key) = setup_test_env(&env);
@@ -1534,7 +1535,7 @@ fn test_bridge_wrap_in_index_invariants() {
 
 #[test]
 fn test_bridge_wrap_in_existing_period_updates_rather_than_duplicating() {
-    let env = Env::default();
+    let env = default_test_env();
     env.mock_all_auths();
 
     let (client, _admin, _relayer, signing_key) = setup_test_env(&env);
@@ -1614,7 +1615,7 @@ fn test_bridge_wrap_in_existing_period_updates_rather_than_duplicating() {
 #[test]
 #[should_panic(expected = "Error(Contract, #51)")]
 fn test_bridge_wrap_in_legacy_index_invariant_guard() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -1693,7 +1694,7 @@ fn test_bridge_wrap_in_legacy_index_invariant_guard() {
 
 #[test]
 fn test_bridge_wrap_out_rejects_transfer_wrap() {
-    let env = Env::default();
+    let env = default_test_env();
     env.mock_all_auths();
 
     let (client, _admin, _relayer, signing_key) = setup_test_env(&env);
@@ -1727,7 +1728,7 @@ fn test_bridge_wrap_out_rejects_transfer_wrap() {
 
 #[test]
 fn test_bridge_wrap_out_rejects_burn_wrap() {
-    let env = Env::default();
+    let env = default_test_env();
     env.mock_all_auths();
 
     let (client, _admin, _relayer, signing_key) = setup_test_env(&env);
@@ -1760,7 +1761,7 @@ fn test_bridge_wrap_out_rejects_burn_wrap() {
 
 #[test]
 fn test_bridge_wrap_out_rejects_second_bridge_wrap_out() {
-    let env = Env::default();
+    let env = default_test_env();
     env.mock_all_auths();
 
     let (client, _admin, _relayer, signing_key) = setup_test_env(&env);
@@ -1793,7 +1794,7 @@ fn test_bridge_wrap_out_rejects_second_bridge_wrap_out() {
 
 #[test]
 fn test_bridge_wrap_out_rejects_transition_to_active() {
-    let env = Env::default();
+    let env = default_test_env();
     env.mock_all_auths();
 
     let (client, _admin, _relayer, signing_key) = setup_test_env(&env);
@@ -1826,7 +1827,7 @@ fn test_bridge_wrap_out_rejects_transition_to_active() {
 
 #[test]
 fn test_get_outbound_bridge_request_fields() {
-    let env = Env::default();
+    let env = default_test_env();
     env.mock_all_auths();
 
     let (client, _admin, _relayer, signing_key) = setup_test_env(&env);

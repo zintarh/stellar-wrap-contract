@@ -12,6 +12,26 @@ use soroban_sdk::{
 
 use crate::signature::{construct_batch_mint_payload, construct_mint_payload};
 
+/// A ledger timestamp (Unix seconds, UTC) used as the default in tests.
+///
+/// Set to 2025-06-15 00:00:00 UTC so that every valid period from
+/// 202401 through 210012 is in the "past" relative to the ledger,
+/// letting existing tests mint without hitting `PeriodInFuture`.
+/// Tests that specifically validate future-period rejection must
+/// override this with a past timestamp.
+pub(crate) const TEST_LEDGER_TIMESTAMP: u64 = 4_133_980_800; // 2100-12-31 + 1 second
+
+/// Returns an `Env::default()` pre-configured with `TEST_LEDGER_TIMESTAMP`.
+///
+/// All new tests should prefer this over bare `Env::default()` so they
+/// automatically satisfy the future-period guard added in issue #1034.
+#[allow(dead_code)]
+pub(crate) fn default_test_env() -> Env {
+    let env = Env::default();
+    env.ledger().set_timestamp(TEST_LEDGER_TIMESTAMP);
+    env
+}
+
 /// Signs the same payload layout the contract rebuilds in `mint::mint_wrap`.
 /// Uses payload version 2 and sets valid_until to u64::MAX (never expires).
 #[allow(dead_code)]
@@ -112,7 +132,7 @@ mod get_wraps_tests {
     use std::vec::Vec;
 
     fn setup_env() -> (Env, Address, SigningKey, Address, Symbol, BytesN<32>) {
-        let env = Env::default();
+        let env = default_test_env();
         env.mock_all_auths();
         let signer = SigningKey::from_bytes(&[0u8; 32]);
         let contract = env.register_contract(None, Wrap);
@@ -150,7 +170,7 @@ mod get_wraps_tests {
     #[test]
     fn test_get_wraps_full_page_returns_all_in_insertion_order() {
         let (env, contract, signer, user, archetype, data_hash) = setup_env();
-        let periods = vec![10u64, 30, 20, 50, 40];
+        let periods = vec![202401u64, 202403, 202402, 202405, 202404];
         for &p in &periods {
             mint_wrap(&env, &contract, &signer, &user, p, &archetype, &data_hash);
         }
@@ -162,7 +182,7 @@ mod get_wraps_tests {
     #[test]
     fn test_get_wraps_zero_limit_returns_empty() {
         let (env, contract, signer, user, archetype, data_hash) = setup_env();
-        mint_wrap(&env, &contract, &signer, &user, 1, &archetype, &data_hash);
+        mint_wrap(&env, &contract, &signer, &user, 202401, &archetype, &data_hash);
 
         let result = get_wraps(&env, &contract, &user, 0, 0);
         assert!(result.is_empty());
@@ -171,7 +191,7 @@ mod get_wraps_tests {
     #[test]
     fn test_get_wraps_start_at_len_returns_empty() {
         let (env, contract, signer, user, archetype, data_hash) = setup_env();
-        for &p in &[1u64, 2] {
+        for &p in &[202401u64, 202402] {
             mint_wrap(&env, &contract, &signer, &user, p, &archetype, &data_hash);
         }
 
@@ -182,19 +202,19 @@ mod get_wraps_tests {
     #[test]
     fn test_get_wraps_start_within_len_returns_tail() {
         let (env, contract, signer, user, archetype, data_hash) = setup_env();
-        let periods = vec![10u64, 20, 30, 40, 50];
+        let periods = vec![202401u64, 202402, 202403, 202404, 202405];
         for &p in &periods {
             mint_wrap(&env, &contract, &signer, &user, p, &archetype, &data_hash);
         }
 
         let result = get_wraps(&env, &contract, &user, 3, 10);
-        assert_eq!(result, vec![40, 50]);
+        assert_eq!(result, vec![202404, 202405]);
     }
 
     #[test]
     fn test_get_wraps_limit_max_does_not_overflow() {
         let (env, contract, signer, user, archetype, data_hash) = setup_env();
-        let periods = vec![1u64, 2, 3, 4, 5];
+        let periods = vec![202401u64, 202402, 202403, 202404, 202405];
         for &p in &periods {
             mint_wrap(&env, &contract, &signer, &user, p, &archetype, &data_hash);
         }
@@ -206,15 +226,15 @@ mod get_wraps_tests {
     #[test]
     fn test_get_wraps_after_revoke_middle_period_short_page() {
         let (env, contract, signer, user, archetype, data_hash) = setup_env();
-        let periods = vec![10u64, 20, 30, 40, 50];
+        let periods = vec![202401u64, 202402, 202403, 202404, 202405];
         for &p in &periods {
             mint_wrap(&env, &contract, &signer, &user, p, &archetype, &data_hash);
         }
 
-        // Revoke a middle period (e.g., 30)
-        revoke(&env, &contract, &user, 30);
+        // Revoke a middle period (e.g., 202403)
+        revoke(&env, &contract, &user, 202403);
 
         let result = get_wraps(&env, &contract, &user, 0, u32::MAX);
-        assert_eq!(result, vec![10, 20, 40, 50]);
+        assert_eq!(result, vec![202401, 202402, 202404, 202405]);
     }
 }

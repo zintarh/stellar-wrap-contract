@@ -2,7 +2,7 @@
 
 use crate::constants::TTL_ONE_YEAR;
 use crate::mint::MAX_BATCH_SIZE;
-use crate::test_utils::sign_payload;
+use crate::test_utils::{default_test_env, sign_payload};
 use crate::{
     ContractError, DataKey, StellarWrapContract, StellarWrapContractClient, CURRENT_PAYLOAD_VERSION,
 };
@@ -18,7 +18,7 @@ use soroban_sdk::{
 
 #[test]
 fn test_renew_all_ttls_admin_auth() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
@@ -55,7 +55,7 @@ fn test_renew_all_ttls_admin_auth() {
 
 #[test]
 fn test_extend_ttl_non_existent() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
@@ -71,7 +71,7 @@ fn test_extend_ttl_non_existent() {
 
 #[test]
 fn test_extend_ttl_extends_expiry() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -128,7 +128,7 @@ fn test_extend_ttl_extends_expiry() {
 
 #[test]
 fn test_extend_ttl_post_revocation() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -180,7 +180,7 @@ fn test_extend_ttl_post_revocation() {
 /// changes the entry TTL. This is what makes the no-op assertions meaningful:
 /// an unconditional instance extension would show up immediately.
 fn ttl_test_env() -> Env {
-    let env = Env::default();
+    let env = default_test_env();
     env.ledger().with_mut(|li| {
         li.sequence_number = 1_000_000;
         li.min_persistent_entry_ttl = 100_000;

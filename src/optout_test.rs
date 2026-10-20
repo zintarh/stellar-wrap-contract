@@ -18,6 +18,7 @@ extern crate std;
 
 use super::*;
 use crate::signature::{construct_inbound_bridge_payload, construct_mint_payload};
+use crate::test_utils::default_test_env;
 use ed25519_dalek::{Signer, SigningKey};
 use soroban_sdk::{symbol_short, testutils::Address as _, Address, BytesN, Env};
 
@@ -59,7 +60,7 @@ fn sign_for_mint(
 /// again after `opt_in`.
 #[test]
 fn test_opt_out_flag_lifecycle() {
-    let env = Env::default();
+    let env = default_test_env();
     let (client, _cid, _key) = setup_env(&env);
     let user = Address::generate(&env);
 
@@ -77,7 +78,7 @@ fn test_opt_out_flag_lifecycle() {
 /// `mint_wrap` must fail with `UserOptedOut` when the target user has opted out.
 #[test]
 fn test_mint_wrap_rejected_for_opted_out_user() {
-    let env = Env::default();
+    let env = default_test_env();
     let (client, cid, key) = setup_env(&env);
     let user = Address::generate(&env);
     let archetype = symbol_short!("arch");
@@ -99,7 +100,7 @@ fn test_mint_wrap_rejected_for_opted_out_user() {
 /// After re-opting in, the same user can mint successfully.
 #[test]
 fn test_mint_wrap_succeeds_after_opt_in() {
-    let env = Env::default();
+    let env = default_test_env();
     let (client, cid, key) = setup_env(&env);
     let user = Address::generate(&env);
     let archetype = symbol_short!("arch");
@@ -123,7 +124,7 @@ fn test_mint_wrap_succeeds_after_opt_in() {
 /// panic.
 #[test]
 fn test_opt_out_requires_user_auth() {
-    let env = Env::default();
+    let env = default_test_env();
     // Deliberately do NOT call mock_all_auths so auth is enforced.
     let key = SigningKey::from_bytes(&[0xBBu8; 32]);
     let pk = BytesN::from_array(&env, &key.verifying_key().to_bytes());
@@ -144,7 +145,7 @@ fn test_opt_out_requires_user_auth() {
 /// `opt_in` requires the user's own authorization.
 #[test]
 fn test_opt_in_requires_user_auth() {
-    let env = Env::default();
+    let env = default_test_env();
     let key = SigningKey::from_bytes(&[0xCCu8; 32]);
     let pk = BytesN::from_array(&env, &key.verifying_key().to_bytes());
     let admin = Address::generate(&env);
@@ -172,7 +173,7 @@ fn test_opt_in_requires_user_auth() {
 /// balance unchanged.
 #[test]
 fn test_opt_out_does_not_alter_existing_wraps() {
-    let env = Env::default();
+    let env = default_test_env();
     let (client, cid, key) = setup_env(&env);
     let user = Address::generate(&env);
     let archetype = symbol_short!("arch");
@@ -205,7 +206,7 @@ fn test_opt_out_does_not_alter_existing_wraps() {
 /// whose user has opted out. Neither wrap in the batch should be written.
 #[test]
 fn test_mint_wrap_batch_rejects_opted_out_user() {
-    let env = Env::default();
+    let env = default_test_env();
     let (client, cid, key) = setup_env(&env);
 
     let user_ok = Address::generate(&env);
@@ -265,7 +266,7 @@ fn test_mint_wrap_batch_rejects_opted_out_user() {
 /// event without creating a wrap record.
 #[test]
 fn test_bridge_wrap_in_skips_opted_out_recipient() {
-    let env = Env::default();
+    let env = default_test_env();
     let (client, cid, _key) = setup_env(&env);
 
     let source_chain = 1u32;
@@ -336,7 +337,7 @@ fn test_bridge_wrap_in_skips_opted_out_recipient() {
 /// panicking and leave `is_opted_out` false.
 #[test]
 fn test_opt_in_on_never_opted_out_user_is_noop() {
-    let env = Env::default();
+    let env = default_test_env();
     let (client, _cid, _key) = setup_env(&env);
     let user = Address::generate(&env);
 
@@ -348,7 +349,7 @@ fn test_opt_in_on_never_opted_out_user_is_noop() {
 /// Calling `opt_in` twice is idempotent.
 #[test]
 fn test_opt_in_twice_is_idempotent() {
-    let env = Env::default();
+    let env = default_test_env();
     let (client, _cid, _key) = setup_env(&env);
     let user = Address::generate(&env);
 

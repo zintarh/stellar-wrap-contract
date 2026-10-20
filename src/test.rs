@@ -15,13 +15,15 @@ use soroban_sdk::{
 use std::vec::Vec;
 
 use super::*;
-use crate::test_utils::{decode_events, sign_batch_payload, sign_payload, sign_payload_versioned};
+use crate::test_utils::{
+    decode_events, default_test_env, sign_batch_payload, sign_payload, sign_payload_versioned,
+};
 
 const STRESS_USER_COUNT: usize = 128;
 
 #[test]
 fn test_minting_flow() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -54,7 +56,7 @@ fn test_minting_flow() {
 
 #[test]
 fn test_mint_emits_event() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -96,7 +98,7 @@ fn test_mint_emits_event() {
 
 #[test]
 fn test_revoke_emits_event_multi_user() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -168,7 +170,7 @@ fn test_revoke_emits_event_multi_user() {
 
 #[test]
 fn test_revoke_non_latest_wrap_preserves_latest() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -238,7 +240,7 @@ fn test_revoke_latest_recomputes_next_newest_period() {
     // Test: mint 202401/202402/202403, revoke 202403, assert LatestPeriod == 202402.
     // This validates the fix for #660: LatestPeriod is recomputed from remaining periods
     // instead of being unconditionally cleared.
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -310,7 +312,7 @@ fn test_revoke_latest_recomputes_next_newest_period() {
 
 #[test]
 fn test_balance_of_and_count() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -353,7 +355,7 @@ fn test_balance_of_and_count() {
 #[test]
 #[should_panic(expected = "Error(Contract, #1)")]
 fn test_initialize_twice_fails() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
@@ -367,7 +369,7 @@ fn test_initialize_twice_fails() {
 #[test]
 #[should_panic(expected = "Error(Contract, #26)")]
 fn test_defeated_admin_proposal_is_persisted() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
@@ -402,7 +404,7 @@ fn test_defeated_admin_proposal_is_persisted() {
 
 #[test]
 fn test_passing_admin_proposal_is_timelocked() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
@@ -460,7 +462,7 @@ fn test_passing_admin_proposal_is_timelocked() {
 /// that such low-participation proposals are Defeated regardless of tally.
 #[test]
 fn test_low_participation_proposal_passes_with_minimal_votes() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
@@ -505,7 +507,7 @@ fn test_low_participation_proposal_passes_with_minimal_votes() {
 
 #[test]
 fn test_whitelist_root_requires_timelock_after_enable() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
@@ -537,7 +539,7 @@ fn test_whitelist_root_requires_timelock_after_enable() {
 #[test]
 #[should_panic(expected = "Error(Contract, #52)")]
 fn test_initialize_rejects_zero_admin_pubkey() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
@@ -550,7 +552,7 @@ fn test_initialize_rejects_zero_admin_pubkey() {
 
 #[test]
 fn test_initialize_after_rejected_zero_pubkey_succeeds() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
@@ -574,7 +576,7 @@ fn test_initialize_after_rejected_zero_pubkey_succeeds() {
 
 #[test]
 fn test_health_reflects_initialization_state() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -599,7 +601,7 @@ fn test_health_reflects_initialization_state() {
 
 #[test]
 fn test_duplicate_period_fails() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -631,7 +633,7 @@ fn test_duplicate_period_fails() {
 
 #[test]
 fn test_update_admin_success() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -648,7 +650,7 @@ fn test_update_admin_success() {
 
 #[test]
 fn test_update_admin_by_current_admin_succeeds() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -674,7 +676,7 @@ fn test_update_admin_by_current_admin_succeeds() {
 
 #[test]
 fn test_token_metadata() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -688,7 +690,7 @@ fn test_token_metadata() {
 
 #[test]
 fn test_verify_data_matching_hash() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -722,7 +724,7 @@ fn test_verify_data_matching_hash() {
 
 #[test]
 fn test_verify_data_non_matching_hash() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -757,7 +759,7 @@ fn test_verify_data_non_matching_hash() {
 
 #[test]
 fn test_verify_data_corrupted_payload() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -792,7 +794,7 @@ fn test_verify_data_corrupted_payload() {
 
 #[test]
 fn test_verify_data_no_wrap_exists() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -807,7 +809,7 @@ fn test_verify_data_no_wrap_exists() {
 
 #[test]
 fn test_mint_wrap_rejects_period_tampered_signature() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -881,7 +883,7 @@ fn assert_maps_to_invalid_signature(
 
 #[test]
 fn test_mint_wrap_rejects_signature_from_wrong_key() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -931,7 +933,7 @@ fn test_mint_wrap_rejects_signature_from_wrong_key() {
 
 #[test]
 fn test_mint_rejects_invalid_signature_with_wrong_admin_pubkey() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -983,7 +985,7 @@ fn test_mint_rejects_invalid_signature_with_wrong_admin_pubkey() {
 
 #[test]
 fn test_get_wrap_existing_user_nonexistent_period() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -1031,7 +1033,7 @@ fn test_get_wrap_existing_user_nonexistent_period() {
 
 #[test]
 fn test_get_latest_wrap_returns_most_recent() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -1087,7 +1089,7 @@ fn test_get_latest_wrap_returns_most_recent() {
 
 #[test]
 fn test_get_latest_wrap_no_wraps() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -1101,7 +1103,7 @@ fn test_get_latest_wrap_no_wraps() {
 
 #[test]
 fn test_get_latest_wrap_single_mint() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -1135,7 +1137,7 @@ fn test_get_latest_wrap_single_mint() {
 
 #[test]
 fn test_valid_period_boundaries() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -1180,7 +1182,7 @@ fn test_valid_period_boundaries() {
 #[test]
 #[should_panic(expected = "Error(Contract, #6)")]
 fn test_invalid_period_zero_fails() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -1211,7 +1213,7 @@ fn test_invalid_period_zero_fails() {
 #[test]
 #[should_panic(expected = "Error(Contract, #6)")]
 fn test_invalid_period_one_fails() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -1241,7 +1243,7 @@ fn test_invalid_period_one_fails() {
 
 #[test]
 fn test_invalid_period_max_fails_without_storage_changes() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -1296,7 +1298,7 @@ fn test_invalid_period_max_fails_without_storage_changes() {
 
 #[test]
 fn test_stress_mint_100_plus_unique_users() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -1368,7 +1370,7 @@ fn test_non_monotonic_period_mints_across_users() {
     // and must reflect the highest period that user minted regardless of the
     // order in which the mints happened (or how they interleave with the
     // other user's mints).
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -1437,7 +1439,7 @@ fn test_non_monotonic_period_mints_across_users() {
 #[test]
 #[should_panic(expected = "Error(Contract, #2)")]
 fn test_mint_wrap_before_init_fails() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
     env.mock_all_auths();
@@ -1453,7 +1455,7 @@ fn test_mint_wrap_before_init_fails() {
 #[test]
 #[should_panic(expected = "Error(Contract, #2)")]
 fn test_update_admin_before_init_fails() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
     env.mock_all_auths();
@@ -1464,7 +1466,7 @@ fn test_update_admin_before_init_fails() {
 
 #[test]
 fn test_get_admin_before_init_returns_none() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -1473,7 +1475,7 @@ fn test_get_admin_before_init_returns_none() {
 
 #[test]
 fn test_migrate_applies_once_per_version() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -1495,7 +1497,7 @@ fn test_migrate_applies_once_per_version() {
 #[test]
 #[should_panic(expected = "Error(Contract, #7)")]
 fn test_migrate_rejects_replay() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -1512,7 +1514,7 @@ fn test_migrate_rejects_replay() {
 #[test]
 #[should_panic(expected = "Error(Contract, #2)")]
 fn test_migrate_before_init_fails() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
     env.mock_all_auths();
@@ -1522,7 +1524,7 @@ fn test_migrate_before_init_fails() {
 
 #[test]
 fn test_get_mint_timestamp_exists() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -1558,7 +1560,7 @@ fn test_get_mint_timestamp_exists() {
 
 #[test]
 fn test_get_mint_timestamp_missing() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -1574,7 +1576,7 @@ fn test_get_mint_timestamp_missing() {
 
 #[test]
 fn test_burn_wrap_removes_wrap_from_storage() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -1612,7 +1614,7 @@ fn test_burn_wrap_removes_wrap_from_storage() {
 
 #[test]
 fn test_burn_wrap_decrements_count() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -1666,7 +1668,7 @@ fn test_burn_wrap_decrements_count() {
 #[test]
 #[should_panic(expected = "Error(Contract, #9)")]
 fn test_burn_wrap_requires_owner_auth() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -1703,7 +1705,7 @@ fn test_burn_wrap_requires_owner_auth() {
 #[test]
 #[should_panic(expected = "Error(Contract, #9)")]
 fn test_burn_wrap_fails_for_nonexistent_wrap() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -1719,7 +1721,7 @@ fn test_burn_wrap_fails_for_nonexistent_wrap() {
 
 #[test]
 fn test_burn_wrap_emits_burn_event() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -1770,7 +1772,7 @@ fn test_burn_wrap_emits_burn_event() {
 
 #[test]
 fn test_burn_wrap_owner_cannot_access_after() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -1813,7 +1815,7 @@ fn test_burn_wrap_owner_cannot_access_after() {
 
 #[test]
 fn test_burn_wrap_only_deletes_target() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -1865,7 +1867,7 @@ fn test_burn_wrap_only_deletes_target() {
 
 #[test]
 fn test_burn_wrap_clears_latest_period() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -1918,7 +1920,7 @@ fn test_burn_wrap_clears_latest_period() {
 
 #[test]
 fn test_burn_wrap_multiple_users_independent() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -1971,7 +1973,7 @@ fn test_burn_wrap_multiple_users_independent() {
 #[test]
 fn test_burn_then_transfer_remaining_wrap_succeeds() {
     // Acceptance criterion: mint two, burn one, transfer the other successfully.
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -2040,7 +2042,7 @@ fn test_burn_then_transfer_remaining_wrap_succeeds() {
 fn test_wrap_count_equals_wrap_periods_len_after_mint_burn_transfer() {
     // Acceptance criterion: WrapCount == WrapPeriods.len() holds after any
     // sequence of mint / burn / transfer.
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -2105,7 +2107,7 @@ fn test_index_invariants_across_mint_batch_and_bridge_in() {
     // Verifies that insert_wrap_record maintains WrapCount, TotalWrapCount,
     // LatestPeriod, UserPeriods, WrapPeriods, and LastUpdated identically across
     // single mint, batch mint, and bridge-in.
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -2235,7 +2237,7 @@ fn test_index_invariants_across_mint_batch_and_bridge_in() {
 #[test]
 #[should_panic(expected = "Error(Contract, #32)")]
 fn test_mint_wrap_batch_rejects_opted_out_user() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -2279,7 +2281,7 @@ fn test_mint_wrap_batch_rejects_opted_out_user() {
 #[test]
 #[should_panic(expected = "Error(Contract, #51)")]
 fn test_mint_wrap_batch_legacy_index_invariant_guard() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -2343,7 +2345,7 @@ fn test_mint_wrap_batch_legacy_index_invariant_guard() {
 
 #[test]
 fn test_get_all_wraps_for_user_returns_all_wraps() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -2403,7 +2405,7 @@ fn test_get_all_wraps_for_user_returns_all_wraps() {
 
 #[test]
 fn test_get_all_wraps_for_user_empty_for_no_wraps() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -2418,7 +2420,7 @@ fn test_get_all_wraps_for_user_empty_for_no_wraps() {
 
 #[test]
 fn test_get_all_wraps_for_user_single_wrap() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -2455,7 +2457,7 @@ fn test_get_all_wraps_for_user_single_wrap() {
 
 #[test]
 fn test_get_all_wraps_for_user_independent_per_user() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -2528,7 +2530,7 @@ mod verify_data_unit_tests {
         Address,
         Address,
     ) {
-        let env = Env::default();
+        let env = default_test_env();
         let contract_id = env.register(StellarWrapContract, ());
         let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -2968,7 +2970,7 @@ mod verify_data_unit_tests {
 /// standard token semantics where a new address has zero balance.
 #[test]
 fn test_balance_of_before_initialize() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -2981,7 +2983,7 @@ fn test_balance_of_before_initialize() {
 
 #[test]
 fn test_get_latest_wrap_multiple_wraps() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -3082,7 +3084,7 @@ fn test_get_latest_wrap_multiple_wraps() {
 /// `(user, period)` combination must return `None`.
 #[test]
 fn test_get_wrap_nonexistent_user_returns_none() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -3178,7 +3180,7 @@ fn test_update_latest_period_option_storage_accounting() {
         storage_accounting::{estimate_latest_bytes_new, get_storage_bytes},
     };
 
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let _client = StellarWrapContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
@@ -3238,7 +3240,7 @@ fn test_storage_accounting_lowest_valid_period_first() {
         storage_accounting::{estimate_latest_bytes_new, get_storage_bytes},
     };
 
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let _client = StellarWrapContractClient::new(&env, &contract_id);
     let user = Address::generate(&env);
@@ -3314,7 +3316,7 @@ fn assert_batch_error(
 
 #[test]
 fn test_mint_wrap_batch_empty_fails() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -3337,7 +3339,7 @@ fn test_mint_wrap_batch_empty_fails() {
 
 #[test]
 fn test_mint_wrap_batch_max_size_succeeds() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -3380,7 +3382,7 @@ fn test_mint_wrap_batch_max_size_succeeds() {
 
 #[test]
 fn test_mint_wrap_batch_over_max_size_fails_before_signatures() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -3428,7 +3430,7 @@ fn test_mint_wrap_batch_over_max_size_fails_before_signatures() {
 #[test]
 #[should_panic(expected = "Error(Contract, #32)")]
 fn test_batch_individual_sig_rejects_opted_out_user() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -3479,7 +3481,7 @@ fn test_batch_individual_sig_rejects_opted_out_user() {
 /// After a reverted batch (A opted-out, B innocent), B must have no wrap.
 #[test]
 fn test_batch_individual_sig_opted_out_leaves_no_partial_state() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -3537,7 +3539,7 @@ fn test_batch_individual_sig_opted_out_leaves_no_partial_state() {
 #[test]
 #[should_panic(expected = "Error(Contract, #32)")]
 fn test_batch_aggregated_sig_rejects_opted_out_user() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -3592,7 +3594,7 @@ fn test_batch_aggregated_sig_rejects_opted_out_user() {
 /// After a reverted aggregated-sig batch (A opted-out), B must have no wrap.
 #[test]
 fn test_batch_aggregated_sig_opted_out_leaves_no_partial_state() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -3656,7 +3658,7 @@ fn test_batch_aggregated_sig_opted_out_leaves_no_partial_state() {
 
 #[test]
 fn test_total_revoked_zero_on_fresh_contract() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -3670,7 +3672,7 @@ fn test_total_revoked_zero_on_fresh_contract() {
 
 #[test]
 fn test_total_revoked_increments_correctly() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -3720,7 +3722,7 @@ fn test_total_revoked_increments_correctly() {
 /// WrapPeriods.len() > WrapCount after the revocation.
 #[test]
 fn test_revoke_then_transfer_succeeds() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -3786,7 +3788,7 @@ fn test_revoke_then_transfer_succeeds() {
 /// After a revocation WrapCount == WrapPeriods.len() == UserPeriods.len().
 #[test]
 fn test_revoke_keeps_index_invariant() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -3866,7 +3868,7 @@ fn test_revoke_keeps_index_invariant() {
 #[test]
 #[should_panic(expected = "Error(Contract, #43)")]
 fn test_set_timelock_delay_below_min_fails_at_schedule() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -3887,7 +3889,7 @@ fn test_set_timelock_delay_below_min_fails_at_schedule() {
 #[test]
 #[should_panic(expected = "Error(Contract, #43)")]
 fn test_set_timelock_delay_above_max_fails_at_schedule() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -3907,7 +3909,7 @@ fn test_set_timelock_delay_above_max_fails_at_schedule() {
 /// Test that scheduling a valid new delay and executing it updates timelock_delay().
 #[test]
 fn test_set_timelock_delay_valid_updates_delay() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -3949,7 +3951,7 @@ fn test_set_timelock_delay_valid_updates_delay() {
 /// Test that an operation scheduled under the old delay keeps its original eta after the delay changes.
 #[test]
 fn test_operation_keeps_original_eta_after_delay_change() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -4010,7 +4012,7 @@ fn test_operation_keeps_original_eta_after_delay_change() {
 /// Test MIN_DELAY boundary - scheduling exactly MIN_DELAY should succeed.
 #[test]
 fn test_set_timelock_delay_min_boundary() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -4032,7 +4034,7 @@ fn test_set_timelock_delay_min_boundary() {
 /// Test MAX_DELAY boundary - scheduling exactly MAX_DELAY should succeed.
 #[test]
 fn test_set_timelock_delay_max_boundary() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -4055,7 +4057,7 @@ fn test_set_timelock_delay_max_boundary() {
 #[test]
 #[should_panic(expected = "Error(Contract, #43)")]
 fn test_set_timelock_delay_validated_at_execute() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -4093,7 +4095,7 @@ fn test_set_timelock_delay_validated_at_execute() {
 #[test]
 #[should_panic(expected = "Error(Contract, #6)")]
 fn test_mint_wrap_invalid_period_year() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -4116,7 +4118,7 @@ fn test_mint_wrap_invalid_period_year() {
 #[test]
 #[should_panic(expected = "Error(Contract, #6)")]
 fn test_mint_wrap_invalid_period_month() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 

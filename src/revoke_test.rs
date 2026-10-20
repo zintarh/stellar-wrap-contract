@@ -1,14 +1,14 @@
 #![cfg(test)]
 
 use crate::mint::CURRENT_PAYLOAD_VERSION;
-use crate::test_utils::sign_payload;
+use crate::test_utils::{default_test_env, sign_payload};
 use crate::{StellarWrapContract, StellarWrapContractClient};
 use ed25519_dalek::SigningKey;
 use soroban_sdk::{symbol_short, testutils::Address as _, Address, BytesN, Env};
 
 #[test]
 fn test_total_revoked_counter() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register_contract(None, StellarWrapContract);
     let client = StellarWrapContractClient::new(&env, &contract_id);
 

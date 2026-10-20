@@ -14,6 +14,7 @@ use soroban_sdk::{
 
 use super::*;
 use crate::signature::construct_mint_payload;
+use crate::test_utils::default_test_env;
 
 /// Test 1: Replay Attack Simulation
 /// Ensures that a valid signature cannot be reused for the same period
@@ -49,7 +50,7 @@ fn sign_payload(
 
 #[test]
 fn test_replay_attack_same_period_fails() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -111,7 +112,7 @@ fn test_replay_attack_same_period_fails() {
 /// Even with a different hash, the same period should be rejected
 #[test]
 fn test_replay_attack_different_hash_same_period_fails() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -181,7 +182,7 @@ fn test_replay_attack_different_hash_same_period_fails() {
 /// Verifies that different periods for the same user work without issue
 #[test]
 fn test_multiple_periods_for_same_user_success() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -276,7 +277,7 @@ fn test_multiple_periods_for_same_user_success() {
 /// bind the payload to the specific user address.
 #[test]
 fn test_signature_cannot_be_stolen_by_another_user() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -364,7 +365,7 @@ fn test_signature_cannot_be_stolen_by_another_user() {
 /// Verifies that a signature valid for Contract V1 cannot be replayed on Contract V2
 #[test]
 fn test_cross_contract_replay_protection() {
-    let env = Env::default();
+    let env = default_test_env();
 
     // Deploy two separate contract instances (V1 and V2)
     let contract_v1 = env.register(StellarWrapContract, ());
@@ -496,7 +497,7 @@ fn test_cross_contract_replay_protection() {
 /// Measures the computational cost of a mint operation
 #[test]
 fn test_gas_analysis_mint_operation() {
-    let env = Env::default();
+    let env = default_test_env();
     env.cost_estimate().budget().reset_unlimited();
 
     let contract_id = env.register(StellarWrapContract, ());
@@ -573,7 +574,7 @@ fn test_gas_analysis_mint_operation() {
 /// Measures resource consumption for multiple sequential mints
 #[test]
 fn test_gas_analysis_multiple_mints() {
-    let env = Env::default();
+    let env = default_test_env();
     env.cost_estimate().budget().reset_unlimited();
 
     let contract_id = env.register(StellarWrapContract, ());
@@ -646,7 +647,7 @@ fn test_gas_analysis_multiple_mints() {
 /// Ensures the contract uses ledger timestamp, not user-provided values
 #[test]
 fn test_timestamp_is_from_ledger_not_user() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -734,7 +735,7 @@ fn test_timestamp_is_from_ledger_not_user() {
 /// Tests behavior with maximum-length symbol names
 #[test]
 fn test_edge_case_long_symbols() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -785,7 +786,7 @@ fn test_edge_case_long_symbols() {
 #[test]
 #[should_panic]
 fn test_non_admin_cannot_mint() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -831,7 +832,7 @@ fn test_non_admin_cannot_mint() {
 #[test]
 #[should_panic]
 fn test_non_admin_cannot_revoke() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -855,7 +856,7 @@ fn test_non_admin_cannot_revoke() {
 /// Verifies the complete happy path: admin proposes, pending admin accepts.
 #[test]
 fn test_two_step_admin_transfer_success() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -887,7 +888,7 @@ fn test_two_step_admin_transfer_success() {
 /// Verifies that the current admin can cancel a proposed transfer before acceptance.
 #[test]
 fn test_admin_cancel_proposed_admin() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -916,7 +917,7 @@ fn test_admin_cancel_proposed_admin() {
 #[test]
 #[should_panic]
 fn test_unauthorized_acceptance_fails() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -959,7 +960,7 @@ fn test_unauthorized_acceptance_fails() {
 #[test]
 #[should_panic(expected = "Error(Contract, #10)")]
 fn test_accept_admin_no_proposal_fails() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -978,7 +979,7 @@ fn test_accept_admin_no_proposal_fails() {
 #[test]
 #[should_panic(expected = "Error(Contract, #11)")]
 fn test_propose_admin_when_proposal_exists_fails() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -1003,7 +1004,7 @@ fn test_propose_admin_when_proposal_exists_fails() {
 #[test]
 #[should_panic(expected = "Error(Contract, #10)")]
 fn test_cancel_no_proposal_fails() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -1022,7 +1023,7 @@ fn test_cancel_no_proposal_fails() {
 #[test]
 #[should_panic]
 fn test_non_admin_cannot_propose_admin() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -1051,7 +1052,7 @@ fn test_non_admin_cannot_propose_admin() {
 #[test]
 #[should_panic]
 fn test_non_admin_cannot_cancel_proposal() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -1100,7 +1101,7 @@ fn test_non_admin_cannot_cancel_proposal() {
 /// event system to emit a distinct "pending proposal cleared" event.
 #[test]
 fn test_update_admin_clears_pending_proposal() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -1182,7 +1183,7 @@ fn test_update_admin_clears_pending_proposal() {
 /// Verifies the getter correctly returns None when there is no pending transfer.
 #[test]
 fn test_get_pending_admin_none() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -1199,7 +1200,7 @@ fn test_get_pending_admin_none() {
 /// Verifies that after canceling a proposal, the admin can propose a new one.
 #[test]
 fn test_propose_cancel_repropose() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -1234,7 +1235,7 @@ fn test_propose_cancel_repropose() {
 /// can initiate their own two-step transfers.
 #[test]
 fn test_new_admin_can_propose_further_transfers() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -1263,7 +1264,7 @@ fn test_new_admin_can_propose_further_transfers() {
 
 #[test]
 fn test_all_mutating_entrypoints_honor_pause() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -1332,7 +1333,7 @@ fn test_all_mutating_entrypoints_honor_pause() {
 
 #[test]
 fn test_create_admin_proposal_duration_overflow_asserts_arithmetic_overflow() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 
@@ -1355,7 +1356,7 @@ fn test_create_admin_proposal_duration_overflow_asserts_arithmetic_overflow() {
 
 #[test]
 fn test_bridge_wrap_out_nonce_overflow_asserts_arithmetic_overflow() {
-    let env = Env::default();
+    let env = default_test_env();
     let contract_id = env.register(StellarWrapContract, ());
     let client = StellarWrapContractClient::new(&env, &contract_id);
 

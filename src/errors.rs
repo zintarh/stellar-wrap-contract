@@ -85,6 +85,12 @@ pub enum ContractError {
     InvalidRelayerSet = 61,
     /// Mint signature has expired.
     SignatureExpired = 62,
+    /// The period is in the future relative to the current ledger timestamp.
+    ///
+    /// Minting is only allowed for periods that have already started (i.e.
+    /// the current ledger time has reached the first second of the given
+    /// YYYYMM month).  Submit a signature for the current or a past period.
+    PeriodInFuture = 63,
 }
 
 impl ContractError {
@@ -93,7 +99,7 @@ impl ContractError {
     /// have not yet been mapped to a producing code path and a failing-path
     /// test. When a variant is added, bump this constant and add the variant
     /// to the `ALL_VARIANTS` table in that test; otherwise CI fails.
-    pub const VARIANT_COUNT: u32 = 62;
+    pub const VARIANT_COUNT: u32 = 63;
 
     /// Every variant in declaration order. The coverage test iterates this
     /// table to assert each variant is reachable and asserted by a test.
@@ -160,6 +166,7 @@ impl ContractError {
         ContractError::StaleProposal,
         ContractError::InvalidRelayerSet,
         ContractError::SignatureExpired,
+        ContractError::PeriodInFuture,
     ];
 
     /// Numeric code for this variant, matching the `#[repr(u32)]` discriminant.
