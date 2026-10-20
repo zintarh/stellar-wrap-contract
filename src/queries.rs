@@ -12,7 +12,10 @@
 
 use soroban_sdk::{Address, Bytes, BytesN, Env, String, Symbol, Vec};
 
-use crate::{ContractHealth, DataKey, InvariantReport, TransferFeeConfig, WrapRecord, WrapSummary};
+use crate::{ContractError, DataKey, InvariantReport, TransferFeeConfig, WrapRecord, WrapSummary};
+
+/// Maximum number of periods allowed in a single `has_wraps` batch call.
+pub const MAX_HAS_WRAPS_BATCH_SIZE: usize = 24;
 
 pub(crate) fn get_wrap(e: Env, user: Address, period: u64) -> Option<WrapRecord> {
     e.storage().persistent().get(&DataKey::Wrap(user, period))
@@ -378,4 +381,35 @@ pub(crate) fn check_user_invariants(e: Env, user: Address) -> InvariantReport {
         live_wraps_found,
         balance,
     }
+}
+
+/// Batch existence check for multiple `(user, period)` pairs in a single call.
+///
+/// Returns a `Vec<bool>` in the same order as the input `periods`, where each
+/// element indicates whether a wrap record exists for that period.
+///
+/// This is more efficient than calling `has_wrap` once per period because it
+/// avoids N separate RPC simulations when checking multiple periods (e.g. for
+/// a history screen showing 'already minted' badges).
+///
+/// # Parameters
+/// - `user`: The address whose wraps are being checked.
+/// - `periods`: The list of periods (`YYYYMM` `u64` values) to check.
+///
+/// # Returns
+/// - `Vec<bool>` — one boolean per period, in input order.
+///
+/// # Errors
+/// - [`ContractError::WrapExistsBatchTooLarge`] if more than
+///   [`MAX_HAS_WRAPS_BATCH_SIZE`] (24) periods are supplied.
+pub(crate) fn has_wraps(e: Env, user: Address, periods: Vec<u64>) -> Vec<bool> {
+    if periods.len() > MAX_HAS_WRAPS_BATCH_SIZE {
+        soroban_sdk::panic_with_error!(&e, ContractError::WrapExistsBatchTooLarge);
+    }
+
+    let mut results = Vec::new(&e);
+    for period in periods.iter() {
+        results.push_back(e.storage().persistent().has(&DataKey::Wrap(user.clone(), period)));
+    }
+    results
 }

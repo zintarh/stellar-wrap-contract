@@ -553,6 +553,28 @@ impl StellarWrapContract {
         queries::has_wrap(e, user, period)
     }
 
+    /// Batch existence check for multiple periods of a single user.
+    ///
+    /// Returns a `Vec<bool>` in the same order as the input `periods`, where each
+    /// element indicates whether a wrap record exists for that period. This is
+    /// more efficient than calling `has_wrap` once per period when checking
+    /// several periods (e.g. for a history screen showing 'already minted' badges).
+    ///
+    /// # Parameters
+    /// - `user`: The address whose wraps are being checked.
+    /// - `periods`: The list of periods (`YYYYMM` `u64` values) to check, up to
+    ///   [`queries::MAX_HAS_WRAPS_BATCH_SIZE`] (24) periods.
+    ///
+    /// # Returns
+    /// - `Vec<bool>` — one boolean per period, in input order.
+    ///
+    /// # Errors
+    /// - [`ContractError::WrapExistsBatchTooLarge`] if more than 24 periods
+    ///   are supplied.
+    pub fn wrap_exists_batch(e: Env, user: Address, periods: Vec<u64>) -> Vec<bool> {
+        queries::has_wraps(e, user, periods)
+    }
+
     pub fn get_transfer_fee(e: Env) -> Option<TransferFeeConfig> {
         queries::get_transfer_fee(e)
     }

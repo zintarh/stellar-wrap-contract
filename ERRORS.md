@@ -34,6 +34,7 @@ The codes are defined by the Rust `ContractError` enum in `src/lib.rs`.
 2) If you are building a UI, surface this error as "Your link has expired. Please request a new one." rather than a generic crypto failure.
 3) If you are the signing service, check that your clock is roughly in sync with the Stellar ledger (the contract compares `valid_until` against `e.ledger().timestamp()`, not wall-clock time on the signer).
 4) For one-off manual ops, `u64::MAX` is a legal "never expires" value — avoid it for automated paths, but it is acceptable for backfills. |
+| 63 | `WrapExistsBatchTooLarge` | The batch of periods for `wrap_exists_batch` exceeds 24 | Too many periods in a single batch call | Split the periods into multiple calls of at most 24 each. |
 
 ---
 
@@ -202,3 +203,27 @@ contract to a superseded admin state.
 The stale proposal cannot be executed. To change the admin, create a new
 proposal under the current admin. The old stale proposal may be cancelled via
 `cancel_admin_proposal` to clean up storage.
+
+## Error 63 — `WrapExistsBatchTooLarge`
+
+**Variant**: `ContractError::WrapExistsBatchTooLarge`
+**Code**: `63`
+**Introduced**: Issue #1001 — Batch wrap existence check.
+
+### What it means
+
+The `wrap_exists_batch` entrypoint received more than 24 periods in a
+single call. The batch size is capped at 24 to keep the call within
+Soroban resource limits.
+
+### Common causes
+
+1. **Too many periods**: The caller passed more than 24 periods in a
+   single `wrap_exists_batch` call.
+2. **Incorrect pagination**: The caller is paginating through a large
+   list of periods but is sending too many at once.
+
+### Resolution
+
+Split the periods into multiple calls of at most 24 each. For example,
+to check 50 periods, make three calls: 24 + 24 + 2.

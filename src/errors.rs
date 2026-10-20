@@ -85,6 +85,8 @@ pub enum ContractError {
     InvalidRelayerSet = 61,
     /// Mint signature has expired.
     SignatureExpired = 62,
+    /// The batch of periods for `wrap_exists_batch` exceeds the maximum allowed size.
+    WrapExistsBatchTooLarge = 63,
 }
 
 impl ContractError {
@@ -93,7 +95,7 @@ impl ContractError {
     /// have not yet been mapped to a producing code path and a failing-path
     /// test. When a variant is added, bump this constant and add the variant
     /// to the `ALL_VARIANTS` table in that test; otherwise CI fails.
-    pub const VARIANT_COUNT: u32 = 62;
+    pub const VARIANT_COUNT: u32 = 63;
 
     /// Every variant in declaration order. The coverage test iterates this
     /// table to assert each variant is reachable and asserted by a test.
@@ -160,6 +162,7 @@ impl ContractError {
         ContractError::StaleProposal,
         ContractError::InvalidRelayerSet,
         ContractError::SignatureExpired,
+        ContractError::WrapExistsBatchTooLarge,
     ];
 
     /// Numeric code for this variant, matching the `#[repr(u32)]` discriminant.

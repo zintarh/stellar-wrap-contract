@@ -6,7 +6,7 @@ use ed25519_dalek::SigningKey;
 use soroban_sdk::{symbol_short, testutils::Address as _, Address, BytesN, Env};
 use std::string::ToString;
 
-use crate::{test_utils::sign_payload, StellarWrapContract, StellarWrapContractClient};
+use crate::{test_utils::sign_payload, ContractError, StellarWrapContract, StellarWrapContractClient};
 
 #[test]
 fn test_has_wrap_agrees_with_get_wrap() {
@@ -292,4 +292,99 @@ fn test_get_wrap_summary_after_revoke() {
     client.revoke_wrap(&user, &202403u64, &BytesN::from_array(&env, &[0u8; 32]));
 
     assert!(client.get_wrap_summary(&user).is_none());
+}
+
+// ── wrap_exists_batch tests ──────────────────────────────────────
+
+#[test]
+fn test_wrap_exists_batch_empty() {
+    let env = Env::default();
+    let contract_id = env.register(StellarWrapContract, ());
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let admin_pubkey = BytesN::from_array(&env, &[1u8; 32]);
+    let user = Address::generate(&env);
+
+    env.mock_all_auths();
+    client.initialize(&admin, &admin_pubkey);
+
+    let periods: soroban_sdk::Vec<u64> = soroban_sdk::Vec::new(&env);
+    let results = client.wrap_exists_batch(&user, &periods);
+    assert!(results.is_empty());
+}
+
+#[test]
+fn test_wrap_exists_batch_mixed() {
+    let env = Env::default();
+    let contract_id = env.register(StellarWrapContract, ());
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let signing_key = SigningKey::from_bytes(&[1u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    env.mock_all_auths();
+    client.initialize(&admin, &admin_pubkey);
+
+    let hash = BytesN::from_array(&env, &[42u8; 32]);
+
+    // Mint wraps for periods 202401 and 202403, but not 202402
+    let periods_to_mint = [202401u64, 202403u64];
+    for period in periods_to_mint.iter() {
+        let signature = sign_payload(
+            &env,
+            &signing_key,
+            &contract_id,
+            &user,
+            *period,
+            &symbol_short!("arch"),
+            &hash,
+        );
+        client.mint_wrap(
+            &user,
+            period,
+            &symbol_short!("arch"),
+            &hash,
+            &CURRENT_PAYLOAD_VERSION,
+            &u64::MAX,
+            &signature,
+        );
+    }
+
+    // Check [202401 (exists), 202402 (no), 202403 (exists)]
+    let check_periods = vec![&env, 202401u64, 202402u64, 202403u64];
+    let results = client.wrap_exists_batch(&user, &check_periods);
+    assert_eq!(results.len(), 3);
+    assert_eq!(results.get(0), Some(&true));
+    assert_eq!(results.get(1), Some(&false));
+    assert_eq!(results.get(2), Some(&true));
+}
+
+#[test]
+fn test_wrap_exists_batch_over_cap() {
+    let env = Env::default();
+    let contract_id = env.register(StellarWrapContract, ());
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let admin_pubkey = BytesN::from_array(&env, &[1u8; 32]);
+    let user = Address::generate(&env);
+
+    env.mock_all_auths();
+    client.initialize(&admin, &admin_pubkey);
+
+    // Build a list of 25 periods (over the 24 cap)
+    let mut periods = soroban_sdk::Vec::new(&env);
+    for i in 0..25 {
+        periods.push_back(202401u64 + i as u64);
+    }
+
+    let result = client.try_wrap_exists_batch(&user, &periods);
+    assert!(result.is_err());
+    assert_eq!(
+        result.err().unwrap().contract_error(),
+        Some(ContractError::WrapExistsBatchTooLarge as u32)
+    );
 }

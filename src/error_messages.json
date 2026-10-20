@@ -334,5 +334,17 @@
     "code": 56,
     "actionable": false,
     "message": "That timelocked operation has not expired yet."
+  },
+  {
+    "variant": "SignatureExpired",
+    "code": 62,
+    "actionable": true,
+    "message": "The mint signature has expired. Request a new signature and try again."
+  },
+  {
+    "variant": "WrapExistsBatchTooLarge",
+    "code": 63,
+    "actionable": true,
+    "message": "The batch of periods is too large. The maximum is 24 periods per call."
   }
 ]
