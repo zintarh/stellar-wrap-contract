@@ -1,0 +1,38 @@
+name: Error Catalog
+
+# `src/error_messages.json` is the single source of truth for contract error
+# codes. This workflow fails when `src/errors.rs` or the generated table in
+# `ERRORS.md` drifts away from it (issue #1000).
+
+on:
+  pull_request:
+    paths:
+      - 'src/errors.rs'
+      - 'src/error_messages.json'
+      - 'src/error_messages.rs'
+      - 'ERRORS.md'
+      - 'scripts/generate_errors_md.py'
+      - '.github/workflows/error-catalog.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/errors.rs'
+      - 'src/error_messages.json'
+      - 'src/error_messages.rs'
+      - 'ERRORS.md'
+      - 'scripts/generate_errors_md.py'
+      - '.github/workflows/error-catalog.yml'
+
+jobs:
+  check:
+    name: error_messages.json ↔ errors.rs ↔ ERRORS.md
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # No Rust build needed: the check parses errors.rs directly, so it
+      # stays green even while unrelated test-target code fails to compile.
+      # The same invariant is mirrored by the Rust test
+      # `error_messages::every_variant_has_a_mapping` once the crate builds.
+      - name: Check catalog sync (errors.rs + ERRORS.md vs JSON)
+        run: python3 scripts/generate_errors_md.py --check

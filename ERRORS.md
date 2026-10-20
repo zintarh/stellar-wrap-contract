@@ -4,37 +4,86 @@ This document maps the on-chain contract error codes surfaced by Soroban to thei
 
 Soroban surfaces contract panics as an `Error(Contract, #N)` string in transaction results.
 
-The codes are defined by the Rust `ContractError` enum in `src/lib.rs`.
+The codes are defined by the Rust `ContractError` enum in `src/errors.rs`.
+`src/error_messages.json` is the single source of truth for code → user-facing message; `src/error_messages.rs` and `scripts/generate_errors_md.py --check` (CI) keep every copy in sync.
 
 ---
 
 ## Quick table: error code → meaning
 
-| Code | Variant name | Human-readable description | Common cause | Resolution steps |
-|---:|---|---|---|---|
-| 1 | `AlreadyInitialized` | `initialize()` was called after the contract was already initialized | Deployment scripts/tests calling `initialize` twice | 1) Ensure you call `initialize()` exactly once. 2) If using an upgrade flow, remember upgrades do **not** require calling `initialize()` again. |
-| 2 | `NotInitialized` | A function requiring initialization was called before `initialize()` ran | Missing/incorrect deployment step; wrong contract instance/address | 1) Verify you are calling the correct contract instance. 2) Call `initialize(admin, admin_pubkey)` once. 3) Re-check your client/deployer wiring. |
-| 3 | `Unauthorized` | Caller is not allowed (admin-only function called by non-admin, or reentrancy guard tripped) | - Calling an admin-only function from a non-admin address, or missing `require_auth()`
-- Reentrancy guard indicates an unexpected execution pattern / guard collision | 1) For admin-only functions (`update_wrap`, `revoke_wrap`, `upgrade`), ensure the call includes admin authorization. 2) For `mint_wrap`, ensure the `user` parameter is the address authorizing the call.
-3) If you are seeing this during retries, check for concurrent calls or repeated invocations that might trip the temporary mint guard. |
-| 4 | `WrapAlreadyExists` | A wrap record already exists for the `(user, period)` pair | Retrying the same mint, or attempting to mint twice for same user+period | 1) Check whether `get_wrap(user, period)` already returns a record. 2) If your UI retries, make the client idempotent. 3) If you intended a new wrap, use a new `period`. |
-| 5 | `InvalidSignature` | Ed25519 signature verification failed against the contract's admin public key | - Wrong signature for the payload
-- Wrong `contract_id` / payload fields
-- Signature generated for a different user/period/archetype/data_hash
-- **v1 payload submitted** — `CURRENT_PAYLOAD_VERSION` was bumped to 2 and old payloads are now rejected unconditionally | 1) Regenerate the signature using the correct canonical v2 payload (see `docs/signing-payload.md`), including the new `valid_until` field and `payload_version = 2`.
-2) Confirm the signature corresponds to the correct contract instance (`contract_id` / `current_contract_address()`).
-3) Confirm you sign for the correct `user`, `period`, `archetype`, `data_hash`, and `valid_until`.
-4) Ensure you pass the 64-byte signature bytes (not base64/hex-decoded to the wrong length).
-5) If you recently upgraded the contract, verify your backend migrated from payload v1 to v2. |
-| 6 | `InvalidPeriod` | The period value is malformed or out of range | Period does not follow `YYYYMM` format (year 2024–2100, month 01–12) | Ensure `period` uses a valid year (2024–2100) and month (01–12). |
-| 7 | `WrapNotFound` | A wrap record was not found for the `(user, period)` pair | Revoking a wrap that never existed, or period mismatch | 1) Use `get_wrap(user, period)` to confirm existence. 2) Ensure you are passing the exact same `period` value used when the wrap was minted. 3) If the record may have been revoked, mint again or fetch the correct period. |
-| 57 | `SignatureExpired` | The mint signature's `valid_until` ledger timestamp has been exceeded (signature is no longer valid) | - The user submitted a mint transaction too slowly and the short-lived bearer signature expired
-- A cached or leaked signature from a backend log/support ticket was replayed well after its intended lifetime
-- `valid_until` was set too aggressively (e.g. 10 seconds, slower than the actual submit-to-ledger latency) | 1) Request a **fresh signature** from the backend signing service. The backend should issue signatures with `valid_until = now + T` where `T` covers the expected submit-to-ledger window plus some buffer (e.g. 15–30 minutes, not days).
-2) If you are building a UI, surface this error as "Your link has expired. Please request a new one." rather than a generic crypto failure.
-3) If you are the signing service, check that your clock is roughly in sync with the Stellar ledger (the contract compares `valid_until` against `e.ledger().timestamp()`, not wall-clock time on the signer).
-4) For one-off manual ops, `u64::MAX` is a legal "never expires" value — avoid it for automated paths, but it is acceptable for backfills. |
+Canonical source: `src/error_messages.json` (code, variant, actionable flag, message).
+The table below is generated — run `python3 scripts/generate_errors_md.py` after editing the JSON.
 
+<!-- BEGIN GENERATED TABLE: do not edit by hand; run scripts/generate_errors_md.py -->
+
+| Code | Variant name | User can act? | Message |
+|---:|---|:---:|---|
+| 1 | `AlreadyInitialized` | no | This contract is already initialized. |
+| 2 | `NotInitialized` | no | This contract has not been initialized. |
+| 3 | `Unauthorized` | no | This account is not allowed to perform that action. |
+| 4 | `WrapAlreadyExists` | yes | This period is already minted for this account. Open the existing wrap, or mint a different period. |
+| 5 | `InvalidSignature` | yes | The mint signature was rejected. Request a new signature for this account, period, and data hash, then try again. |
+| 6 | `InvalidPeriod` | yes | That period is not valid. Use a YYYYMM month from 2024 through 2100. |
+| 7 | `MigrationAlreadyApplied` | no | That migration has already been applied. |
+| 8 | `InvalidStateTransition` | no | The wrap record cannot move to that state. |
+| 9 | `WrapNotFound` | yes | No wrap exists for this account and period. Check the period and try again. |
+| 10 | `NoAdminTransferProposal` | no | There is no admin transfer waiting to be accepted. |
+| 11 | `AdminTransferProposalExists` | no | An admin transfer is already waiting. |
+| 12 | `Paused` | yes | The contract is paused. Try again after it is unpaused. |
+| 13 | `ArithmeticOverflow` | no | The contract hit an arithmetic overflow. |
+| 14 | `InvalidFeeParams` | no | The fee parameters are not valid. |
+| 15 | `BatchEmpty` | yes | The batch is empty. Add at least one wrap and try again. |
+| 16 | `BatchTooLarge` | yes | The batch is too large. Split it into smaller batches and try again. |
+| 17 | `DuplicateBatchEntry` | yes | The batch lists the same account and period more than once. Remove the duplicate and try again. |
+| 18 | `StakeTooLow` | yes | The stake amount is below the minimum. Stake a larger amount. |
+| 19 | `StakeNotFound` | yes | There is no stake for this account. Stake before using this action. |
+| 20 | `StakeCooldownActive` | yes | A stake cooldown is already active. Wait for it to finish. |
+| 21 | `StakeNotUnstaking` | yes | This stake is not unstaking. Start unstaking before withdrawing. |
+| 22 | `StakeCooldownNotElapsed` | yes | The stake cooldown has not finished. Wait until it elapses, then try again. |
+| 23 | `InvalidStakeConfig` | no | The stake configuration is not valid. |
+| 24 | `StakeArithmeticOverflow` | no | The contract hit a stake arithmetic overflow. |
+| 25 | `ProposalNotFound` | yes | No proposal exists with that id. Check the id and try again. |
+| 26 | `ProposalNotActive` | no | That proposal is not active. |
+| 27 | `ProposalAlreadyVoted` | yes | This account has already voted on that proposal. |
+| 28 | `ProposalVotingPeriodNotEnded` | yes | Voting is still open. Wait until the voting period ends. |
+| 29 | `ProposalVotingPeriodEnded` | yes | The voting period for that proposal has ended. |
+| 30 | `ProposalDefeated` | no | That proposal was defeated. |
+| 31 | `InvalidProposalDuration` | no | The proposal duration is not valid. |
+| 32 | `UserOptedOut` | yes | This account has opted out of new wraps. Opt back in before minting. |
+| 33 | `BridgeNotInitialized` | no | The bridge is not initialized. |
+| 34 | `InvalidChain` | yes | That chain id is not valid. Choose a supported chain. |
+| 35 | `ChainDisabled` | yes | That chain is disabled. Choose a different chain. |
+| 36 | `NonceAlreadyProcessed` | yes | That bridge nonce was already processed. Do not submit it again. |
+| 37 | `InvalidBridgePayload` | yes | The bridge payload is not valid. Check it and try again. |
+| 38 | `MerkleRootNotSet` | no | No whitelist root is set. |
+| 39 | `InvalidMerkleProof` | yes | This account is not on the whitelist. Ask to be added, or submit a valid whitelist proof. |
+| 40 | `TimelockNotReady` | no | That timelocked operation is not ready yet. |
+| 41 | `TimelockOperationNotFound` | no | That timelocked operation does not exist. |
+| 42 | `TimelockOperationExists` | no | That timelocked operation is already queued. |
+| 43 | `InvalidTimelockDelay` | no | The timelock delay is not valid. |
+| 44 | `TimelockRequired` | no | That action has to go through the timelock. |
+| 45 | `TimelockAlreadyEnabled` | no | The timelock is already enabled. |
+| 46 | `WrapNotExpired` | yes | This wrap has not expired yet. Wait until it expires, then try again. |
+| 47 | `InvalidExpirationDuration` | no | The expiration duration is not valid. |
+| 48 | `TransferFeeAlreadyConfigured` | no | The transfer fee has already been configured. |
+| 49 | `InvalidTransfer` | yes | That transfer is not valid. Check the recipient and try again. |
+| 50 | `TransferInProgress` | yes | A transfer for this wrap is already in progress. Wait for it to finish. |
+| 51 | `StorageInvariantViolation` | no | The contract found a storage invariant violation. |
+| 52 | `InvalidAdminPubKey` | no | The admin signing key is not valid. |
+| 53 | `InvalidThreshold` | no | The threshold is not valid. |
+| 54 | `MerkleProofTooLong` | yes | The whitelist proof is too long. Submit a shorter proof. |
+| 55 | `TimelockOperationExpired` | no | That timelocked operation has expired. |
+| 56 | `TimelockOperationNotExpired` | no | That timelocked operation has not expired yet. |
+| 57 | `BridgeRequestNotPending` | no | That bridge request is not pending, so it cannot be refunded. |
+| 58 | `BridgeRefundDelayNotElapsed` | yes | The bridge refund delay has not elapsed yet. Wait until the unlock time, then try again. |
+| 59 | `BridgeRequestAlreadyRefunded` | no | That bridge request has already been refunded. |
+| 60 | `StaleProposal` | yes | The admin changed after this proposal was created. Create a new proposal under the current admin. |
+| 61 | `InvalidRelayerSet` | no | The relayer set is not valid. It must meet the threshold and contain no duplicates. |
+| 62 | `SignatureExpired` | yes | The mint signature has expired. Request a new signature with a later valid_until, then try again. |
+
+Generated from `src/error_messages.json` (62 variants). Do not edit this table by hand: run `python3 scripts/generate_errors_md.py` and commit the result.
+
+<!-- END GENERATED TABLE -->
 ---
 
 ## Variant → producing code path → failing-path test
@@ -112,7 +161,7 @@ thread 'main' panicked at 'Error(Contract, #7)'
 
 ---
 
-## Payload & signing notes (for #6)
+## Payload & signing notes (for `InvalidSignature`, code 5)
 
 `mint_wrap` reconstructs a canonical payload as:
 
@@ -120,7 +169,7 @@ thread 'main' panicked at 'Error(Contract, #7)'
 
 Then verifies an Ed25519 signature over that payload using the stored `admin_pubkey`. Old signatures generated without the version byte will fail verification after this migration.
 
-Troubleshooting checklist for `Error(Contract, #6)`:
+Troubleshooting checklist for `Error(Contract, #5)`:
 - Ensure `contract_id` in your signing process matches the deployed contract you are calling.
 - Ensure `user` and `period` match the call parameters.
 - Ensure `archetype` matches exactly (including symbol bytes).
@@ -133,6 +182,7 @@ Troubleshooting checklist for `Error(Contract, #6)`:
 Some failures can look like “unexpected panics” depending on the tooling:
 
 - `ContractError::InvalidSignature` (`Error(Contract, #5)`) is raised whenever an Ed25519 mint signature fails to verify — wrong key, tampered payload/period, non-canonical public key, or a corrupted signature. The contract verifies signatures in-guest (`src/signature.rs`, `verify_ed25519`) so failures always surface as the contract error rather than a raw host `Crypto`/`InvalidInput` error.
+- If you see `Error(Contract, #5)`, it corresponds to `ContractError::InvalidSignature`.
 - If you see `Error(Contract, #6)`, it corresponds to `ContractError::InvalidPeriod`, not a signature failure.
 
 ---
@@ -175,10 +225,10 @@ These error codes are defined in `src/lib.rs` under:
 
 Same license as the rest of this repository.
 
-## Error 57 — `StaleProposal`
+## Error 60 — `StaleProposal`
 
 **Variant**: `ContractError::StaleProposal`
-**Code**: `57`
+**Code**: `60`
 **Introduced**: Issue #864 — Governance proposal staleness fix.
 
 ### What it means
