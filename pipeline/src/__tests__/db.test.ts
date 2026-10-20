@@ -140,6 +140,38 @@ describe('IndexerDB', () => {
     expect(db.getWrapCount(contractId)).toBe(0);
   });
 
+  it('returns indexed wrap keys for TTL renewal', () => {
+    db.upsertWrap({
+      contract_id: contractId,
+      user: 'GUSER2',
+      period: 202502,
+      timestamp: 1000,
+      data_hash: 'ab'.repeat(32),
+      archetype: 'arch',
+      fsm_state: 3,
+      fsm_updated_at: 1000,
+      ledger_seq: 100,
+      tx_hash: 'tx2',
+    });
+    db.upsertWrap({
+      contract_id: contractId,
+      user: 'GUSER1',
+      period: 202501,
+      timestamp: 1000,
+      data_hash: 'cd'.repeat(32),
+      archetype: 'arch',
+      fsm_state: 3,
+      fsm_updated_at: 1000,
+      ledger_seq: 100,
+      tx_hash: 'tx1',
+    });
+
+    expect(db.getWrapKeysForTtlRenewal(contractId)).toEqual([
+      { user: 'GUSER1', period: 202501 },
+      { user: 'GUSER2', period: 202502 },
+    ]);
+  });
+
   it('upserts user state', () => {
     db.upsertUserState({
       contract_id: contractId,
