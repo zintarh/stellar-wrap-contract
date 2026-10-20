@@ -181,6 +181,38 @@ pub(crate) fn require_not_paused(e: &Env) {
     }
 }
 
+// ── Fine-grained pause flag functions ───────────────────────────────────────
+
+/// Reads the fine-grained pause flags from storage.
+/// Returns PauseFlags::none() if not yet configured.
+pub(crate) fn read_pause_flags(e: &Env) -> crate::storage_types::PauseFlags {
+    e.storage()
+        .instance()
+        .get(&DataKey::PauseFlags)
+        .unwrap_or_else(|| crate::storage_types::PauseFlags::none())
+}
+
+/// Writes the fine-grained pause flags to storage.
+pub(crate) fn write_pause_flags(e: &Env, flags: &crate::storage_types::PauseFlags) {
+    e.storage().instance().set(&DataKey::PauseFlags, flags);
+}
+
+/// Checks if the mint operation is paused via fine-grained flags.
+pub(crate) fn require_mint_not_paused(e: &Env) {
+    let flags = read_pause_flags(e);
+    if flags.mint {
+        panic_with_error!(e, ContractError::Paused);
+    }
+}
+
+/// Checks if the bridge operation is paused via fine-grained flags.
+pub(crate) fn require_bridge_not_paused(e: &Env) {
+    let flags = read_pause_flags(e);
+    if flags.bridge {
+        panic_with_error!(e, ContractError::Paused);
+    }
+}
+
 /// Marks a storage migration as applied. A version can only be applied once and
 /// versions must move forward, so an upgrade shipping a migration cannot corrupt
 /// storage by replaying it.

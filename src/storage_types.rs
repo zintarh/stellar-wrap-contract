@@ -244,8 +244,10 @@ pub enum DataKey {
     /// Stores the token symbol, if overridden by an admin.
     /// Falls back to a hardcoded default when unset — see `queries::symbol`.
     Symbol,
-    /// Emergency pause state flag.
+    /// Emergency pause state flag (legacy single boolean).
     Paused,
+    /// Fine-grained pause flags for selective operation control.
+    PauseFlags,
     /// Configurable expiration duration (in seconds) for unverified wraps.
     ExpirationDuration,
     /// User-controlled opt-out flag. Present means the user has opted out of
@@ -356,6 +358,60 @@ pub struct StakeRecord {
     pub staked_at: u64,
     /// Ledger timestamp when `unstake` was called, or 0 if not unstaking.
     pub unstaking_at: u64,
+}
+
+/// Fine-grained pause flags for selective entrypoint control.
+///
+/// Each bit controls a specific category of operations:
+/// - MINT (0x01): mint_wrap, mint_wrap_batch
+/// - TRANSFER (0x02): transfer_wrap
+/// - REVOKE_BURN (0x04): revoke_wrap, burn_wrap (admin/user destructive ops)
+/// - BRIDGE (0x08): bridge_wrap_in, bridge_wrap_out
+/// - TTL (0x10): extend_ttl, extend_ttl_batch, renew_all_ttls
+/// - STAKE (0x20): stake, unstake, withdraw_stake
+///
+/// When a flag is set, operations in that category are paused.
+/// When all flags are 0, the contract is fully operational.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PauseFlags {
+    pub mint: bool,
+    pub transfer: bool,
+    pub revoke_burn: bool,
+    pub bridge: bool,
+    pub ttl: bool,
+    pub stake: bool,
+}
+
+impl PauseFlags {
+    /// Returns a PauseFlags instance with all operations allowed (all flags false).
+    pub fn none() -> Self {
+        Self {
+            mint: false,
+            transfer: false,
+            revoke_burn: false,
+            bridge: false,
+            ttl: false,
+            stake: false,
+        }
+    }
+
+    /// Returns a PauseFlags instance with all operations paused (all flags true).
+    pub fn all() -> Self {
+        Self {
+            mint: true,
+            transfer: true,
+            revoke_burn: true,
+            bridge: true,
+            ttl: true,
+            stake: true,
+        }
+    }
+
+    /// Returns true if any flag is set (contract is partially or fully paused).
+    pub fn is_any_paused(&self) -> bool {
+        self.mint || self.transfer || self.revoke_burn || self.bridge || self.ttl || self.stake
+    }
 }
 
 /// A report on the consistency of a user's storage state.

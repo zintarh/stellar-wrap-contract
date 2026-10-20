@@ -42,6 +42,8 @@ mod merkle;
 mod mint;
 mod optout;
 mod oracle;
+mod pause_flags_test;
+mod fine_grained_pause_test;
 mod queries;
 mod remove_wrap;
 mod revoke;
@@ -60,7 +62,7 @@ pub use mint::{validate_period, CURRENT_PAYLOAD_VERSION, MAX_PERIOD_YEAR, MIN_PE
 pub use oracle::DataHashOracle;
 pub use storage_types::{
     AdminProposal, BatchWrapItem, ContractHealth, DataKey, InboundBridgeRecord, InvariantReport,
-    OutboundBridgeRequest, ProposalStatus, StakeConfig, StakeRecord, TimelockAction,
+    OutboundBridgeRequest, PauseFlags, ProposalStatus, StakeConfig, StakeRecord, TimelockAction,
     TimelockOperation, TransferFeeConfig, WrapLifecycleFSM, WrapRecord, WrapState, WrapSummary,
 };
 pub use token::TokenInterface;
