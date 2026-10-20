@@ -1,0 +1,13 @@
+# Run mutations only against production Rust sources. Test modules are not
+# mutation targets, but remain available to cargo test for each mutant.
+examine_globs = ["src/**/*.rs"]
+exclude_globs = [
+    "src/**/*_test.rs",
+    "src/test.rs",
+    "src/test_utils.rs",
+    "src/error_messages.rs",
+]
+
+# Keep Soroban tests deterministic and allow slow contract tests to complete.
+additional_cargo_test_args = ["--test-threads=1"]
+minimum_test_timeout = 120.0

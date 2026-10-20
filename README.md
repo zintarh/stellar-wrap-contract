@@ -196,7 +196,6 @@ been initialized or if no wrap exists for the given user and period.
 | Entrypoint |
 | --- |
 | `verify_data(user, period, data)` |
-| `verify_with_oracle(oracle, data_hash)` |
 
 ### Alias & opt-out
 
@@ -468,24 +467,20 @@ mint path**. They are listed so the README does not overstate behaviour:
   stake, but mints do not apply it, so staking affects priority numbers only,
   not the fees a user actually pays.
 
-## Oracle hash verification
+## Oracle verification (deprecated)
 
-`verify_with_oracle` performs a read-only cross-contract call to the supplied
-oracle address. A compatible oracle exposes this ABI:
+The v1 `verify_with_oracle(oracle, data_hash)` entrypoint has been removed.
+It forwarded calls to a caller-selected contract without consulting registry
+state, so it added no registry-specific guarantee and exposed an unnecessary
+cross-contract call surface. Clients that need an oracle check should invoke
+their configured oracle directly. The registry does not invoke caller-supplied
+contract addresses.
 
-```text
-verify_data_hash(data_hash: BytesN<32>) -> bool
-```
+## Upgrade policy
 
-The hash is forwarded unchanged. The oracle returns `true` when its
-decentralized verification process recognizes the hash and `false` when it
-does not. Contract invocation failures, a missing method, and incompatible
-return values propagate as call errors; they are never converted to `false`.
-
-The caller supplies the oracle address, so a `true` response is only as
-trustworthy as that selected oracle. Applications should use a vetted oracle
-contract ID from their own configuration. This method does not mutate wrap
-records and does not replace the local `verify_data` comparison.
+The selected v2 governor-and-timelock policy, including per-contract
+requirements and the current implementation boundary, is documented in
+[docs/upgrade-policy.md](docs/upgrade-policy.md).
 
 ## Event schemas
 

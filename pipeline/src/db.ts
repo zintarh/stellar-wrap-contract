@@ -518,6 +518,15 @@ export class IndexerDB {
     return row.count;
   }
 
+  getWrapKeysForTtlRenewal(contractId: string): Array<{ user: string; period: number }> {
+    return this.fetchAll(
+      `SELECT user, period FROM wrap_records
+       WHERE contract_id = ?
+       ORDER BY user, period`,
+      [contractId],
+    ) as Array<{ user: string; period: number }>;
+  }
+
   upsertUserState(state: {
     contract_id: string;
     user: string;

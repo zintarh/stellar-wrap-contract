@@ -1,5 +1,11 @@
 # Timelock controller for administrative actions
 
+The selected v2 contract-upgrade policy is documented in
+[`upgrade-policy.md`](./upgrade-policy.md). The current repository's timelock
+is admin-authorized and optional until enabled; that legacy behavior must not
+be confused with the v2 requirement for governor-controlled, timelocked
+upgrades.
+
 Privileged actions on this contract used to take effect in the same transaction
 that requested them: a compromised or careless admin key could hand over the
 admin role, rotate the signing key, or swap the contract WASM with no warning.
@@ -73,7 +79,7 @@ something the contract does not already expose:
 | --- | --- |
 | `SetAdmin(address)` | Replaces `Admin`, clears any `PendingAdmin`, emits `("admin", "updated")`. |
 | `SetAdminPubKey(bytes32)` | Rotates the Ed25519 mint-signing key. |
-| `Upgrade(wasm_hash)` | Emits `("upgrade",)` then `update_current_contract_wasm`. |
+| `Upgrade(wasm_hash)` | Increments `ContractVersion`, emits `("upgrade", version)` with the new WASM hash, then updates the contract WASM. |
 | `SetWhitelistRoot(bytes32)` | Publishes a new whitelist merkle root. |
 | `SetTimelockDelay(seconds)` | Changes the delay itself. |
 

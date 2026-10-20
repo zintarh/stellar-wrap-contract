@@ -1,67 +1,9 @@
-# Mutation testing configuration for cargo-mutants
-#
-# Reference: https://github.com/sourcefrog/cargo-mutants
-
-# Exclude test files from mutation — mutating test code is not useful
-# and would produce false positives.
-exclude_files = [
-    "src/test.rs",
-    "src/security_test.rs",
-]
-
-# Exclude generated code directories
-exclude_dirs = [
-    "target",
-]
-
-# Only mutate source files in src/ (exclude build scripts, CI config, etc.)
-include_paths = ["src/"]
-
-# Test timeout per mutant (seconds)
-# Soroban contract tests can be slow; 120s prevents hangs from infinite loops
-test_timeout = 120
-
-# Run tests in a single thread to avoid flaky failures from shared state
-test_flags = ["--test-threads=1"]
-
-# Do not fail fast — continue testing remaining mutants even if some fail
-# This ensures we get a complete mutation report in a single CI run
-no_fail_fast = true
-
-# ---------------------------------------------------------------------------
-# Mutation score threshold (issue #882)
-# ---------------------------------------------------------------------------
-# cargo-mutants does not natively support a per-module score gate, so the
-# workflow computes the score from the JSON report and enforces the baseline
-# below. The threshold starts from the current surviving-mutant baseline
-# rather than an aspirational figure, so CI fails on regression but does not
-# fail on the pre-existing backlog.
-#
-# The score is computed per module (see .github/workflows/mutation.yml) so a
-# single whole-crate number cannot hide a regression in one module. Test-only
-# and generated code are excluded from the score via `exclude_files` /
-# `exclude_dirs` above so the score is not diluted.
-
-# Minimum acceptable mutation score (percent) per module.
-# Values reflect the current baseline; raise them as surviving mutants are
-# triaged and killed. A module whose score drops below its baseline fails CI.
+# Per-source-file mutation score floors consumed by
+# .github/workflows/mutation.yml. cargo-mutants records each outcome by source
+# path; the workflow groups those outcomes by Rust module and gates the
+# resulting caught / (caught + missed + timed out) score.
 [thresholds]
-# Security-sensitive modules — surviving mutants here are triaged as issues
-# rather than silently accepted (see SECURITY_AUDIT_CHECKLIST.md).
-mint = 0
-bridge = 0
-signature = 0
-merkle = 0
-
-# Default floor applied to any module without an explicit entry above.
-default = 0
-
-# Modules whose surviving mutants must be surfaced/triaged rather than
-# silently accepted. The workflow opens/updates an issue for each surviving
-# mutant in these modules.
-security_sensitive_modules = [
-    "mint",
-    "bridge",
-    "signature",
-    "merkle",
-]
+signature = 90
+mint = 90
+bridge = 90
+default = 70

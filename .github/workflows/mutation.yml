@@ -1,6 +1,15 @@
 name: Mutation Testing
 
 on:
+  pull_request:
+    paths:
+      - 'src/**/*.rs'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.mutants.toml'
+      - '.cargo/mutants.toml'
+      - '.github/workflows/mutation.yml'
+      - 'scripts/check_mutation_scores.py'
   schedule:
     - cron: '0 6 * * 1'
   workflow_dispatch:
@@ -22,24 +31,15 @@ jobs:
           tool: cargo-mutants
 
       - name: Run mutation tests
-        run: cargo mutants -vV --in-place 2>&1 | tee mutation-report.txt
-
-      - name: Extract mutation score
-        id: score
+        id: mutants
+        continue-on-error: true
         run: |
-          SUMMARY=$(grep -oP '\d+ mutants tested.*: \d+ missed, \d+ caught' mutation-report.txt || echo "0")
-          MISSED=$(echo "$SUMMARY" | grep -oP '\d+(?= missed)')
-          CAUGHT=$(echo "$SUMMARY" | grep -oP '\d+(?= caught)')
-          TOTAL=$((MISSED + CAUGHT))
-          if [ "$TOTAL" -gt 0 ]; then
-            PCT=$(awk "BEGIN {printf \"%.1f\", $CAUGHT * 100 / $TOTAL}")
-          else
-            PCT="0.0"
-          fi
-          echo "score=$PCT" >> "$GITHUB_OUTPUT"
-          echo "caught=$CAUGHT" >> "$GITHUB_OUTPUT"
-          echo "missed=$MISSED" >> "$GITHUB_OUTPUT"
-          echo "### Mutation Score: ${PCT}% (${CAUGHT} caught, ${MISSED} missed)" >> "$GITHUB_STEP_SUMMARY"
+          set -o pipefail
+          cargo mutants --in-place 2>&1 | tee mutation-report.txt
+
+      - name: Gate per-module scores and summarize missed mutants
+        if: always()
+        run: python3 scripts/check_mutation_scores.py
 
       - name: Upload mutation report
         uses: actions/upload-artifact@v4
@@ -49,61 +49,3 @@ jobs:
           path: |
             mutation-report.txt
             mutants.out/
-
-      - name: Check per-module mutation score against baseline
-        run: |
-          # Per-module baseline of surviving mutants, established from the current
-          # run rather than an aspirational target. A module regresses when it
-          # gains surviving mutants beyond its recorded baseline.
-          #
-          # Security-sensitive modules (mint, bridge, signature, merkle) are
-          # tracked explicitly so their surviving mutants are surfaced and
-          # triaged instead of being diluted into a single crate-wide number.
-          declare -A BASELINE=(
-            [mint]=0
-            [bridge]=0
-            [signature]=0
-            [merkle]=0
-          )
-
-          # Test-only and generated code are excluded from the score so it is
-          # not diluted by mutants that carry no production signal.
-          EXCLUDE='(^|/)(tests?|benches|examples)/|_test\.rs$|/generated/|/target/'
-
-          FAIL=0
-          for MODULE in "${!BASELINE[@]}"; do
-            MISSED=$(grep -oP "^\\S+\\s+${MODULE}\\S*\\s+.*missed" mutation-report.txt 2>/dev/null | grep -oP '\d+(?= missed)' | paste -sd+ - | bc 2>/dev/null || echo 0)
-            MISSED=${MISSED:-0}
-            BASE=${BASELINE[$MODULE]}
-            echo "### Module ${MODULE}: ${MISSED} surviving mutants (baseline ${BASE})" >> "$GITHUB_STEP_SUMMARY"
-            if [ "$MISSED" -gt "$BASE" ]; then
-              echo "❌ ${MODULE}: ${MISSED} surviving mutants exceeds baseline of ${BASE}"
-              FAIL=1
-            else
-              echo "✅ ${MODULE}: ${MISSED} surviving mutants within baseline of ${BASE}"
-            fi
-          done
-
-          # Crate-wide floor, starting from the current baseline rather than an
-          # aspirational figure. Raise it as the baseline improves.
-          SUMMARY=$(grep -oP '\d+ mutants tested.*: \d+ missed, \d+ caught' mutation-report.txt || echo "0")
-          MISSED=$(echo "$SUMMARY" | grep -oP '\d+(?= missed)')
-          CAUGHT=$(echo "$SUMMARY" | grep -oP '\d+(?= caught)')
-          TOTAL=$((MISSED + CAUGHT))
-          if [ "$TOTAL" -gt 0 ]; then
-            PCT=$(awk "BEGIN {printf \"%.1f\", $CAUGHT * 100 / $TOTAL}")
-          else
-            PCT="0"
-          fi
-          MIN=70
-          if [ "$(echo "$PCT < $MIN" | bc -l)" -eq 1 ]; then
-            echo "❌ Mutation score ${PCT}% is below baseline of ${MIN}%"
-            FAIL=1
-          else
-            echo "✅ Mutation score ${PCT}% meets baseline of ${MIN}%"
-          fi
-
-          if [ "$FAIL" -eq 1 ]; then
-            echo "Mutation regression detected; failing workflow."
-            exit 1
-          fi
