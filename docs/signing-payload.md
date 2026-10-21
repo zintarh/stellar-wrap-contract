@@ -22,7 +22,7 @@ the `mint_wrap` entry-point verifies with `ed25519_verify`.
 | Version | Status | Changes |
 |---------|--------|---------|
 | **v1** | Obsolete — rejected on-chain. `validate_payload_version` panics with `InvalidSignature` (#5). | Original layout: no expiry, no nonce. Signatures were bearer credentials with infinite lifetime. |
-| **v2** | **Current** (`CURRENT_PAYLOAD_VERSION = 2`). | Adds `valid_until` (ledger timestamp, `u64`). The contract rejects `mint_wrap` / `mint_wrap_batch` when `e.ledger().timestamp() > valid_until`, surfacing `SignatureExpired` (#57). |
+| **v2** | **Current** (`CURRENT_PAYLOAD_VERSION = 2`). | Adds `valid_until` (ledger timestamp, `u64`). The contract rejects `mint_wrap` / `mint_wrap_batch` when `e.ledger().timestamp() > valid_until`, surfacing `SignatureExpired` (#62). |
 
 All downstream signers **must migrate to v2 immediately**. There is no
 compatibility window — v1 payloads are rejected unconditionally via the existing
@@ -124,7 +124,7 @@ accepted when
 ledger_timestamp <= valid_until
 ```
 
-and rejected (with `ContractError::SignatureExpired`, `#57`) as soon as
+and rejected (with `ContractError::SignatureExpired`, `#62`) as soon as
 
 ```
 ledger_timestamp > valid_until
@@ -255,11 +255,11 @@ pattern that was planned for v1 from the start.
 4. **Pass `valid_until` as a new argument** to `mint_wrap` (7th argument,
    inserted between `payload_version` and `signature`) and to each
    `BatchWrapItem` in `mint_wrap_batch`.
-5. **Handle `SignatureExpired` (#57)** client-side. In the old scheme, a
+5. **Handle `SignatureExpired` (#62)** client-side. In the old scheme, a
    stale bearer token would either succeed (bad — replay of a leaked sig)
    or surface `InvalidSignature` depending on what else changed. In v2, a
    signature whose deadline has passed returns the dedicated error code
-   `Error(Contract, #57)`, which your UI / CLI should map to a human
+    `Error(Contract, #62)`, which your UI / CLI should map to a human
    message suggesting the user request a fresh signature from the backend.
 6. **Drop v1 support entirely.** There is no hybrid mode — once the
    on-chain `CURRENT_PAYLOAD_VERSION` is `2`, any v1 payload hits
@@ -399,7 +399,7 @@ valid_until, signature)` on the contract with the same `period`, `archetype`,
 `data_hash`, `payload_version`, and `valid_until` used to build the payload
 above, plus the resulting 64-byte signature. Any mismatch between what was
 signed and what is submitted produces `Error(Contract, #5)`; a correct
-signature but expired deadline produces `Error(Contract, #57)`.
+signature but expired deadline produces `Error(Contract, #62)`.
 
 ---
 
@@ -455,6 +455,6 @@ different message, and the contract's in-guest Ed25519 verification
 | `#3` | `Unauthorized` | `user.require_auth()` fails |
 | `#5` | `InvalidSignature` | `payload_version` doesn't match `CURRENT_PAYLOAD_VERSION`, or in-guest Ed25519 verification rejects the signature (wrong payload order/fields, wrong key, corrupted bytes). Also raised on v1 payloads because the version gate fires first. |
 | `#6` | `InvalidPeriod` | `period` is outside `202401`–`210012` |
-| `#57` | `SignatureExpired` | v2 payloads only. The current ledger timestamp is strictly greater than `valid_until`; request a fresh signature from the backend with a later deadline. |
+| `#62` | `SignatureExpired` | v2 payloads only. The current ledger timestamp is strictly greater than `valid_until`; request a fresh signature from the backend with a later deadline. |
 
 See [ERRORS.md](../ERRORS.md) for the full error catalogue.

@@ -7,6 +7,11 @@
 <!-- Future breaking interface changes go here. Each entry must include
      migration notes describing what integrators need to update. -->
 
+- The planned v1-to-v2 contract workspace migration changes contract IDs and
+  may change entrypoints, errors, and events. See the [v1 to v2 integrator
+  migration guide](docs/migration-v1-to-v2.md) for the current v1 inventory,
+  cutover checklist, and v2 details that must be finalized before production.
+
 ### Changed
 
 - `pause` / `unpause` now emit direction-distinguishable events with the acting
