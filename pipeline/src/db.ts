@@ -4,6 +4,7 @@ import type {
   ContractStateRow,
   DerivedState,
   LedgerCursorRow,
+  RetentionGap,
   StorageEntry,
   WrapState,
   WrapRecord,
@@ -286,6 +287,19 @@ export class IndexerDB {
     `);
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_applied_events_contract
       ON applied_events(contract_id, ledger_seq)`);
+
+    // Ledger ranges Soroban-RPC pruned before the indexer could read them.
+    // One row per range; kept until an operator resolves the gap.
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS retention_gaps (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        contract_id TEXT NOT NULL,
+        from_ledger INTEGER NOT NULL,
+        to_ledger INTEGER NOT NULL,
+        detected_at TEXT NOT NULL,
+        UNIQUE (contract_id, from_ledger, to_ledger)
+      )
+    `);
 
     this.db.run(`
       CREATE TABLE IF NOT EXISTS reconciliation_runs (
@@ -684,6 +698,22 @@ export class IndexerDB {
         updated_at = datetime('now')`,
       [id, contractId, processedLedger, eventLedger],
     );
+  }
+
+  recordRetentionGap(gap: RetentionGap): void {
+    this.exec(
+      `INSERT OR IGNORE INTO retention_gaps (contract_id, from_ledger, to_ledger, detected_at)
+       VALUES (?, ?, ?, ?)`,
+      [gap.contract_id, gap.from_ledger, gap.to_ledger, gap.detected_at],
+    );
+  }
+
+  getRetentionGaps(contractId: string): RetentionGap[] {
+    return this.fetchAll(
+      `SELECT contract_id, from_ledger, to_ledger, detected_at FROM retention_gaps
+       WHERE contract_id = ? ORDER BY from_ledger ASC`,
+      [contractId],
+    ) as unknown as RetentionGap[];
   }
 
   getStats(contractId: string): Record<string, unknown> {

@@ -2,7 +2,7 @@ import { loadConfig } from './config';
 import { IndexerDB } from './db';
 import { SorobanFetcher } from './fetcher';
 import { processEventBatch, createEmptyState, persistStateToDB } from './processor';
-import { backfillEvents } from './backfill';
+import { backfillEvents, detectRetentionGap } from './backfill';
 import { reconcile } from './reconciler';
 import type { DerivedState } from './types';
 
@@ -285,7 +285,11 @@ async function main(): Promise<void> {
   // chain head instead of spinning on a ledger the chain has not produced.
   let startLedger: number;
   try {
-    startLedger = await resolveStartLedger(db, fetcher, config.contract_id, config.start_ledger);
+    const resumeLedger = await resolveStartLedger(db, fetcher, config.contract_id, config.start_ledger);
+    // Resuming below RPC's retention window would fail on every fetch, so
+    // record the unrecoverable range and skip ahead to the oldest retained ledger.
+    const retention = await detectRetentionGap(fetcher, db, config.contract_id, resumeLedger);
+    startLedger = retention.resumeLedger;
   } catch (err) {
     console.error(err instanceof Error ? err.message : err);
     db.close();

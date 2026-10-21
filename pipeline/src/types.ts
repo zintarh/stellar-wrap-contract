@@ -231,6 +231,18 @@ export interface LedgerCursorRow {
   updated_at: string;
 }
 
+/**
+ * Ledgers Soroban-RPC pruned before the indexer could read them. These events
+ * cannot be backfilled from RPC, so the derived state is incomplete for this
+ * range until an operator resolves it.
+ */
+export interface RetentionGap {
+  contract_id: string;
+  from_ledger: number;
+  to_ledger: number;
+  detected_at: string;
+}
+
 // ─── Derived State (in-memory index) ─────────────────────────────────────
 
 export interface DerivedState {
