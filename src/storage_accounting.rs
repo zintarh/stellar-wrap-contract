@@ -1,4 +1,4 @@
-use crate::{storage_types::FeeParams, ContractError, DataKey};
+use crate::{constants::TTL_ONE_YEAR, storage_types::FeeParams, ContractError, DataKey};
 use soroban_sdk::{panic_with_error, Env};
 
 const ESTIMATE_WRAP_RECORD_BYTES: u64 = 64;
@@ -44,7 +44,7 @@ pub(crate) fn sub_storage_bytes(e: &Env, delta: u64) {
 
 pub(crate) fn get_fee_params(e: &Env) -> FeeParams {
     e.storage()
-        .instance()
+        .persistent()
         .get(&DataKey::FeeParams)
         .unwrap_or(FeeParams {
             base_fee: 0,
@@ -65,7 +65,10 @@ pub(crate) fn set_fee_params(e: &Env, params: FeeParams) {
     if params.max_fee < params.base_fee {
         panic_with_error!(e, ContractError::InvalidFeeParams);
     }
-    e.storage().instance().set(&DataKey::FeeParams, &params);
+    e.storage().persistent().set(&DataKey::FeeParams, &params);
+    e.storage()
+        .persistent()
+        .extend_ttl(&DataKey::FeeParams, TTL_ONE_YEAR, TTL_ONE_YEAR);
     crate::events::publish_event(e, crate::events::Event::FeeParamsUpdated(params));
 }
 

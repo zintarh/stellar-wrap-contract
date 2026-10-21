@@ -42,7 +42,7 @@
 use soroban_sdk::{panic_with_error, symbol_short, Address, BytesN, Env};
 
 use crate::{
-    ttl::TTL_TEMP, ContractError, DataKey, TransferFeeConfig, WrapRecord,
+    constants::TTL_ONE_YEAR, ttl::TTL_TEMP, ContractError, DataKey, TransferFeeConfig, WrapRecord,
 };
 
 /// Minimum duration for an admin proposal, in seconds (1 hour).
@@ -148,7 +148,7 @@ pub(crate) fn set_transfer_fee(e: Env, token: Address, recipient: Address, amoun
     if amount < 0 || token == recipient {
         panic_with_error!(e, ContractError::InvalidFeeParams);
     }
-    e.storage().instance().set(
+    e.storage().persistent().set(
         &DataKey::TransferFee,
         &TransferFeeConfig {
             amount,
@@ -156,6 +156,9 @@ pub(crate) fn set_transfer_fee(e: Env, token: Address, recipient: Address, amoun
             token: token.clone(),
         },
     );
+    e.storage()
+        .persistent()
+        .extend_ttl(&DataKey::TransferFee, TTL_ONE_YEAR, TTL_ONE_YEAR);
     e.events()
         .publish((symbol_short!("fee"),), (token, recipient, amount));
 }
@@ -164,7 +167,7 @@ pub(crate) fn set_transfer_fee(e: Env, token: Address, recipient: Address, amoun
 #[allow(deprecated)] // TODO(#718): migrate to #[contractevent]
 pub(crate) fn clear_transfer_fee(e: Env) {
     read_admin(&e).require_auth();
-    e.storage().instance().remove(&DataKey::TransferFee);
+    e.storage().persistent().remove(&DataKey::TransferFee);
     e.events().publish((symbol_short!("fee_clr"),), ());
 }
 
@@ -325,13 +328,19 @@ pub(crate) fn update_admin_pubkey(e: Env, new_pubkey: BytesN<32>) {
 pub(crate) fn set_name(e: Env, name: soroban_sdk::String) {
     let current_admin: Address = read_admin(&e);
     current_admin.require_auth();
-    e.storage().instance().set(&DataKey::Name, &name);
+    e.storage().persistent().set(&DataKey::Name, &name);
+    e.storage()
+        .persistent()
+        .extend_ttl(&DataKey::Name, TTL_ONE_YEAR, TTL_ONE_YEAR);
 }
 
 pub(crate) fn set_symbol(e: Env, symbol: soroban_sdk::String) {
     let current_admin: Address = read_admin(&e);
     current_admin.require_auth();
-    e.storage().instance().set(&DataKey::Symbol, &symbol);
+    e.storage().persistent().set(&DataKey::Symbol, &symbol);
+    e.storage()
+        .persistent()
+        .extend_ttl(&DataKey::Symbol, TTL_ONE_YEAR, TTL_ONE_YEAR);
 }
 
 /// Admin-only: set metadata (description and image URL) for a specific wrap.

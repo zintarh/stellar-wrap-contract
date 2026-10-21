@@ -222,7 +222,7 @@ pub(crate) fn get_wrap_summary(e: Env, user: Address) -> Option<WrapSummary> {
 
 /// Return the configured transfer-fee configuration, or `None` if unset.
 pub(crate) fn get_transfer_fee(e: Env) -> Option<TransferFeeConfig> {
-    e.storage().instance().get(&DataKey::TransferFee)
+    e.storage().persistent().get(&DataKey::TransferFee)
 }
 
 pub(crate) fn health(e: Env) -> ContractHealth {
@@ -271,21 +271,21 @@ pub(crate) fn has_wrap(e: Env, user: Address, period: u64) -> bool {
 
 pub(crate) fn total_revoked(e: Env) -> u64 {
     e.storage()
-        .instance()
+        .persistent()
         .get::<_, u64>(&DataKey::TotalRevoked)
         .unwrap_or(0)
 }
 
 pub(crate) fn name(e: Env) -> String {
     e.storage()
-        .instance()
+        .persistent()
         .get(&DataKey::Name)
         .unwrap_or_else(|| String::from_str(&e, "Stellar Wrap Registry"))
 }
 
 pub(crate) fn symbol(e: Env) -> String {
     e.storage()
-        .instance()
+        .persistent()
         .get(&DataKey::Symbol)
         .unwrap_or_else(|| String::from_str(&e, "WRAP"))
 }

@@ -58,7 +58,38 @@ pub(crate) fn extend_ttl(e: Env, user: Address, period: u64) {
         .extend_ttl(&wrap_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
 
     extend_user_metadata_ttl(&e, &user);
+    extend_config_ttl(&e);
     e.storage().instance().extend_ttl(TTL_ONE_YEAR, TTL_ONE_YEAR);
+}
+
+/// Renew the contract-wide config entries that live in persistent storage.
+///
+/// Cold config (fee params, name/symbol, whitelist root, timelock delay, stake
+/// config, counters) is kept out of instance storage so it is not loaded on
+/// every call. Those entries carry their own TTL, so they are renewed here
+/// alongside the instance TTL. Entries that were never set are skipped.
+pub(crate) fn extend_config_ttl(e: &Env) {
+    let keys = [
+        DataKey::FeeParams,
+        DataKey::TransferFee,
+        DataKey::Name,
+        DataKey::Symbol,
+        DataKey::WhitelistRoot,
+        DataKey::TimelockDelay,
+        DataKey::StakeConfig,
+        DataKey::TotalStaked,
+        DataKey::ExpirationDuration,
+        DataKey::TotalRevoked,
+        DataKey::OutboundBridgeNonce,
+        DataKey::BridgeRelayer,
+    ];
+    for key in keys.iter() {
+        if e.storage().persistent().has(key) {
+            e.storage()
+                .persistent()
+                .extend_ttl(key, TTL_ONE_YEAR, TTL_ONE_YEAR);
+        }
+    }
 }
 
 /// Renew the per-user metadata keys (`WrapCount`, `WrapMetadata`) when present.
@@ -133,6 +164,7 @@ pub(crate) fn extend_ttl_batch(e: Env, user: Address, periods: Vec<u64>) {
     }
 
     extend_user_metadata_ttl(&e, &user);
+    extend_config_ttl(&e);
     e.storage().instance().extend_ttl(TTL_ONE_YEAR, TTL_ONE_YEAR);
 }
 
@@ -166,5 +198,6 @@ pub(crate) fn renew_all_ttls(e: Env, user: Address) {
             .extend_ttl(&metadata_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
     }
 
+    extend_config_ttl(&e);
     e.storage().instance().extend_ttl(TTL_ONE_YEAR, TTL_ONE_YEAR);
 }

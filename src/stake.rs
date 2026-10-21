@@ -28,11 +28,11 @@ const DEFAULT_MAX_PRIORITY_BPS: u32 = 5_000; // 50% max discount
 
 // ── Config helpers ──────────────────────────────────────────────────────────
 
-/// Read the current stake config from instance storage, falling back to
+/// Read the current stake config from persistent storage, falling back to
 /// sensible defaults when none has been set.
 fn read_stake_config(e: &Env) -> StakeConfig {
     e.storage()
-        .instance()
+        .persistent()
         .get(&DataKey::StakeConfig)
         .unwrap_or(StakeConfig {
             min_stake: DEFAULT_MIN_STAKE,
@@ -65,13 +65,17 @@ fn remove_stake(e: &Env, user: &Address) {
 
 fn read_total_staked(e: &Env) -> i128 {
     e.storage()
-        .instance()
+        .persistent()
         .get(&DataKey::TotalStaked)
         .unwrap_or(0i128)
 }
 
 fn write_total_staked(e: &Env, amount: i128) {
-    e.storage().instance().set(&DataKey::TotalStaked, &amount);
+    let key = DataKey::TotalStaked;
+    e.storage().persistent().set(&key, &amount);
+    e.storage()
+        .persistent()
+        .extend_ttl(&key, TTL_ONE_YEAR, TTL_ONE_YEAR);
 }
 
 /// Assert the accounting invariant: `total_staked` equals the sum of all live
