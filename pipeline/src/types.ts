@@ -260,6 +260,7 @@ export interface DerivedState {
 
 export interface IndexerConfig {
   rpc_url: string;
+  network_passphrase: string;
   contract_id: string;
   db_path: string;
   poll_interval_ms: number;

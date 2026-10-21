@@ -1,4 +1,4 @@
-import { loadConfig } from './config';
+import { loadConfig, ConfigValidationError } from './config';
 import { IndexerDB } from './db';
 import { SorobanFetcher } from './fetcher';
 import { processEventBatch, createEmptyState, persistStateToDB } from './processor';
@@ -159,6 +159,9 @@ async function main(): Promise<void> {
   console.log(`Contract: ${config.contract_id}`);
   console.log(`RPC URL:  ${config.rpc_url}`);
   console.log(`DB Path:  ${config.db_path}`);
+  if (config.network_passphrase) {
+    console.log(`Network:  ${config.network_passphrase}`);
+  }
 
   // ── Reconcile-only mode ────────────────────────────────────────────
   if (config.reconcile_only) {
@@ -331,6 +334,11 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
+  if (err instanceof ConfigValidationError) {
+    // The message already lists every invalid field, so it is printed as-is.
+    console.error(err.message);
+    process.exit(1);
+  }
   console.error('Fatal error:', err instanceof Error ? err.message : err);
   process.exit(1);
 });
