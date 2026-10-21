@@ -220,7 +220,7 @@ pub enum DataKey {
     /// Stores the periods currently owned by a user so transfers can update
     /// `LatestPeriod` without scanning contract storage.
     WrapPeriods(Address),
-    /// Stores the admin-controlled transfer fee configuration.
+    /// Stores the admin-controlled transfer fee configuration (persistent).
     TransferFee,
     /// Temporary reentrancy guard for transfer calls.
     TransferGuard,
@@ -232,21 +232,21 @@ pub enum DataKey {
     /// Total number of wraps ever minted across all users (lifetime counter).
     /// This is intentionally NOT decremented on `revoke_wrap` or `burn_wrap`.
     TotalWrapCount,
-    /// Stores the total number of wrap records revoked on-chain.
+    /// Stores the total number of wrap records revoked on-chain (persistent).
     TotalRevoked,
     /// Stores a user-controlled 32-byte alias hash for privacy-preserving profile display.
     AliasHash(Address),
     /// Stores the 32-byte hash that owns a given alias.
     AliasOwner(BytesN<32>),
-    /// Stores the token display name, if overridden by an admin.
+    /// Stores the token display name, if overridden by an admin (persistent).
     /// Falls back to a hardcoded default when unset — see `queries::name`.
     Name,
-    /// Stores the token symbol, if overridden by an admin.
+    /// Stores the token symbol, if overridden by an admin (persistent).
     /// Falls back to a hardcoded default when unset — see `queries::symbol`.
     Symbol,
     /// Emergency pause state flag.
     Paused,
-    /// Configurable expiration duration (in seconds) for unverified wraps.
+    /// Configurable expiration duration (in seconds) for unverified wraps (persistent).
     ExpirationDuration,
     /// User-controlled opt-out flag. Present means the user has opted out of
     /// future mints; absent means minting is allowed.
@@ -258,15 +258,17 @@ pub enum DataKey {
     MintGuard(Address),
     /// Period that has been minted for a specific user, to prevent double minting.
     MintedPeriod(Address, u32),
-    // New instance storage keys for accounting / fee system:
+    // Accounting / fee system. `StorageBytes` stays in instance storage because
+    // every mint updates it; the cold config below lives in persistent storage
+    // so it is not loaded on every invocation.
     /// Estimated persistent storage bytes used by this contract (instance-level)
     StorageBytes,
-    /// Params for the algorithmic fee function (instance-level)
+    /// Params for the algorithmic fee function (persistent)
     FeeParams,
-    /// Merkle root committing to the off-chain whitelist (instance-level).
+    /// Merkle root committing to the off-chain whitelist (persistent).
     WhitelistRoot,
     /// Mandatory delay, in seconds, between scheduling and executing a
-    /// privileged action once the timelock is enabled (instance-level).
+    /// privileged action once the timelock is enabled (persistent).
     TimelockDelay,
     /// A scheduled privileged action, keyed by its deterministic operation id.
     TimelockOp(BytesN<32>),
@@ -276,13 +278,13 @@ pub enum DataKey {
     /// unrelated contract invocation.
     TimelockOps,
     // Token Bridge storage keys:
-    /// Sole authorized relayer address for bridge refunds (legacy single-relayer).
+    /// Sole authorized relayer address for bridge refunds (legacy single-relayer, persistent).
     BridgeRelayer,
     /// Authorized relayer set (pubkeys) and threshold for a given source chain.
     BridgeRelayerSet(u32),
     /// Status (enabled/disabled) of a supported target/source chain ID.
     BridgeChainStatus(u32),
-    /// Current outbound bridge request sequence counter.
+    /// Current outbound bridge request sequence counter (persistent).
     OutboundBridgeNonce,
     /// Outbound cross-chain wrap request keyed by outbound nonce.
     OutboundBridgeRequest(u64),
@@ -304,9 +306,9 @@ pub enum DataKey {
     // Staking storage keys:
     /// Individual stake record keyed by user (persistent).
     Stake(Address),
-    /// Admin-configured staking parameters (instance-level).
+    /// Admin-configured staking parameters (persistent).
     StakeConfig,
-    /// Total amount staked across all users (instance-level).
+    /// Total amount staked across all users (persistent).
     TotalStaked,
 }
 

@@ -4,7 +4,7 @@ use crate::constants::TTL_ONE_YEAR;
 use crate::{admin, ContractError, DataKey, TransferFeeConfig, WrapRecord};
 
 fn read_fee(e: &Env) -> Option<TransferFeeConfig> {
-    e.storage().instance().get(&DataKey::TransferFee)
+    e.storage().persistent().get(&DataKey::TransferFee)
 }
 
 fn read_periods(e: &Env, owner: &Address, expected_count: u32) -> Vec<u64> {

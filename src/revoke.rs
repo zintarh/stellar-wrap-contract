@@ -130,13 +130,16 @@ pub(crate) fn revoke_wrap(e: Env, user: Address, period: u64, reason_hash: Bytes
             .extend_ttl(&user_periods_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
     }
 
-    // Increment TotalRevoked with overflow protection (instance storage).
+    // Increment TotalRevoked with overflow protection (persistent storage).
     let total_revoked_key = DataKey::TotalRevoked;
-    let current_total: u64 = e.storage().instance().get(&total_revoked_key).unwrap_or(0);
+    let current_total: u64 = e.storage().persistent().get(&total_revoked_key).unwrap_or(0);
     let next_total = current_total
         .checked_add(1)
         .unwrap_or_else(|| panic_with_error!(&e, ContractError::ArithmeticOverflow));
-    e.storage().instance().set(&total_revoked_key, &next_total);
+    e.storage().persistent().set(&total_revoked_key, &next_total);
+    e.storage()
+        .persistent()
+        .extend_ttl(&total_revoked_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
 
     e.events()
         .publish((symbol_short!("revoke"), user, period), reason_hash);

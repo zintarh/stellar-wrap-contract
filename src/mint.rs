@@ -406,7 +406,7 @@ pub(crate) fn transition_wrap_state(e: Env, user: Address, period: u64, next_sta
 /// Defaults to 7 days (604,800 seconds) if not set by admin.
 pub(crate) fn get_expiration_duration(e: &Env) -> u64 {
     e.storage()
-        .instance()
+        .persistent()
         .get(&DataKey::ExpirationDuration)
         .unwrap_or(DEFAULT_EXPIRATION_SECONDS)
 }
@@ -419,9 +419,11 @@ pub(crate) fn set_expiration_duration(e: &Env, duration: u64) {
     if duration == 0 {
         panic_with_error!(e, ContractError::InvalidExpirationDuration);
     }
+    let key = DataKey::ExpirationDuration;
+    e.storage().persistent().set(&key, &duration);
     e.storage()
-        .instance()
-        .set(&DataKey::ExpirationDuration, &duration);
+        .persistent()
+        .extend_ttl(&key, TTL_ONE_YEAR, TTL_ONE_YEAR);
 }
 
 /// Expires a wrap if its expiration deadline has passed.

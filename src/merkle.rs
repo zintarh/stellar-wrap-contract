@@ -5,7 +5,7 @@ use soroban_sdk::{
     panic_with_error, symbol_short, xdr::ToXdr, Address, Bytes, BytesN, Env, String, Symbol, Vec,
 };
 
-use crate::constants::{MAX_PROOF_DEPTH, MERKLE_LEAF_PREFIX, MERKLE_NODE_PREFIX};
+use crate::constants::{MAX_PROOF_DEPTH, MERKLE_LEAF_PREFIX, MERKLE_NODE_PREFIX, TTL_ONE_YEAR};
 use crate::{ContractError, DataKey};
 
 pub const WHITELIST_DOMAIN_SEPARATOR: &[u8; 25] = b"stellar-wrap-whitelist-v1";
@@ -74,7 +74,10 @@ pub fn compute_whitelist_leaf(e: &Env, user: &Address) -> BytesN<32> {
 pub(crate) fn set_whitelist_root(e: Env, root: BytesN<32>) {
     crate::timelock::require_direct_call_allowed(&e);
     crate::admin::read_admin(&e).require_auth();
-    e.storage().instance().set(&DataKey::WhitelistRoot, &root);
+    e.storage().persistent().set(&DataKey::WhitelistRoot, &root);
+    e.storage()
+        .persistent()
+        .extend_ttl(&DataKey::WhitelistRoot, TTL_ONE_YEAR, TTL_ONE_YEAR);
     e.events()
         .publish((symbol_short!("whitelist"), symbol_short!("root")), root);
 }
@@ -83,13 +86,13 @@ pub(crate) fn set_whitelist_root(e: Env, root: BytesN<32>) {
 pub(crate) fn clear_whitelist_root(e: Env) {
     crate::timelock::require_direct_call_allowed(&e);
     crate::admin::read_admin(&e).require_auth();
-    e.storage().instance().remove(&DataKey::WhitelistRoot);
+    e.storage().persistent().remove(&DataKey::WhitelistRoot);
     e.events()
         .publish((symbol_short!("whitelist"), symbol_short!("cleared")), ());
 }
 
 pub(crate) fn get_whitelist_root(e: &Env) -> Option<BytesN<32>> {
-    e.storage().instance().get(&DataKey::WhitelistRoot)
+    e.storage().persistent().get(&DataKey::WhitelistRoot)
 }
 
 fn read_whitelist_root(e: &Env) -> BytesN<32> {

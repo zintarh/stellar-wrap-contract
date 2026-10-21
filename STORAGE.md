@@ -47,29 +47,29 @@ Every variant of the `DataKey` enum is documented below with its assigned storag
 | `WrapCount(Address)` | Persistent | `u32` | 1 Year (`6,307,200` ledgers) | 4 bytes | Number of active wraps owned by a user. |
 | `LatestPeriod(Address)` | Persistent | `u64` | 1 Year (`6,307,200` ledgers) | 8 bytes | Highest period index minted for a user. |
 | `WrapPeriods(Address)` | Persistent | `Vec<u64>` | 1 Year (`6,307,200` ledgers) | Bounded by user wrap count | List of periods owned by user to enable O(1) balance lookups and transfer updates. |
-| `TransferFee` | Instance | `TransferFeeConfig` | Contract Instance Lifetime | ~72 bytes | Token fee configuration (`amount`, `recipient`, `token`) for `transfer_wrap`. |
+| `TransferFee` | Persistent | `TransferFeeConfig` | 1 Year (`6,307,200` ledgers) | ~72 bytes | Token fee configuration (`amount`, `recipient`, `token`) for `transfer_wrap`. |
 | `TransferGuard` | Temporary | `bool` | Transaction Lifespan | 1 byte | Ephemeral reentrancy guard for wrap transfers. |
 | `MigrationVersion` | Instance | `u32` | Contract Instance Lifetime | 4 bytes | Tracks applied schema/storage migration version. |
 | `UserPeriods(Address)` | Persistent | `Vec<u64>` | 1 Year (`6,307,200` ledgers) | Bounded by user history | Historical mint period record for each user. |
 | `TotalWrapCount` | Persistent | `u32` | 1 Year (`6,307,200` ledgers) | 4 bytes | Global count of all wraps minted across all users. |
-| `TotalRevoked` | Instance | `u64` | Contract Instance Lifetime | 8 bytes | Global counter of revoked wrap records. |
+| `TotalRevoked` | Persistent | `u64` | 1 Year (`6,307,200` ledgers) | 8 bytes | Global counter of revoked wrap records. |
 | `AliasHash(Address)` | Persistent | `BytesN<32>` | 1 Year (`6,307,200` ledgers) | 32 bytes | User-configured privacy-preserving profile alias hash. |
-| `Name` | Instance | `String` | Contract Instance Lifetime | Bounded (≤ 32 bytes) | Display name override for wrap token registry. |
-| `Symbol` | Instance | `String` | Contract Instance Lifetime | Bounded (≤ 12 bytes) | Display symbol override for wrap token registry. |
+| `Name` | Persistent | `String` | 1 Year (`6,307,200` ledgers) | Bounded (≤ 32 bytes) | Display name override for wrap token registry. |
+| `Symbol` | Persistent | `String` | 1 Year (`6,307,200` ledgers) | Bounded (≤ 12 bytes) | Display symbol override for wrap token registry. |
 | `Paused` | Instance | `bool` | Contract Instance Lifetime | 1 byte | Global protocol emergency circuit breaker flag. |
-| `ExpirationDuration` | Instance | `u64` | Contract Instance Lifetime | 8 bytes | Expiration period (seconds) for unverified wraps (default: 7 days). |
+| `ExpirationDuration` | Persistent | `u64` | 1 Year (`6,307,200` ledgers) | 8 bytes | Expiration period (seconds) for unverified wraps (default: 7 days). |
 | `OptOut(Address)` | Persistent | `bool` | 1 Year (`6,307,200` ledgers) | 1 byte | User-controlled opt-out flag preventing future mints. |
 | `LastUpdated(Address)` | Persistent | `u64` | 1 Year (`6,307,200` ledgers) | 8 bytes | Ledger timestamp of last user state modification (mint/revoke). |
 | `MintGuard(Address)` | Temporary | `bool` | Transaction Lifespan | 1 byte | Per-user reentrancy and double-call guard during mint operations. |
 | `StorageBytes` | Instance | `u64` | Contract Instance Lifetime | 8 bytes | Conservative on-chain accounting of persistent storage bytes used. |
-| `FeeParams` | Instance | `FeeParams` | Contract Instance Lifetime | ~32 bytes | Algorithmic storage rent fee function configuration parameters. |
-| `WhitelistRoot` | Instance | `BytesN<32>` | Contract Instance Lifetime | 32 bytes | Merkle root for off-chain allowlist validation. |
-| `TimelockDelay` | Instance | `u64` | Contract Instance Lifetime | 8 bytes | Mandatory delay (seconds) between scheduling and execution. |
+| `FeeParams` | Persistent | `FeeParams` | 1 Year (`6,307,200` ledgers) | ~32 bytes | Algorithmic storage rent fee function configuration parameters. |
+| `WhitelistRoot` | Persistent | `BytesN<32>` | 1 Year (`6,307,200` ledgers) | 32 bytes | Merkle root for off-chain allowlist validation. |
+| `TimelockDelay` | Persistent | `u64` | 1 Year (`6,307,200` ledgers) | 8 bytes | Mandatory delay (seconds) between scheduling and execution. |
 | `TimelockOp(BytesN<32>)` | Persistent | `TimelockOperation` | 1 Year (`6,307,200` ledgers) | ~80 bytes | Scheduled timelock operation record keyed by deterministic op ID. |
 | `TimelockOps` | Persistent | `Vec<BytesN<32>>` | 1 Year (`6,307,200` ledgers) | ≤ `MAX_PENDING_OPERATIONS` × 32 bytes (≤ 2 048 bytes) | List of active timelock operation IDs queued for execution. Capped at `MAX_PENDING_OPERATIONS = 64` to bound size; stored in persistent storage to avoid inflating the instance footprint on every unrelated invocation. |
-| `BridgeRelayer` | Instance | `Address` | Contract Instance Lifetime | 32 bytes | Authorized relayer address for cross-chain wrap bridge. |
+| `BridgeRelayer` | Persistent | `Address` | 1 Year (`6,307,200` ledgers) | 32 bytes | Authorized relayer address for cross-chain wrap bridge. |
 | `BridgeChainStatus(u32)` | Instance | `bool` | Contract Instance Lifetime | 1 byte | Enabled/disabled status for cross-chain destination chain ID. |
-| `OutboundBridgeNonce` | Instance | `u64` | Contract Instance Lifetime | 8 bytes | Monotonically increasing sequence counter for outbound bridge requests. |
+| `OutboundBridgeNonce` | Persistent | `u64` | 1 Year (`6,307,200` ledgers) | 8 bytes | Monotonically increasing sequence counter for outbound bridge requests. |
 | `OutboundBridgeRequest(u64)`| Persistent | `OutboundBridgeRequest` | 1 Year (`6,307,200` ledgers) | ~120 bytes | Outbound cross-chain bridge transfer request keyed by outbound nonce. |
 | `InboundBridgeProcessed(u32, u64)` | Persistent | `bool` | 1 Year (`6,307,200` ledgers) | 1 byte | Replay protection flag for inbound cross-chain requests `(chain, nonce)`. |
 | `InboundBridgeRecord(u32, u64)` | Persistent | `InboundBridgeRecord` | 1 Year (`6,307,200` ledgers) | ~80 bytes | Historical record of completed inbound cross-chain wrap. |
@@ -79,8 +79,8 @@ Every variant of the `DataKey` enum is documented below with its assigned storag
 | `ContractVersion` | Instance | `u32` | Contract Instance Lifetime | 4 bytes | Monotonic counter incremented on contract WASM upgrades. |
 | `SchemaVersion` | Instance | `u32` | Contract Instance Lifetime | 4 bytes | Storage schema version established at initialization. |
 | `Stake(Address)` | Persistent | `StakeRecord` | 1 Year (`6,307,200` ledgers) | ~32 bytes | Staking balance, lock timestamp, and cooldown state for `user`. |
-| `StakeConfig` | Instance | `StakeConfig` | Contract Instance Lifetime | ~24 bytes | Staking parameters (`min_stake`, `cooldown_seconds`, `multiplier`, `max_bps`). |
-| `TotalStaked` | Instance | `i128` | Contract Instance Lifetime | 16 bytes | Global aggregate staked token balance across all users. |
+| `StakeConfig` | Persistent | `StakeConfig` | 1 Year (`6,307,200` ledgers) | ~24 bytes | Staking parameters (`min_stake`, `cooldown_seconds`, `multiplier`, `max_bps`). |
+| `TotalStaked` | Persistent | `i128` | 1 Year (`6,307,200` ledgers) | 16 bytes | Global aggregate staked token balance across all users. |
 
 ---
 
@@ -96,13 +96,13 @@ The contract has been audited for compliance with the "Instance storage is for b
    - *Current state:* Stored per chain ID in instance storage.
    - *Analysis:* Bounded because the number of connected external blockchains is small (typically < 20). Acceptable in instance storage.
 
-3. **`TotalRevoked` (Instance)**:
-   - *Current state:* Stored as a single `u64` in instance storage.
-   - *Analysis:* Single scalar integer, bounded size (8 bytes). Minimal rent impact.
+3. **`TotalRevoked` (Persistent)**:
+   - *Current state:* Stored as a single `u64` in persistent storage, renewed alongside the instance TTL by `ttl::extend_config_ttl`.
+   - *Analysis:* Single scalar integer, bounded size (8 bytes). Kept out of instance storage so revoke writes and every other cold read do not load the shared instance entry.
 
-4. **`Name` & `Symbol` (Instance)**:
-   - *Current state:* Stored as small `String` overrides in instance storage.
-   - *Analysis:* Metadata overrides are strictly bounded in length (≤ 32 characters) and configured only by admin.
+4. **`Name` & `Symbol` (Persistent)**:
+   - *Current state:* Stored as small `String` overrides in persistent storage, renewed alongside the instance TTL by `ttl::extend_config_ttl`.
+   - *Analysis:* Metadata overrides are strictly bounded in length (≤ 32 characters) and configured only by admin. Read only by metadata queries, never by `mint_wrap`, so they do not belong in the instance entry.
 
 5. **`TotalWrapCount` (Persistent)**:
    - *Current state:* Stored in persistent storage.

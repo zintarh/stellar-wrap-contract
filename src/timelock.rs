@@ -31,7 +31,14 @@ pub const GRACE_PERIOD: u64 = 14 * 24 * 3_600;
 /// Returns the configured delay in seconds, or `None` while the timelock is
 /// disabled.
 pub(crate) fn delay(e: &Env) -> Option<u64> {
-    e.storage().instance().get(&DataKey::TimelockDelay)
+    e.storage().persistent().get(&DataKey::TimelockDelay)
+}
+
+fn set_delay(e: &Env, seconds: u64) {
+    e.storage().persistent().set(&DataKey::TimelockDelay, &seconds);
+    e.storage()
+        .persistent()
+        .extend_ttl(&DataKey::TimelockDelay, TTL_ONE_YEAR, TTL_ONE_YEAR);
 }
 
 /// Whether the timelock is enabled (and therefore enforced).
@@ -70,9 +77,7 @@ pub(crate) fn enable(e: Env, delay_seconds: u64) {
     }
     validate_delay(&e, delay_seconds);
 
-    e.storage()
-        .instance()
-        .set(&DataKey::TimelockDelay, &delay_seconds);
+    set_delay(&e, delay_seconds);
     e.events().publish(
         (symbol_short!("timelock"), symbol_short!("enabled")),
         delay_seconds,
@@ -271,13 +276,14 @@ pub(crate) fn execute(e: Env, id: BytesN<32>) {
             e.storage().instance().set(&DataKey::AdminPubKey, &key);
         },
         TimelockAction::SetWhitelistRoot(root) => {
-            e.storage().instance().set(&DataKey::WhitelistRoot, &root);
+            e.storage().persistent().set(&DataKey::WhitelistRoot, &root);
+            e.storage()
+                .persistent()
+                .extend_ttl(&DataKey::WhitelistRoot, TTL_ONE_YEAR, TTL_ONE_YEAR);
         },
         TimelockAction::SetTimelockDelay(seconds) => {
             validate_delay(&e, seconds);
-            e.storage()
-                .instance()
-                .set(&DataKey::TimelockDelay, &seconds);
+            set_delay(&e, seconds);
         },
         TimelockAction::Upgrade(wasm_hash) => {
             e.events()

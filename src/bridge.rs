@@ -50,16 +50,16 @@ pub(crate) fn set_bridge_relayer(e: &Env, relayer: Address) {
     let admin = crate::admin::read_admin(e);
     admin.require_auth();
     e.storage()
-        .instance()
+        .persistent()
         .set(&DataKey::BridgeRelayer, &relayer);
     e.storage()
-        .instance()
-        .extend_ttl(TTL_ONE_YEAR, TTL_ONE_YEAR);
+        .persistent()
+        .extend_ttl(&DataKey::BridgeRelayer, TTL_ONE_YEAR, TTL_ONE_YEAR);
 }
 
 /// Returns the configured bridge relayer address, or None if not set.
 pub(crate) fn get_bridge_relayer(e: &Env) -> Option<Address> {
-    e.storage().instance().get(&DataKey::BridgeRelayer)
+    e.storage().persistent().get(&DataKey::BridgeRelayer)
 }
 
 /// Returns the configured bridge relayer set for a given chain, or None if not set.
@@ -131,14 +131,14 @@ pub(crate) fn bridge_wrap_out(
         .extend_ttl(&wrap_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
 
     let nonce_key = DataKey::OutboundBridgeNonce;
-    let current_nonce: u64 = e.storage().instance().get(&nonce_key).unwrap_or(0);
+    let current_nonce: u64 = e.storage().persistent().get(&nonce_key).unwrap_or(0);
     let next_nonce = current_nonce
         .checked_add(1)
         .unwrap_or_else(|| panic_with_error!(e, ContractError::ArithmeticOverflow));
-    e.storage().instance().set(&nonce_key, &next_nonce);
+    e.storage().persistent().set(&nonce_key, &next_nonce);
     e.storage()
-        .instance()
-        .extend_ttl(TTL_ONE_YEAR, TTL_ONE_YEAR);
+        .persistent()
+        .extend_ttl(&nonce_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
 
     let outbound_req = OutboundBridgeRequest {
         nonce: next_nonce,
@@ -393,5 +393,5 @@ pub(crate) fn is_inbound_nonce_processed(e: &Env, source_chain: u32, source_nonc
 
 pub(crate) fn get_outbound_nonce(e: &Env) -> u64 {
     let key = DataKey::OutboundBridgeNonce;
-    e.storage().instance().get(&key).unwrap_or(0)
+    e.storage().persistent().get(&key).unwrap_or(0)
 }
