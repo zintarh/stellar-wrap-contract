@@ -1,0 +1,69 @@
+name: Wrap Crypto
+
+on:
+  pull_request:
+    paths:
+      - 'wrap-crypto/**'
+      - 'src/signature.rs'
+      - 'src/test_vectors.rs'
+      - 'src/mint.rs'
+      - '.github/workflows/wrap-crypto.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'wrap-crypto/**'
+      - 'src/signature.rs'
+      - 'src/test_vectors.rs'
+      - 'src/mint.rs'
+      - '.github/workflows/wrap-crypto.yml'
+
+jobs:
+  typescript:
+    name: TypeScript differential tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: wrap-crypto
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: wrap-crypto/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Differential tests
+        run: npm test
+
+  rust-vectors:
+    name: Rust vector emit check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: wrap-crypto/emit
+
+      # Standalone emitter mirrors construct_*_payload (see wrap-crypto/emit).
+      # `cargo test --lib test_wrap_crypto_vectors_json_matches_rust` performs the
+      # same check against the live contract helpers when the lib test target builds.
+      - name: Emit vectors and diff against committed file
+        run: |
+          cargo run --manifest-path wrap-crypto/emit/Cargo.toml
+          git diff --exit-code -- wrap-crypto/vectors.json

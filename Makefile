@@ -1,4 +1,4 @@
-.PHONY: build test fuzz fuzz-build fmt fmt-check lint doc clean deploy-testnet wasm-build wasm-optimize soroban-build check-wasm-size wasm-size docker-build docker-build-verify coverage verify-release release-gate help test-contracts test-frontend test-pipeline test-verbose test-gas-report clean-snapshots clean-all
+.PHONY: build test fuzz fuzz-build fmt fmt-check lint doc clean deploy-testnet wasm-build wasm-optimize soroban-build check-wasm-size wasm-size docker-build docker-build-verify coverage verify-release release-gate help test-contracts test-frontend test-pipeline test-wrap-crypto test-verbose test-gas-report clean-snapshots clean-all
 
 WASM_PATH := target/wasm32-unknown-unknown/release/stellar_wrap_contract.wasm
 OPTIMIZED_WASM_PATH := target/wasm32-unknown-unknown/release/stellar_wrap_contract.optimized.wasm
@@ -38,6 +38,12 @@ test-frontend:
 ## test-pipeline: Run pipeline tests
 test-pipeline:
 	cd pipeline && npm test
+
+## test-wrap-crypto: Emit Rust vectors (diff) + TypeScript differential tests
+test-wrap-crypto:
+	cargo run --manifest-path wrap-crypto/emit/Cargo.toml
+	git diff --exit-code -- wrap-crypto/vectors.json
+	cd wrap-crypto && npm test
 
 ## test-verbose: Run all tests with stdout output (useful for gas analysis)
 test-verbose:
