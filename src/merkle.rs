@@ -1,15 +1,26 @@
-// Leaf/pair helpers are kept public for parity with the off-chain tree builder
-// in `scripts/merkle.ts`; not every one is called from a contract entrypoint.
+// Pure Merkle-tree crypto helpers.
+//
+// These utilities are kept in the registry for parity with the off-chain tree
+// builder in `scripts/merkle.ts` and for use by satellite contracts.  All
+// whitelist-specific entrypoints and storage were removed as part of the v2
+// architecture decision: the backend Ed25519 signature is the sole mint gate,
+// making an on-chain Merkle whitelist redundant.  See
+// `docs/whitelist-merkle.md` for the decision record.
 
-use soroban_sdk::{
-    panic_with_error, symbol_short, xdr::ToXdr, Address, Bytes, BytesN, Env, String, Symbol, Vec,
-};
+use soroban_sdk::{panic_with_error, Bytes, BytesN, Env, String, Symbol, Vec};
+use soroban_sdk::xdr::ToXdr;
+use soroban_sdk::Address;
 
 use crate::constants::{MAX_PROOF_DEPTH, MERKLE_LEAF_PREFIX, MERKLE_NODE_PREFIX};
-use crate::{ContractError, DataKey};
+use crate::ContractError;
 
-pub const WHITELIST_DOMAIN_SEPARATOR: &[u8; 25] = b"stellar-wrap-whitelist-v1";
-
+/// Compute the Merkle leaf for a wrap record.
+///
+/// Leaf = SHA-256( 0x00 || XDR(user) || XDR(period) || XDR(archetype)
+///                      || XDR(data_hash) || XDR(metadata) )
+///
+/// The 0x00 prefix (`MERKLE_LEAF_PREFIX`) domain-separates leaves from
+/// internal nodes (prefixed `MERKLE_NODE_PREFIX` = 0x01).
 pub fn compute_merkle_leaf(
     e: &Env,
     user: &Address,
@@ -29,6 +40,12 @@ pub fn compute_merkle_leaf(
     BytesN::from_array(e, &hash.to_array())
 }
 
+/// Combine two sibling hashes into their parent node.
+///
+/// Node = SHA-256( 0x01 || min(a, b) || max(a, b) )
+///
+/// Sorting siblings lexicographically means proofs do not need explicit
+/// left/right position flags.
 pub fn hash_pair(e: &Env, a: &BytesN<32>, b: &BytesN<32>) -> BytesN<32> {
     let a_array = a.to_array();
     let b_array = b.to_array();
@@ -45,6 +62,11 @@ pub fn hash_pair(e: &Env, a: &BytesN<32>, b: &BytesN<32>) -> BytesN<32> {
     BytesN::from_array(e, &hash.to_array())
 }
 
+/// Verify a Merkle inclusion proof.
+///
+/// Returns `true` when folding `proof` from `leaf` up to the root produces
+/// exactly `root`.  Panics with `MerkleProofTooLong` when the proof depth
+/// exceeds `MAX_PROOF_DEPTH`.
 pub fn verify_merkle_proof(
     e: &Env,
     root: &BytesN<32>,
@@ -59,53 +81,4 @@ pub fn verify_merkle_proof(
         computed = hash_pair(e, &computed, &sibling);
     }
     computed == *root
-}
-
-pub fn compute_whitelist_leaf(e: &Env, user: &Address) -> BytesN<32> {
-    let mut leaf_data = Bytes::new(e);
-    leaf_data.append(&Bytes::from_array(e, &[MERKLE_LEAF_PREFIX]));
-    leaf_data.append(&Bytes::from_array(e, WHITELIST_DOMAIN_SEPARATOR));
-    leaf_data.append(&user.clone().to_xdr(e));
-    let hash = e.crypto().sha256(&leaf_data);
-    BytesN::from_array(e, &hash.to_array())
-}
-
-#[allow(deprecated)]
-pub(crate) fn set_whitelist_root(e: Env, root: BytesN<32>) {
-    crate::timelock::require_direct_call_allowed(&e);
-    crate::admin::read_admin(&e).require_auth();
-    e.storage().instance().set(&DataKey::WhitelistRoot, &root);
-    e.events()
-        .publish((symbol_short!("whitelist"), symbol_short!("root")), root);
-}
-
-#[allow(deprecated)]
-pub(crate) fn clear_whitelist_root(e: Env) {
-    crate::timelock::require_direct_call_allowed(&e);
-    crate::admin::read_admin(&e).require_auth();
-    e.storage().instance().remove(&DataKey::WhitelistRoot);
-    e.events()
-        .publish((symbol_short!("whitelist"), symbol_short!("cleared")), ());
-}
-
-pub(crate) fn get_whitelist_root(e: &Env) -> Option<BytesN<32>> {
-    e.storage().instance().get(&DataKey::WhitelistRoot)
-}
-
-fn read_whitelist_root(e: &Env) -> BytesN<32> {
-    get_whitelist_root(e).unwrap_or_else(|| panic_with_error!(e, ContractError::MerkleRootNotSet))
-}
-
-pub(crate) fn verify_whitelist(e: Env, user: Address, proof: Vec<BytesN<32>>) -> bool {
-    let root = read_whitelist_root(&e);
-    let leaf = compute_whitelist_leaf(&e, &user);
-    verify_merkle_proof(&e, &root, &leaf, &proof)
-}
-
-pub(crate) fn require_whitelisted(e: &Env, user: &Address, proof: &Vec<BytesN<32>>) {
-    let root = read_whitelist_root(e);
-    let leaf = compute_whitelist_leaf(e, user);
-    if !verify_merkle_proof(e, &root, &leaf, proof) {
-        panic_with_error!(e, ContractError::InvalidMerkleProof);
-    }
 }

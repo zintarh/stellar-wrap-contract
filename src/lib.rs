@@ -649,52 +649,13 @@ impl StellarWrapContract {
     }
 
     // ---------------------------------------------------------------------
-    // Off-chain whitelisting (merkle)
-    // ---------------------------------------------------------------------
-
-    /// Admin: publish the merkle root of the off-chain whitelist.
-    ///
-    /// Only the 32-byte root is stored; the member list stays off-chain. See
-    /// `docs/whitelist-merkle.md` for the leaf encoding and tree layout.
-    pub fn set_whitelist_root(e: Env, root: BytesN<32>) {
-        merkle::set_whitelist_root(e, root);
-    }
-
-    /// Admin: remove the whitelist root, disabling whitelist checks.
-    pub fn clear_whitelist_root(e: Env) {
-        merkle::clear_whitelist_root(e);
-    }
-
-    /// Return the published whitelist root, or `None` if none is set.
-    pub fn get_whitelist_root(e: Env) -> Option<BytesN<32>> {
-        merkle::get_whitelist_root(&e)
-    }
-
-    /// Return the whitelist leaf hash for `user`, so off-chain tooling can
-    /// verify it builds identical leaves.
-    pub fn whitelist_leaf(e: Env, user: Address) -> BytesN<32> {
-        merkle::compute_whitelist_leaf(&e, &user)
-    }
-
-    /// Verify that `user` belongs to the published whitelist.
-    ///
-    /// `proof` is the list of sibling hashes ordered from the leaf's sibling up
-    /// to the root. Returns `false` for a non-matching proof.
-    ///
-    /// # Panics
-    /// - [`ContractError::MerkleRootNotSet`] if no root has been published.
-    pub fn verify_whitelist(e: Env, user: Address, proof: soroban_sdk::Vec<BytesN<32>>) -> bool {
-        merkle::verify_whitelist(e, user, proof)
-    }
-
-    // ---------------------------------------------------------------------
     // Timelock controller
     // ---------------------------------------------------------------------
 
     /// Admin: enable the timelock with `delay_seconds` (1 hour – 30 days).
     ///
     /// One-way switch. Afterwards, admin handover, key rotation, WASM upgrades
-    /// and whitelist-root changes must go through `timelock_schedule` +
+    /// and delay changes must go through `timelock_schedule` +
     /// `timelock_execute`. See `docs/timelock.md`.
     pub fn enable_timelock(e: Env, delay_seconds: u64) {
         timelock::enable(e, delay_seconds);
@@ -1003,8 +964,6 @@ mod governance_test;
 mod invariants_test;
 #[cfg(test)]
 mod last_updated_test;
-#[cfg(test)]
-mod merkle_test;
 #[cfg(test)]
 mod oracle_test;
 #[cfg(test)]

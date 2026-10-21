@@ -43,10 +43,6 @@ pub enum Event {
     GovDefeated(u64),
     GovCancelled(u64, Address),
 
-    // Merkle
-    WhitelistRoot(BytesN<32>),
-    WhitelistCleared,
-
     // Mint
     Mint(Address, u64, Symbol),
     MintTransition(Address, u64, WrapState),
@@ -147,15 +143,6 @@ pub fn publish_event(e: &Env, event: Event) {
             .publish((v1, symbol_short!("gov"), symbol_short!("defeated")), event),
         Event::GovCancelled(..) => e.events().publish(
             (v1, symbol_short!("gov"), symbol_short!("cancelled")),
-            event,
-        ),
-
-        Event::WhitelistRoot(..) => e.events().publish(
-            (v1, symbol_short!("whitelist"), symbol_short!("root")),
-            event,
-        ),
-        Event::WhitelistCleared => e.events().publish(
-            (v1, symbol_short!("whitelist"), symbol_short!("cleared")),
             event,
         ),
 

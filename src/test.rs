@@ -504,37 +504,6 @@ fn test_low_participation_proposal_passes_with_minimal_votes() {
 }
 
 #[test]
-fn test_whitelist_root_requires_timelock_after_enable() {
-    let env = Env::default();
-    let contract_id = env.register(StellarWrapContract, ());
-    let client = StellarWrapContractClient::new(&env, &contract_id);
-    let admin = Address::generate(&env);
-    let initial_root = BytesN::from_array(&env, &[1u8; 32]);
-    let scheduled_root = BytesN::from_array(&env, &[2u8; 32]);
-    let pubkey = BytesN::from_array(&env, &[3u8; 32]);
-
-    env.mock_all_auths();
-    client.initialize(&admin, &pubkey);
-    client.set_whitelist_root(&initial_root);
-    client.enable_timelock(&timelock::MIN_DELAY);
-
-    let direct_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        client.set_whitelist_root(&scheduled_root);
-    }));
-    assert!(direct_result.is_err());
-    assert_eq!(client.get_whitelist_root(), Some(initial_root));
-
-    let action = TimelockAction::SetWhitelistRoot(scheduled_root.clone());
-    let operation_id = client.timelock_schedule(&action);
-    env.ledger().with_mut(|ledger| {
-        ledger.timestamp += timelock::MIN_DELAY;
-    });
-    client.timelock_execute(&operation_id);
-
-    assert_eq!(client.get_whitelist_root(), Some(scheduled_root));
-}
-
-#[test]
 #[should_panic(expected = "Error(Contract, #52)")]
 fn test_initialize_rejects_zero_admin_pubkey() {
     let env = Env::default();

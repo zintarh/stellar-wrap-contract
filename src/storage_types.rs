@@ -139,8 +139,6 @@ pub enum TimelockAction {
     SetAdminPubKey(BytesN<32>),
     /// Upgrade the contract WASM to the given hash.
     Upgrade(BytesN<32>),
-    /// Publish a new off-chain whitelist merkle root.
-    SetWhitelistRoot(BytesN<32>),
     /// Change the timelock delay itself (seconds).
     SetTimelockDelay(u64),
     /// Configure the bridge relayer set and threshold for a given chain.
@@ -263,8 +261,6 @@ pub enum DataKey {
     StorageBytes,
     /// Params for the algorithmic fee function (instance-level)
     FeeParams,
-    /// Merkle root committing to the off-chain whitelist (instance-level).
-    WhitelistRoot,
     /// Mandatory delay, in seconds, between scheduling and executing a
     /// privileged action once the timelock is enabled (instance-level).
     TimelockDelay,

@@ -100,10 +100,6 @@ pub(crate) fn operation_id(e: &Env, action: &TimelockAction) -> BytesN<32> {
             data.append(&Bytes::from_array(e, &[3u8]));
             data.append(&hash.clone().to_xdr(e));
         },
-        TimelockAction::SetWhitelistRoot(root) => {
-            data.append(&Bytes::from_array(e, &[4u8]));
-            data.append(&root.clone().to_xdr(e));
-        },
         TimelockAction::SetTimelockDelay(seconds) => {
             data.append(&Bytes::from_array(e, &[5u8]));
             data.append(&(*seconds).to_xdr(e));
@@ -269,9 +265,6 @@ pub(crate) fn execute(e: Env, id: BytesN<32>) {
         },
         TimelockAction::SetAdminPubKey(key) => {
             e.storage().instance().set(&DataKey::AdminPubKey, &key);
-        },
-        TimelockAction::SetWhitelistRoot(root) => {
-            e.storage().instance().set(&DataKey::WhitelistRoot, &root);
         },
         TimelockAction::SetTimelockDelay(seconds) => {
             validate_delay(&e, seconds);

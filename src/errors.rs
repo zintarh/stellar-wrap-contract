@@ -50,8 +50,6 @@ pub enum ContractError {
     NonceAlreadyProcessed = 36,
     InvalidBridgePayload = 37,
     // Merkle & Timelock errors
-    MerkleRootNotSet = 38,
-    InvalidMerkleProof = 39,
     TimelockNotReady = 40,
     TimelockOperationNotFound = 41,
     TimelockOperationExists = 42,
@@ -93,7 +91,7 @@ impl ContractError {
     /// have not yet been mapped to a producing code path and a failing-path
     /// test. When a variant is added, bump this constant and add the variant
     /// to the `ALL_VARIANTS` table in that test; otherwise CI fails.
-    pub const VARIANT_COUNT: u32 = 62;
+    pub const VARIANT_COUNT: u32 = 60;
 
     /// Every variant in declaration order. The coverage test iterates this
     /// table to assert each variant is reachable and asserted by a test.
@@ -135,8 +133,6 @@ impl ContractError {
         ContractError::ChainDisabled,
         ContractError::NonceAlreadyProcessed,
         ContractError::InvalidBridgePayload,
-        ContractError::MerkleRootNotSet,
-        ContractError::InvalidMerkleProof,
         ContractError::TimelockNotReady,
         ContractError::TimelockOperationNotFound,
         ContractError::TimelockOperationExists,
