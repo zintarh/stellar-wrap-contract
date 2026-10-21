@@ -282,10 +282,10 @@
     "message": "The expiration duration is not valid."
   },
   {
-    "variant": "TransferFeeNotConfigured",
+    "variant": "TransferFeeAlreadyConfigured",
     "code": 48,
     "actionable": false,
-    "message": "The transfer fee is not configured."
+    "message": "The transfer fee has already been configured."
   },
   {
     "variant": "InvalidTransfer",
@@ -334,5 +334,41 @@
     "code": 56,
     "actionable": false,
     "message": "That timelocked operation has not expired yet."
+  },
+  {
+    "variant": "BridgeRequestNotPending",
+    "code": 57,
+    "actionable": false,
+    "message": "That bridge request is not pending, so it cannot be refunded."
+  },
+  {
+    "variant": "BridgeRefundDelayNotElapsed",
+    "code": 58,
+    "actionable": true,
+    "message": "The bridge refund delay has not elapsed yet. Wait until the unlock time, then try again."
+  },
+  {
+    "variant": "BridgeRequestAlreadyRefunded",
+    "code": 59,
+    "actionable": false,
+    "message": "That bridge request has already been refunded."
+  },
+  {
+    "variant": "StaleProposal",
+    "code": 60,
+    "actionable": true,
+    "message": "The admin changed after this proposal was created. Create a new proposal under the current admin."
+  },
+  {
+    "variant": "InvalidRelayerSet",
+    "code": 61,
+    "actionable": false,
+    "message": "The relayer set is not valid. It must meet the threshold and contain no duplicates."
+  },
+  {
+    "variant": "SignatureExpired",
+    "code": 62,
+    "actionable": true,
+    "message": "The mint signature has expired. Request a new signature with a later valid_until, then try again."
   }
 ]

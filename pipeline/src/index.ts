@@ -163,7 +163,17 @@ async function main(): Promise<void> {
   // ── Reconcile-only mode ────────────────────────────────────────────
   if (config.reconcile_only) {
     console.log('\nRunning reconciliation...');
-    const report = await reconcile(db, fetcher, config.contract_id);
+    const report = await reconcile(db, fetcher, config.contract_id, {
+      sampleUsers: config.reconcile_sample_users,
+      repair: config.repair,
+    });
+
+    if (report.per_user.sampled_users.length > 0) {
+      console.log(`Per-user check: sampled ${report.per_user.sampled_users.length} user(s)`);
+    }
+    if (report.per_user.repaired > 0) {
+      console.log(`Repaired ${report.per_user.repaired} indexed wrap record(s).`);
+    }
 
     const cursor = db.getCursor(`cursor:${config.contract_id}`);
     const indexedLedger = cursor ? cursor.last_processed_ledger : 0;
@@ -202,6 +212,13 @@ async function main(): Promise<void> {
         console.log(`  - ${m}`);
       }
     }
+    if (report.per_user.mismatches.length > 0) {
+      console.log('Per-user mismatches:');
+      for (const m of report.per_user.mismatches) {
+        const detail = m.fields && m.fields.length > 0 ? ` fields=${m.fields.join(',')}` : '';
+        console.log(`  - user=${m.user} period=${m.period} kind=${m.kind}${detail}`);
+      }
+    }
     console.log(`Indexed wraps: ${report.indexed.total_wraps}`);
     console.log(`On-chain wraps: ${report.onchain.total_wraps}`);
 
@@ -217,8 +234,9 @@ async function main(): Promise<void> {
 
     db.close();
 
-    // Exit non-zero on genuine divergence so this is usable as a scheduled check.
-    if (hasDivergence) {
+    // Exit non-zero on genuine divergence — global or per-user — so this is
+    // usable as a scheduled check.
+    if (hasDivergence || report.per_user.mismatches.length > 0) {
       process.exit(1);
     }
     return;
@@ -242,7 +260,9 @@ async function main(): Promise<void> {
 
     // Run reconciliation after backfill
     console.log('\nRunning post-backfill reconciliation...');
-    const report = await reconcile(db, fetcher, config.contract_id);
+    const report = await reconcile(db, fetcher, config.contract_id, {
+      sampleUsers: config.reconcile_sample_users,
+    });
 
     const cursor = db.getCursor(`cursor:${config.contract_id}`);
     const indexedLedger = cursor ? cursor.last_processed_ledger : 0;
@@ -261,6 +281,10 @@ async function main(): Promise<void> {
     }
     for (const m of report.mismatches) {
       console.log(`  - ${m}`);
+    }
+    for (const m of report.per_user.mismatches) {
+      const detail = m.fields && m.fields.length > 0 ? ` fields=${m.fields.join(',')}` : '';
+      console.log(`  - [user] user=${m.user} period=${m.period} kind=${m.kind}${detail}`);
     }
 
     recordReconciliationRun(db, {

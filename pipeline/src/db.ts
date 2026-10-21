@@ -7,6 +7,7 @@ import type {
   StorageEntry,
   WrapState,
   WrapRecord,
+  WrapRow,
 } from './types';
 
 // Inline only the fields db.ts needs from ReconciliationRun to avoid a circular import.
@@ -516,6 +517,41 @@ export class IndexerDB {
       [contractId],
     ) as { count: number };
     return row.count;
+  }
+
+  /** Distinct users that have at least one indexed wrap for the contract. */
+  getUsers(contractId: string): string[] {
+    const rows = this.fetchAll(
+      `SELECT DISTINCT user FROM wrap_records WHERE contract_id = ? ORDER BY user`,
+      [contractId],
+    ) as { user: string }[];
+    return rows.map((row) => row.user);
+  }
+
+  /** Every indexed wrap row for one user, ordered by period. */
+  getWrapsForUser(contractId: string, user: string): WrapRow[] {
+    return this.fetchAll(
+      `SELECT * FROM wrap_records WHERE contract_id = ? AND user = ? ORDER BY period`,
+      [contractId, user],
+    ) as unknown as WrapRow[];
+  }
+
+  /**
+   * Users whose indexed wraps changed most recently, most recent first. Used
+   * by the per-user reconciler to always sample the accounts an operator or
+   * user is most likely to be looking at right now.
+   */
+  getRecentlyActiveUsers(contractId: string, limit: number): string[] {
+    const rows = this.fetchAll(
+      `SELECT user, MAX(updated_at) AS last_touched
+       FROM wrap_records
+       WHERE contract_id = ?
+       GROUP BY user
+       ORDER BY last_touched DESC, user DESC
+       LIMIT ?`,
+      [contractId, limit],
+    ) as { user: string }[];
+    return rows.map((row) => row.user);
   }
 
   upsertUserState(state: {

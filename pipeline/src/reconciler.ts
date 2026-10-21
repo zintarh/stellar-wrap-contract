@@ -3,7 +3,7 @@ import { SorobanFetcher } from './fetcher';
 import { IndexerDB } from './db';
 import { decodeDataKey, decodeStorageValue } from './decoder';
 import { applyStorageEntryToState, createEmptyState } from './processor';
-import type { DerivedState, StorageEntry } from './types';
+import type { DerivedState, StorageEntry, WrapRecord, WrapRow, WrapState } from './types';
 import { DataKeyVariant } from './types';
 
 function compareFields(
@@ -15,6 +15,53 @@ function compareFields(
   if (indexed !== onchain) {
     mismatches.push(`${field}: indexed=${JSON.stringify(indexed)} onchain=${JSON.stringify(onchain)}`);
   }
+}
+
+/**
+ * A single per-user wrap divergence found by the sampling reconciler.
+ *
+ * Global counters can hide per-user drift (an indexer miss on one wrap is
+ * invisible whenever the totals happen to match), and users experience their
+ * own history — so each mismatch names the user, the period and what kind of
+ * divergence it is, with enough record detail to debug.
+ */
+export interface PerUserMismatch {
+  user: string;
+  period: number;
+  /**
+   * 'missing': the wrap exists on-chain but not in the index (the indexer
+   * missed it). 'extra': the wrap exists only in the index (stale row).
+   * 'field_diff': both exist but disagree.
+   */
+  kind: 'missing' | 'extra' | 'field_diff';
+  /** Populated for `field_diff`: the names of the disagreeing fields. */
+  fields?: string[];
+  /** The indexed wrap record, when one exists. */
+  indexed?: WrapRecord | null;
+  /** The on-chain wrap record, when one exists. */
+  onchain?: WrapRecord | null;
+}
+
+/** Outcome of the per-user sampling comparison inside one reconciliation run. */
+export interface PerUserComparison {
+  /** Users that were compared this run. */
+  sampled_users: string[];
+  mismatches: PerUserMismatch[];
+  /** Rows fixed by `--repair` during this run. */
+  repaired: number;
+}
+
+export interface ReconcileOptions {
+  /**
+   * Maximum users to sample per run (a mix of recently-active and random
+   * users, and users only visible on-chain). When omitted, every user is
+   * compared. 0 disables the per-user comparison entirely.
+   */
+  sampleUsers?: number;
+  /** Re-fetch mismatched wraps on-chain and fix the index in place. */
+  repair?: boolean;
+  /** Random source, injectable for deterministic tests. */
+  random?: () => number;
 }
 
 export interface ReconciliationReport {
@@ -31,6 +78,7 @@ export interface ReconciliationReport {
     latest_ledger: number;
   };
   mismatches: string[];
+  per_user: PerUserComparison;
   is_consistent: boolean;
 }
 
@@ -214,13 +262,284 @@ export function buildIndexerHealth(
 }
 
 /**
+ * Fisher-Yates shuffle driven by an injectable random source so sampling is
+ * deterministic under test.
+ */
+function shuffle<T>(items: readonly T[], random: () => number): T[] {
+  const arr = [...items];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+/**
+ * Pick the users to compare this run: half the sample comes from recently
+ * active users (the accounts an operator or user is most likely looking at),
+ * the rest is random — drawing from indexed users and on-chain-only users
+ * alike, so users the indexer missed entirely can still be detected.
+ */
+export function pickSampleUsers(
+  db: IndexerDB,
+  contractId: string,
+  onChainUsers: readonly string[],
+  sampleUsers: number,
+  random: () => number = Math.random,
+): string[] {
+  if (sampleUsers <= 0) return [];
+
+  const indexed = db.getUsers(contractId);
+  const onChainOnly = onChainUsers.filter((u) => !indexed.includes(u));
+
+  const sample: string[] = [];
+  const seen = new Set<string>();
+  const push = (user: string | undefined): void => {
+    if (!user || seen.has(user) || sample.length >= sampleUsers) return;
+    seen.add(user);
+    sample.push(user);
+  };
+
+  const recentBudget = Math.ceil(sampleUsers / 2);
+  for (const user of db.getRecentlyActiveUsers(contractId, recentBudget)) {
+    push(user);
+  }
+
+  const restIndexed = shuffle(indexed.filter((u) => !seen.has(u)), random);
+  const chainOnly = shuffle(onChainOnly, random);
+  const rounds = Math.max(restIndexed.length, chainOnly.length);
+  for (let i = 0; i < rounds && sample.length < sampleUsers; i++) {
+    push(restIndexed[i]);
+    if (sample.length < sampleUsers) push(chainOnly[i]);
+  }
+
+  return sample;
+}
+
+function rowToWrapRecord(row: WrapRow): WrapRecord {
+  return {
+    created_at: row.timestamp,
+    data_hash: row.data_hash,
+    archetype: row.archetype,
+    period: row.period,
+    lifecycle: {
+      state: row.fsm_state as WrapState,
+      updated_at: row.fsm_updated_at,
+    },
+  };
+}
+
+/** Names of the wrap fields where an indexed row disagrees with on-chain state. */
+function wrapFieldDiffs(indexed: WrapRow, onchain: WrapRecord): string[] {
+  const fields: string[] = [];
+  if (indexed.timestamp !== onchain.created_at) fields.push('created_at');
+  if (indexed.data_hash !== onchain.data_hash) fields.push('data_hash');
+  if (indexed.archetype !== onchain.archetype) fields.push('archetype');
+  if (indexed.fsm_state !== onchain.lifecycle.state) fields.push('lifecycle.state');
+  if (indexed.fsm_updated_at !== onchain.lifecycle.updated_at) fields.push('lifecycle.updated_at');
+  return fields;
+}
+
+/**
+ * Compare a wrap row against the index and log the fix, keeping the report
+ * small enough to read on failure.
+ */
+function upsertRepair(db: IndexerDB, contractId: string, mismatch: PerUserMismatch, record: WrapRecord, ledgerSeq: number): void {
+  console.log(
+    `repair: user=${mismatch.user} period=${mismatch.period} kind=${mismatch.kind}` +
+      (mismatch.fields && mismatch.fields.length > 0 ? ` fields=${mismatch.fields.join(',')}` : '') +
+      ` -> writing on-chain record`,
+  );
+  db.upsertWrap({
+    contract_id: contractId,
+    user: mismatch.user,
+    period: mismatch.period,
+    timestamp: record.created_at,
+    data_hash: record.data_hash,
+    archetype: record.archetype,
+    fsm_state: record.lifecycle.state,
+    fsm_updated_at: record.lifecycle.updated_at,
+    ledger_seq: ledgerSeq,
+    // Ledger entries carry no tx hash; the reconciler's job is to correct the
+    // wrap content, not re-attribute its origin transaction.
+    tx_hash: '',
+  });
+}
+
+/**
+ * Re-fetch the wrappable keys for every mismatch from the chain and write the
+ * confirmed state back into the index. A freshly fetched record wins over the
+ * cached snapshot; keys that could not be built fall back to the snapshot
+ * fetched at the start of the run. Returns how many fixes were written.
+ */
+async function repairPerUserMismatches(
+  db: IndexerDB,
+  fetcher: SorobanFetcher,
+  contractId: string,
+  mismatches: PerUserMismatch[],
+  onChainState: DerivedState,
+): Promise<number> {
+  const buildKey = (fetcher as unknown as {
+    buildWrapKey?: (user: string, period: number) => xdr.LedgerKey;
+  }).buildWrapKey;
+  const fetchByKeys = (fetcher as unknown as {
+    fetchStorageByKeys?: (keys: xdr.LedgerKey[]) => Promise<StorageEntry[]>;
+  }).fetchStorageByKeys;
+
+  // Map of `${user}:${period}` -> freshly fetched record, or null when the
+  // re-fetch confirmed the key is absent on-chain. Absent means "we fetched
+  // this key and it is not there", never "we could not look it up".
+  const refetched = new Map<string, WrapRecord | null>();
+  if (buildKey && fetchByKeys) {
+    const keyed = new Map<string, { user: string; period: number }>();
+    const ledgerKeys: xdr.LedgerKey[] = [];
+    for (const mismatch of mismatches) {
+      const id = `${mismatch.user}:${mismatch.period}`;
+      try {
+        ledgerKeys.push(buildKey.call(fetcher, mismatch.user, mismatch.period));
+        keyed.set(id, { user: mismatch.user, period: mismatch.period });
+      } catch (err) {
+        console.error(
+          `repair: could not build wrap key for user=${mismatch.user} period=${mismatch.period}; ` +
+            `falling back to the cached on-chain snapshot:`,
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
+    if (ledgerKeys.length > 0) {
+      const entries = await fetchByKeys.call(fetcher, ledgerKeys);
+      for (const entry of entries) {
+        if (
+          entry.key.variant === DataKeyVariant.Wrap &&
+          entry.value.type === 'wrap_record'
+        ) {
+          const id = `${entry.key.user}:${entry.key.period}`;
+          if (keyed.has(id)) refetched.set(id, entry.value.value);
+        }
+      }
+    }
+    for (const id of keyed.keys()) {
+      if (!refetched.has(id)) refetched.set(id, null);
+    }
+  }
+
+  let repaired = 0;
+  const remaining: PerUserMismatch[] = [];
+  for (const mismatch of mismatches) {
+    const id = `${mismatch.user}:${mismatch.period}`;
+    const snapshotRecord = onChainState.wraps.get(mismatch.user)?.get(mismatch.period) ?? null;
+    // A completed re-fetch beats the cached snapshot; otherwise use it.
+    const confirmed = refetched.has(id)
+      ? refetched.get(id) ?? null
+      : snapshotRecord;
+
+
+    if (confirmed) {
+      upsertRepair(db, contractId, mismatch, confirmed, onChainState.ledger_seq);
+      repaired++;
+      continue;
+    }
+
+    db.removeWrap(contractId, mismatch.user, mismatch.period);
+    if (mismatch.kind === 'extra' || mismatch.kind === 'field_diff') {
+      // The indexed row was the stale side: removing it repaired the index.
+      console.log(
+        `repair: user=${mismatch.user} period=${mismatch.period} kind=${mismatch.kind} -> removed stale indexed row`,
+      );
+      repaired++;
+      continue;
+    }
+    if (mismatch.kind === 'missing' && refetched.has(id) && refetched.get(id) === null) {
+      // Re-fetch confirmed neither side has this wrap: index and chain agree,
+      // so the snapshot-time mismatch was already resolved. Drop the report.
+      continue;
+    }
+    remaining.push(mismatch);
+  }
+
+  mismatches.length = 0;
+  mismatches.push(...remaining);
+  return repaired;
+}
+
+/**
+ * Compare per-user wrap state for a sample of users: the indexed wraps in the
+ * database against the wraps observed on-chain. Reports each divergence by
+ * user, period and kind. With `repair`, the confirmed on-chain state is
+ * written back into the index.
+ */
+export async function comparePerUser(
+  db: IndexerDB,
+  fetcher: SorobanFetcher,
+  contractId: string,
+  onChainState: DerivedState,
+  options: ReconcileOptions = {},
+): Promise<PerUserComparison> {
+  const sampleUsers = options.sampleUsers ?? Number.MAX_SAFE_INTEGER;
+  const random = options.random ?? Math.random;
+  const sampled = pickSampleUsers(
+    db,
+    contractId,
+    [...onChainState.wraps.keys()],
+    sampleUsers,
+    random,
+  );
+
+  const mismatches: PerUserMismatch[] = [];
+  for (const user of sampled) {
+    const indexedRows = db.getWrapsForUser(contractId, user);
+    const indexedByPeriod = new Map(indexedRows.map((row) => [row.period, row] as const));
+    const onChainWraps = onChainState.wraps.get(user) ?? new Map<number, WrapRecord>();
+
+    for (const [period, onchainRecord] of onChainWraps) {
+      const indexed = indexedByPeriod.get(period);
+      if (!indexed) {
+        mismatches.push({ user, period, kind: 'missing', onchain: onchainRecord });
+        continue;
+      }
+      const fields = wrapFieldDiffs(indexed, onchainRecord);
+      if (fields.length > 0) {
+        mismatches.push({
+          user,
+          period,
+          kind: 'field_diff',
+          fields,
+          indexed: rowToWrapRecord(indexed),
+          onchain: onchainRecord,
+        });
+      }
+    }
+
+    for (const row of indexedRows) {
+      if (!onChainWraps.has(row.period)) {
+        mismatches.push({ user, period: row.period, kind: 'extra', indexed: rowToWrapRecord(row) });
+      }
+    }
+  }
+
+  let repaired = 0;
+  if (options.repair && mismatches.length > 0) {
+    repaired = await repairPerUserMismatches(db, fetcher, contractId, mismatches, onChainState);
+  }
+
+  return {
+    sampled_users: sampled,
+    mismatches,
+    repaired,
+  };
+}
+
+/**
  * Reconcile indexed state against current on-chain storage.
- * Fetches all current storage entries and compares with the database.
+ * Fetches all current storage entries, compares global counters, and (per
+ * issue #1006) samples per-user state so a wrap the indexer missed is caught
+ * even when the global totals happen to match.
  */
 export async function reconcile(
   db: IndexerDB,
   fetcher: SorobanFetcher,
   contractId: string,
+  options: ReconcileOptions = {},
 ): Promise<ReconciliationReport> {
   const mismatches: string[] = [];
   const onChainState = createEmptyState(contractId, 0);
@@ -253,7 +572,8 @@ export async function reconcile(
   // on-chain counter explicitly so a seeded divergence is always reported.
   compareFields('total_wraps', indexedWrapCount, onChainState.totalWrapCount, mismatches);
 
-  const isConsistent = mismatches.length === 0;
+  const perUser = await comparePerUser(db, fetcher, contractId, onChainState, options);
+  const isConsistent = mismatches.length === 0 && perUser.mismatches.length === 0;
 
   return {
     contract_id: contractId,
@@ -269,6 +589,7 @@ export async function reconcile(
       latest_ledger: onChainState.ledger_seq,
     },
     mismatches,
+    per_user: perUser,
     is_consistent: isConsistent,
   };
 }
@@ -281,6 +602,11 @@ export function affectedCounters(report: ReconciliationReport): string[] {
   for (const mismatch of report.mismatches) {
     const field = mismatch.split(':')[0]?.trim();
     if (field) counters.add(field);
+  }
+  // Per-user drift is its own alertable counter so it can be routed and
+  // silenced independently of the global ones.
+  for (const mismatch of report.per_user?.mismatches ?? []) {
+    counters.add(`per_user_${mismatch.kind}`);
   }
   return [...counters];
 }

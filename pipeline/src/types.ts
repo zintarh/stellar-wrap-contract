@@ -267,6 +267,10 @@ export interface IndexerConfig {
   start_ledger: number;
   backfill: boolean;
   reconcile_only: boolean;
+  /** Re-fetch mismatched wraps and fix the index during reconciliation. */
+  repair: boolean;
+  /** How many users the reconciler samples per run (0 disables per-user checks). */
+  reconcile_sample_users: number;
   alert_webhook_url: string;
   alert_min_severity: 'info' | 'warning' | 'critical';
   expected_admin: string;

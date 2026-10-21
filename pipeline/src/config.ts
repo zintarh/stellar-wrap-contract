@@ -49,6 +49,12 @@ export function loadConfig(): IndexerConfig {
     start_ledger: parseInt(process.env.START_LEDGER || '1', 10),
     backfill: process.argv.includes('--backfill'),
     reconcile_only: process.argv.includes('--reconcile-only'),
+    // --repair: after reconciliation reports per-user drift, re-fetch the
+    // mismatched wraps on-chain and write the corrections back to the index.
+    repair: process.argv.includes('--repair'),
+    // Per-user reconciliation sampling (issue #1006): users compared per run.
+    // 0 disables the per-user comparison entirely.
+    reconcile_sample_users: parseInt(process.env.RECONCILE_SAMPLE_USERS || '50', 10),
     alert_webhook_url: process.env.ALERT_WEBHOOK_URL || '',
     alert_min_severity: (process.env.ALERT_MIN_SEVERITY || 'warning') as IndexerConfig['alert_min_severity'],
     expected_admin: process.env.EXPECTED_ADMIN || '',
