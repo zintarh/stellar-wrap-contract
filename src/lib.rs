@@ -175,6 +175,26 @@ impl StellarWrapContract {
         admin::get_pending_admin(e)
     }
 
+    pub fn propose_signing_key(e: Env, new_pubkey: BytesN<32>) {
+        admin::propose_signing_key(e, new_pubkey);
+    }
+
+    pub fn accept_signing_key(e: Env, signature: BytesN<64>) {
+        admin::accept_signing_key(e, signature);
+    }
+
+    pub fn cancel_proposed_signing_key(e: Env) {
+        admin::cancel_proposed_signing_key(e);
+    }
+
+    pub fn get_pending_signing_key(e: Env) -> Option<BytesN<32>> {
+        admin::get_pending_signing_key(e)
+    }
+
+    pub fn get_signing_key_nonce(e: Env) -> u64 {
+        admin::get_signing_key_nonce(e)
+    }
+
     pub fn set_name(e: Env, name: String) {
         admin::set_name(e, name);
     }

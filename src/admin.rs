@@ -17,14 +17,15 @@
 //! # Relationship to the timelock
 //!
 //! Once [`crate::timelock`] is enabled, [`update_admin`], [`upgrade`],
-//! [`propose_admin`] and [`accept_admin`] reject direct calls via
+//! [`propose_admin`], [`accept_admin`], [`update_admin_pubkey`],
+//! [`propose_signing_key`] and [`accept_signing_key`] reject direct calls via
 //! [`crate::timelock::require_direct_call_allowed`]; the admin must schedule
 //! the equivalent [`crate::storage_types::TimelockAction`], wait out the delay
-//! and execute. [`accept_admin`] is blocked too, otherwise a proposal made
-//! before the timelock was enabled could be cashed in afterwards and skip the
-//! delay.
+//! and execute. [`accept_admin`] and [`accept_signing_key`] are blocked too,
+//! otherwise a proposal made before the timelock was enabled could be cashed in
+//! afterwards and skip the delay.
 //!
-//! Pausing, fee configuration, key rotation, metadata and migrations stay
+//! Pausing, fee configuration, metadata and migrations stay
 //! directly callable by design — they are incident response or reversible
 //! configuration.
 //!
@@ -300,7 +301,14 @@ pub(crate) fn get_pending_admin(e: Env) -> Option<Address> {
     e.storage().instance().get(&DataKey::PendingAdmin)
 }
 
+/// Immediate signing key replacement.
+///
+/// Rejected once the timelock controller is enabled — the admin must then use
+/// `schedule(TimelockAction::SetAdminPubKey(..))` followed by `execute`.
+/// In standard operation, prefer two-step rotation ([`propose_signing_key`] and
+/// [`accept_signing_key`]) to cryptographically prove key possession before activation.
 pub(crate) fn update_admin_pubkey(e: Env, new_pubkey: BytesN<32>) {
+    crate::timelock::require_direct_call_allowed(&e);
     let current_admin = read_admin(&e);
     current_admin.require_auth();
 
@@ -311,6 +319,9 @@ pub(crate) fn update_admin_pubkey(e: Env, new_pubkey: BytesN<32>) {
     e.storage()
         .instance()
         .set(&DataKey::AdminPubKey, &new_pubkey);
+    e.storage()
+        .instance()
+        .remove(&DataKey::PendingAdminPubKey);
 
     e.events().publish(
         (
@@ -320,6 +331,127 @@ pub(crate) fn update_admin_pubkey(e: Env, new_pubkey: BytesN<32>) {
         ),
         new_pubkey,
     );
+}
+
+/// Step one of the two-step signing key rotation.
+///
+/// The current admin proposes a new Ed25519 public key. Increments the rotation
+/// nonce so each proposal produces a unique challenge. Disabled when the
+/// timelock is enabled.
+pub(crate) fn propose_signing_key(e: Env, new_pubkey: BytesN<32>) {
+    crate::timelock::require_direct_call_allowed(&e);
+    let current_admin = read_admin(&e);
+    current_admin.require_auth();
+
+    if new_pubkey == BytesN::from_array(&e, &[0u8; 32]) {
+        panic_with_error!(e, ContractError::InvalidAdminPubKey);
+    }
+
+    if e.storage().instance().has(&DataKey::PendingAdminPubKey) {
+        panic_with_error!(e, ContractError::AdminTransferProposalExists);
+    }
+
+    let nonce: u64 = e
+        .storage()
+        .instance()
+        .get(&DataKey::SigningKeyNonce)
+        .unwrap_or(0);
+    let next_nonce = nonce
+        .checked_add(1)
+        .unwrap_or_else(|| panic_with_error!(e, ContractError::ArithmeticOverflow));
+
+    e.storage()
+        .instance()
+        .set(&DataKey::SigningKeyNonce, &next_nonce);
+    e.storage()
+        .instance()
+        .set(&DataKey::PendingAdminPubKey, &new_pubkey);
+
+    e.events().publish(
+        (
+            symbol_short!("v1"),
+            symbol_short!("pubkey"),
+            symbol_short!("propose"),
+        ),
+        (new_pubkey, next_nonce),
+    );
+}
+
+/// Step two of the two-step signing key rotation.
+///
+/// Verifies the signature from the proposed key over the canonical challenge
+/// containing the contract ID and proposal nonce. If valid, activates the new key
+/// and clears the pending proposal. Blocked when the timelock is enabled.
+pub(crate) fn accept_signing_key(e: Env, signature: BytesN<64>) {
+    crate::timelock::require_direct_call_allowed(&e);
+    let _ = read_admin(&e);
+
+    let pending_pubkey: BytesN<32> = e
+        .storage()
+        .instance()
+        .get(&DataKey::PendingAdminPubKey)
+        .unwrap_or_else(|| panic_with_error!(e, ContractError::NoAdminTransferProposal));
+
+    let nonce: u64 = e
+        .storage()
+        .instance()
+        .get(&DataKey::SigningKeyNonce)
+        .unwrap_or(0);
+
+    let contract_id = e.current_contract_address();
+
+    if let Err(err) = crate::signature::verify_signing_key_signature(
+        &e,
+        &pending_pubkey,
+        &contract_id,
+        nonce,
+        &signature,
+    ) {
+        panic_with_error!(e, err);
+    }
+
+    e.storage()
+        .instance()
+        .set(&DataKey::AdminPubKey, &pending_pubkey);
+    e.storage()
+        .instance()
+        .remove(&DataKey::PendingAdminPubKey);
+
+    e.events().publish(
+        (
+            symbol_short!("v1"),
+            symbol_short!("pubkey"),
+            symbol_short!("rotate"),
+        ),
+        pending_pubkey,
+    );
+}
+
+/// Cancel an in-flight signing key proposal.
+pub(crate) fn cancel_proposed_signing_key(e: Env) {
+    let current_admin = read_admin(&e);
+    current_admin.require_auth();
+
+    if !e.storage().instance().has(&DataKey::PendingAdminPubKey) {
+        panic_with_error!(e, ContractError::NoAdminTransferProposal);
+    }
+
+    e.storage()
+        .instance()
+        .remove(&DataKey::PendingAdminPubKey);
+}
+
+/// Returns the pending signing public key, if any.
+pub(crate) fn get_pending_signing_key(e: Env) -> Option<BytesN<32>> {
+    e.storage().instance().get(&DataKey::PendingAdminPubKey)
+}
+
+/// Returns the current signing key rotation nonce.
+pub(crate) fn get_signing_key_nonce(e: Env) -> u64 {
+    e.storage()
+        .instance()
+        .get(&DataKey::SigningKeyNonce)
+        .unwrap_or(0)
 }
 
 pub(crate) fn set_name(e: Env, name: soroban_sdk::String) {
@@ -366,7 +498,7 @@ pub(crate) fn set_wrap_metadata(
     record.image_url = Some(image_url.clone());
 
     e.storage().persistent().set(&key, &record);
-    crate::ttl::extend_ttl(&e, &key, TTL_TEMP, TTL_TEMP);
+    e.storage().persistent().extend_ttl(&key, TTL_TEMP, TTL_TEMP);
 
     e.events().publish(
         (

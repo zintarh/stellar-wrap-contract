@@ -211,6 +211,10 @@ pub enum DataKey {
     AdminPubKey,
     /// Stores a proposed new admin address during two-step transfer.
     PendingAdmin,
+    /// Stores a proposed new admin public key during two-step key rotation.
+    PendingAdminPubKey,
+    /// Nonce sequence counter for signing key rotation challenges.
+    SigningKeyNonce,
     /// Stores individual wrap records keyed by user and period.
     Wrap(Address, u64),
     /// Stores the total number of wraps for a specific user.

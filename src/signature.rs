@@ -308,6 +308,45 @@ pub fn verify_inbound_bridge_signature(
     verify_ed25519(relayer_pubkey, &payload, signature)
 }
 
+/// Domain separator used for signing key rotation challenges.
+pub const SIGNING_KEY_ROTATION_DOMAIN_SEPARATOR: &[u8; 23] = b"stellar-wrap-pubkey-rot";
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SigningKeyChallenge {
+    pub contract_id: Address,
+    pub nonce: u64,
+}
+
+/// Construct the canonical challenge payload for signing key rotation.
+pub fn construct_signing_key_challenge(
+    e: &Env,
+    contract_id: &Address,
+    nonce: u64,
+) -> Bytes {
+    let mut payload = Bytes::new(e);
+    payload.append(&Bytes::from_array(e, SIGNING_KEY_ROTATION_DOMAIN_SEPARATOR));
+    let typed_payload = SigningKeyChallenge {
+        contract_id: contract_id.clone(),
+        nonce,
+    };
+    payload.append(&typed_payload.to_xdr(e));
+    payload
+}
+
+/// Verify an Ed25519 signature from a proposed key over the rotation challenge.
+pub fn verify_signing_key_signature(
+    e: &Env,
+    new_pubkey: &BytesN<32>,
+    contract_id: &Address,
+    nonce: u64,
+    signature: &BytesN<64>,
+) -> Result<(), ContractError> {
+    let payload = construct_signing_key_challenge(e, contract_id, nonce);
+    verify_ed25519(new_pubkey, &payload, signature)
+}
+
+
 #[cfg(test)]
 #[allow(clippy::too_many_arguments)]
 mod tests {
