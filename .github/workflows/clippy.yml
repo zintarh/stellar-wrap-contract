@@ -2,9 +2,17 @@ name: Cargo Clippy
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
+
+# Cancel superseded runs for the same branch/PR (#313).
+concurrency:
+  group: clippy-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
   clippy:
@@ -12,10 +20,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Rust (with clippy)
+        uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: "1.94.1"
           components: clippy
+
+      # Cache the Cargo registry and build artefacts (#307).
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: clippy
+
       - name: Run cargo clippy
         run: cargo clippy --workspace --all-targets --all-features --no-deps
         env:

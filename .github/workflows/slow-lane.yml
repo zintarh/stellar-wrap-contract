@@ -1,0 +1,195 @@
+name: Slow Lane (Nightly)
+
+# Runs nightly and on manual dispatch.
+# Houses every job that is too slow or too expensive to run on every PR:
+#   - Mutation testing  (cargo-mutants, ~30-60 min)
+#   - Fuzz testing      (cargo-fuzz, bounded to 5 min per target)
+#   - Coverage          (cargo-tarpaulin, ~10-15 min)
+#
+# All Rust jobs use Swatinem/rust-cache (closes #307).
+# A concurrency group serialises nightly runs so they do not pile up (closes #313).
+
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: slow-lane-nightly
+  cancel-in-progress: false
+
+env:
+  RUSTFLAGS: "-C overflow-checks=on"
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # ── 1. Mutation testing ────────────────────────────────────────────────────
+  mutation:
+    name: Mutation testing
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.94.1"
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: slow-mutation
+
+      - name: Install cargo-mutants
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-mutants
+
+      - name: Run mutation tests
+        run: cargo mutants -vV --in-place 2>&1 | tee mutation-report.txt
+
+      - name: Extract mutation score
+        id: score
+        run: |
+          SUMMARY=$(grep -oP '\d+ mutants tested.*: \d+ missed, \d+ caught' mutation-report.txt || echo "0")
+          MISSED=$(echo "$SUMMARY" | grep -oP '\d+(?= missed)' || echo "0")
+          CAUGHT=$(echo "$SUMMARY" | grep -oP '\d+(?= caught)' || echo "0")
+          TOTAL=$((MISSED + CAUGHT))
+          if [ "$TOTAL" -gt 0 ]; then
+            PCT=$(awk "BEGIN {printf \"%.1f\", $CAUGHT * 100 / $TOTAL}")
+          else
+            PCT="0.0"
+          fi
+          echo "score=$PCT" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Mutation Score: ${PCT}%"
+            echo "- Caught: ${CAUGHT}"
+            echo "- Missed: ${MISSED}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload mutation report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mutation-report
+          path: |
+            mutation-report.txt
+            mutants.out/
+          retention-days: 30
+
+      - name: Enforce per-module and crate-wide baselines
+        run: |
+          declare -A BASELINE=(
+            [mint]=0
+            [bridge]=0
+            [signature]=0
+            [merkle]=0
+          )
+          FAIL=0
+          for MODULE in "${!BASELINE[@]}"; do
+            MISSED=$(grep -oP "^\\S+\\s+${MODULE}\\S*\\s+.*missed" mutation-report.txt 2>/dev/null \
+              | grep -oP '\d+(?= missed)' | paste -sd+ - | bc 2>/dev/null || echo 0)
+            MISSED=${MISSED:-0}
+            BASE=${BASELINE[$MODULE]}
+            if [ "$MISSED" -gt "$BASE" ]; then
+              echo "module ${MODULE}: ${MISSED} surviving mutants exceeds baseline of ${BASE}"
+              FAIL=1
+            fi
+          done
+          SUMMARY=$(grep -oP '\d+ mutants tested.*: \d+ missed, \d+ caught' mutation-report.txt || echo "0")
+          MISSED=$(echo "$SUMMARY" | grep -oP '\d+(?= missed)' || echo "0")
+          CAUGHT=$(echo "$SUMMARY" | grep -oP '\d+(?= caught)' || echo "0")
+          TOTAL=$((MISSED + CAUGHT))
+          if [ "$TOTAL" -gt 0 ]; then
+            PCT=$(awk "BEGIN {printf \"%.1f\", $CAUGHT * 100 / $TOTAL}")
+          else
+            PCT="0"
+          fi
+          MIN=70
+          if [ "$(echo "$PCT < $MIN" | bc -l)" -eq 1 ]; then
+            echo "Mutation score ${PCT}% is below floor of ${MIN}%"
+            FAIL=1
+          fi
+          [ "$FAIL" -eq 0 ] || exit 1
+
+  # ── 2. Fuzz testing ────────────────────────────────────────────────────────
+  fuzz:
+    name: "Fuzz: ${{ matrix.target }}"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - fuzz_mint_wrap
+          - fuzz_bridge_wrap_in
+          - fuzz_bridge_wrap_refund
+          - fuzz_merkle_proof
+          - fuzz_signature_payload
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust nightly (required by cargo-fuzz)
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Cache Cargo (fuzz workspace)
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "slow-fuzz-${{ matrix.target }}"
+          workspaces: "fuzz -> target"
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+
+      - name: Run fuzz target for 5 minutes
+        working-directory: fuzz
+        run: |
+          cargo fuzz run ${{ matrix.target }} -- -max_total_time=300 -jobs=2
+
+      - name: Upload fuzz artifacts on failure
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: "fuzz-artifacts-${{ matrix.target }}"
+          path: "fuzz/artifacts/${{ matrix.target }}/"
+          retention-days: 30
+
+  # ── 3. Coverage (cargo-tarpaulin) ──────────────────────────────────────────
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.94.1"
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: slow-coverage
+
+      - name: Install cargo-tarpaulin
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-tarpaulin
+
+      - name: Run coverage
+        run: cargo tarpaulin --config tarpaulin.toml --out Xml --out Html
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 30
+
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: coverage/cobertura.xml
+          flags: rust
+          fail_ci_if_error: false

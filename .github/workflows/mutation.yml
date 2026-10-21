@@ -1,9 +1,22 @@
 name: Mutation Testing
 
+# NOTE: This standalone workflow is kept for backward-compatibility and manual
+# dispatch. New scheduled nightly runs are consolidated in slow-lane.yml.
+# The slow-lane mutation job supersedes the weekly cron here for regular
+# nightly cadence; this file is preserved for on-demand use.
+
 on:
   schedule:
     - cron: '0 6 * * 1'
   workflow_dispatch:
+
+# Cancel superseded manual runs; let the weekly cron always complete (#313).
+concurrency:
+  group: mutation-${{ github.run_id }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
   mutants:
@@ -12,9 +25,16 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: "1.94.1"
           targets: wasm32-unknown-unknown
+
+      # Cache the Cargo registry and build artefacts (#307).
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: mutation
 
       - name: Install cargo-mutants
         uses: taiki-e/install-action@v2

@@ -1,5 +1,6 @@
 version: 2
 updates:
+  # Keep Cargo dependencies up to date.
   - package-ecosystem: "cargo"
     directory: "/"
     schedule:
@@ -17,4 +18,19 @@ updates:
       - "rust"
     commit-message:
       prefix: "chore(deps)"
+      include: "scope"
+
+  # Keep GitHub Actions up to date (covers Swatinem/rust-cache, dtolnay/rust-toolchain,
+  # actions/checkout, actions/upload-artifact, taiki-e/install-action, etc.).
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "chore(ci)"
       include: "scope"

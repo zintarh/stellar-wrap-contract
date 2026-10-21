@@ -1,0 +1,134 @@
+name: Fast Lane (PR)
+
+# Runs on every pull-request and on every push to main.
+# Goals:
+#   - Give contributors sub-5-minute feedback on formatting, lints, tests, and
+#     WASM binary size.
+#   - Cancel superseded runs for the same PR/branch (closes #313).
+#   - Cache the Cargo build graph with Swatinem/rust-cache (closes #307).
+#
+# Slow jobs (mutation, fuzz, coverage, testnet) live in slow-lane.yml and run
+# nightly so they never block PR merges.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Cancel any in-progress run for the same branch/PR when a new commit is pushed.
+# This keeps the queue short and saves CI minutes (#313).
+concurrency:
+  group: fast-lane-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  RUSTFLAGS: "-C overflow-checks=on"
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # ── 1. Format ──────────────────────────────────────────────────────────────
+  fmt:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (with rustfmt)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.94.1"
+          components: rustfmt
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: fast-lane
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+  # ── 2. Clippy ──────────────────────────────────────────────────────────────
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (with clippy)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.94.1"
+          components: clippy
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: fast-lane
+
+      - name: Run clippy
+        run: cargo clippy --workspace --all-targets --all-features --no-deps
+        env:
+          RUSTFLAGS: "-C overflow-checks=yes"
+
+  # ── 3. Unit / integration tests ────────────────────────────────────────────
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.94.1"
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: fast-lane
+
+      - name: Run tests
+        run: cargo test --all-features
+
+  # ── 4. WASM build + size gate ──────────────────────────────────────────────
+  wasm:
+    name: WASM build & size check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (with wasm32 target)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.94.1"
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: wasm-build
+
+      - name: Build WASM (release)
+        run: cargo build --release --target wasm32-unknown-unknown
+
+      - name: Check WASM binary size
+        run: |
+          WASM="target/wasm32-unknown-unknown/release/stellar_wrap_contract.wasm"
+          SIZE=$(wc -c < "$WASM")
+          LIMIT=$(cat .github/wasm-size-limit)
+          echo "WASM size : ${SIZE} bytes"
+          echo "Size limit: ${LIMIT} bytes"
+          echo "wasm_size=${SIZE}" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$SIZE" -gt "$LIMIT" ]; then
+            echo "::error::WASM binary (${SIZE} B) exceeds limit (${LIMIT} B)."
+            exit 1
+          fi
+          echo "✅ WASM size is within limit (${SIZE} / ${LIMIT} bytes)." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload WASM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-pr-${{ github.sha }}
+          path: target/wasm32-unknown-unknown/release/stellar_wrap_contract.wasm
+          retention-days: 7

@@ -1,22 +1,38 @@
 name: Cargo Fmt
+
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
+
+# Cancel superseded runs for the same branch/PR (#313).
+concurrency:
+  group: fmt-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   RUSTFLAGS: "-C overflow-checks=on"
+  CARGO_TERM_COLOR: always
 
 jobs:
   fmt:
     name: Cargo Format Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - name: Install Rst
-        uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (with rustfmt)
+        uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: "1.94.1"
           components: rustfmt
+
+      # Cache the Cargo registry and build artefacts (#307).
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: fmt
+
       - name: Run cargo fmt
         run: cargo fmt --all -- --check
