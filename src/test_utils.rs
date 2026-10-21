@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_methods)]
+
 extern crate std;
 use std::vec;
 

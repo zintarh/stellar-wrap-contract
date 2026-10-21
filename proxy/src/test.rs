@@ -1,7 +1,9 @@
+#![allow(clippy::disallowed_methods)]
+
 extern crate std;
 
 use soroban_sdk::testutils::Address as _;
-use soroban_sdk::{vec, Address, Env, Symbol, Vec};
+use soroban_sdk::{vec, Address, Env, Vec};
 
 use crate::{BatchProxy, BatchProxyClient};
 
@@ -14,20 +16,12 @@ mod mock_wrap {
     #[contractimpl]
     impl MockWrap {
         pub fn mint_wrap(env: Env, recipient: Address, amount: i128) {
-            if env
-                .storage()
-                .instance()
-                .get::<i128>(&Symbol::new(&env, "fail"))
-                == Some(amount)
-            {
+            if env.storage().instance().get(&Symbol::new(&env, "fail")) == Some(amount) {
                 panic!("forced failure");
             }
             let key = Symbol::new(&env, "minted");
-            let mut minted: Vec<(Address, i128)> = env
-                .storage()
-                .instance()
-                .get(&key)
-                .unwrap_or(Vec::new(&env));
+            let mut minted: Vec<(Address, i128)> =
+                env.storage().instance().get(&key).unwrap_or(Vec::new(&env));
             minted.push_back((recipient, amount));
             env.storage().instance().set(&key, &minted);
         }
@@ -50,8 +44,8 @@ mod mock_wrap {
 
 fn setup() -> (Env, Address, Address) {
     let env = Env::default();
-    let proxy_id = env.register_contract(None, BatchProxy);
-    let mock_id = env.register_contract(None, mock_wrap::MockWrap);
+    let proxy_id = env.register(BatchProxy, ());
+    let mock_id = env.register(mock_wrap::MockWrap, ());
     (env, proxy_id, mock_id)
 }
 

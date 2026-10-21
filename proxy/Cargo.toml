@@ -8,7 +8,8 @@ resolver = "2"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-soroban-sdk = "1.0.0"
+soroban-sdk = "=27.0.3"
+wrap-types = { path = "../wrap-types" }
 
 [dev-dependencies]
-soroban-sdk = { version = "1.0.0", features = ["testutils"] }
+soroban-sdk = { version = "=27.0.3", features = ["testutils"] }

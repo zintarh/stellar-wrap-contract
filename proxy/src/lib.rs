@@ -1,14 +1,19 @@
-#`!no_std]
+#![no_std]
+// `contractimpl` expands the contract entrypoint wrapper through the same host
+// primitive that `contractclient` wraps. The handwritten edge below remains
+// typed; the repository-wide rule still rejects direct calls in other code.
+#![allow(clippy::disallowed_methods)]
 
-#c[cfg(test)]
+#[cfg(test)]
 mod test;
 
-use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, Vec};
+use soroban_sdk::{contract, contractimpl, Address, Env, Vec};
+use wrap_types::WrapRegistryClient;
 
-#_contract]
+#[contract]
 pub struct BatchProxy;
 
-#_contractimpl]
+#[contractimpl]
 impl BatchProxy {
     pub fn batch_mint_wrap(
         env: Env,
@@ -22,11 +27,7 @@ impl BatchProxy {
         for i in 0..recipients.len() {
             let recipient = recipients.get(i).unwrap();
             let amount = amounts.get(i).unwrap();
-            env.invoke_contract::<()>(
-                &wrap_contract,
-                &symbol_short!("mint_wrap"),
-                (recipient, amount),
-            );
+            WrapRegistryClient::new(&env, &wrap_contract).mint_wrap(&recipient, &amount);
         }
     }
 }

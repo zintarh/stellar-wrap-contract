@@ -1,0 +1,8 @@
+[package]
+name = "wrap-types"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+soroban-sdk = "=27.0.3"
