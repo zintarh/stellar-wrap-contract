@@ -90,6 +90,14 @@ pub struct WrapRecord {
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WrapView {
+    pub record: WrapRecord,
+    pub is_expired: bool,
+    pub live_until_ledger: u32,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BatchWrapItem {
     pub user: Address,
     pub period: u64,

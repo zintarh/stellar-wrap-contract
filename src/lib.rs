@@ -62,6 +62,7 @@ pub use storage_types::{
     AdminProposal, BatchWrapItem, ContractHealth, DataKey, InboundBridgeRecord, InvariantReport,
     OutboundBridgeRequest, ProposalStatus, StakeConfig, StakeRecord, TimelockAction,
     TimelockOperation, TransferFeeConfig, WrapLifecycleFSM, WrapRecord, WrapState, WrapSummary,
+    WrapView,
 };
 pub use token::TokenInterface;
 
@@ -290,6 +291,11 @@ impl StellarWrapContract {
         queries::get_wrap(e, user, period)
     }
 
+    /// Returns a wrap record with ledger-derived expiration and lifetime data.
+    pub fn get_wrap_v2(e: Env, user: Address, period: u64) -> Option<WrapView> {
+        queries::get_wrap_v2(e, user, period)
+    }
+
     /// Returns the mint timestamp for a known user-period.
     /// The timestamp reflects ledger time, not wall-clock time.
     /// Returns `None` if no mint has occurred for the given user-period.
@@ -370,6 +376,16 @@ impl StellarWrapContract {
         limit: u32,
     ) -> soroban_sdk::Vec<WrapRecord> {
         queries::get_wraps(e, user, start, limit)
+    }
+
+    /// Returns paginated wrap views with ledger-derived expiration and lifetime data.
+    pub fn get_wraps_v2(
+        e: Env,
+        user: Address,
+        start: u32,
+        limit: u32,
+    ) -> soroban_sdk::Vec<WrapView> {
+        queries::get_wraps_v2(e, user, start, limit)
     }
 
     /// Read-only check to verify the internal consistency of a user's wrap state.

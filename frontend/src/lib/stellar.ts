@@ -9,7 +9,7 @@ import {
   Transaction,
   TransactionBuilder,
 } from "@stellar/stellar-sdk";
-import { normalizeHealth, normalizeWrap } from "./format";
+import { normalizeHealth, normalizeWrap, normalizeWrapView } from "./format";
 import { signWithFreighter } from "./freighter";
 import type {
   ContractHealth,
@@ -17,6 +17,7 @@ import type {
   MintInput,
   NetworkConfig,
   WrapRecord,
+  WrapView,
 } from "./types";
 
 const TRANSACTION_TIMEOUT_SECONDS = 30;
@@ -51,6 +52,20 @@ export const CONTRACT_INTERFACE: ContractFunctionSpec[] = [
     name: "get_wrap",
     args: [{ type: "address" }, { type: "u64" }],
     returns: "option",
+  },
+  {
+    name: "get_wrap_v2",
+    args: [{ type: "address" }, { type: "u64" }],
+    returns: "option",
+  },
+  {
+    name: "get_wraps_v2",
+    args: [
+      { type: "address" },
+      { type: "u32" },
+      { type: "u32" },
+    ],
+    returns: "vec",
   },
   {
     name: "mint_wrap",
@@ -196,6 +211,41 @@ export async function getWrap(
     nativeToScVal(period, { type: "u64" }),
   ]);
   return normalizeWrap(value);
+}
+
+export async function getWrapV2(
+  config: NetworkConfig,
+  address: string,
+  period: bigint,
+): Promise<WrapView | null> {
+  const value = await readContract(config, address, "get_wrap_v2", [
+    nativeToScVal(Address.fromString(address)),
+    nativeToScVal(period, { type: "u64" }),
+  ]);
+  return normalizeWrapView(value);
+}
+
+export async function getWrapsV2(
+  config: NetworkConfig,
+  address: string,
+  start: number,
+  limit: number,
+): Promise<WrapView[]> {
+  const value = await readContract(config, address, "get_wraps_v2", [
+    nativeToScVal(Address.fromString(address)),
+    nativeToScVal(start, { type: "u32" }),
+    nativeToScVal(limit, { type: "u32" }),
+  ]);
+  if (!Array.isArray(value)) {
+    throw new Error("The contract returned invalid wrap views.");
+  }
+  return value.map((wrap) => {
+    const view = normalizeWrapView(wrap);
+    if (!view) {
+      throw new Error("The contract returned an empty wrap view.");
+    }
+    return view;
+  });
 }
 
 export async function getContractHealth(
