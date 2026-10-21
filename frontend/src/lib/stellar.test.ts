@@ -1,6 +1,5 @@
 import {
   Account,
-  Contract,
   nativeToScVal,
   rpc,
   scValToNative,
@@ -50,12 +49,14 @@ vi.mock("@stellar/stellar-sdk", async (importOriginal) => {
   return {
     ...actual,
     Contract: class MockContract {
+      private contractId: string;
       constructor(contractId: string) {
         mocks.contractSpec(contractId);
+        this.contractId = contractId;
       }
       call(method: string, ...args: xdr.ScVal[]) {
         return actual.Contract.prototype.call.call(
-          Object.create(actual.Contract.prototype),
+          new actual.Contract(this.contractId),
           method,
           ...args,
         );
@@ -185,7 +186,7 @@ describe("contract RPC adapter", () => {
 
 it("binds every frontend call to the deployed contract spec", () => {
     const spec = contractSpec();
-    const expected = new Map(
+    const expected = new Map<string, (typeof CONTRACT_SPEC_ENTRIES)[number]>(
       CONTRACT_SPEC_ENTRIES.map((entry) => [entry.name, entry]),
     );
 
@@ -225,7 +226,7 @@ it("binds every frontend call to the deployed contract spec", () => {
     ]);
     expect(mint.outputs).toEqual(["void"]);
 
-    const specNames = new Set(spec.funcs().map((func) => func.name()));
+    const specNames = new Set<string>(spec.funcs().map((func) => func.name()));
     for (const name of invoked) {
       expect(specNames.has(name)).toBe(true);
     }

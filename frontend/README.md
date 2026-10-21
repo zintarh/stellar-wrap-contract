@@ -34,12 +34,20 @@ cp .env.example .env
 
 | Variable | Required | Meaning | Where to get it |
 | --- | --- | --- | --- |
-| `VITE_CONTRACT_ID` | yes | The Soroban contract id (starts with `C…`) the app reads from and writes to. | Output of a testnet deployment — see [Deploying your own contract](#4-deploying-your-own-contract). |
-| `VITE_RPC_URL` | no | Soroban RPC endpoint used to simulate/submit transactions. Defaults to the public testnet RPC. | `https://soroban-testnet.stellar.org` for testnet. |
-| `VITE_NETWORK_PASSPHRASE` | no | Network passphrase the SDK signs against. Defaults to testnet. | `Test SDF Network ; September 2015` for testnet. |
+| `VITE_STELLAR_CONTRACT_ID` | yes | The Soroban contract id (starts with `C…`) the app reads from and writes to. | Output of a testnet deployment — see [Deploying your own contract](#4-deploying-your-own-contract). |
+| `VITE_STELLAR_RPC_URL` | no | Soroban RPC endpoint used to simulate/submit transactions. Defaults to the public testnet RPC. | `https://soroban-testnet.stellar.org` for testnet. |
+| `VITE_STELLAR_NETWORK_PASSPHRASE` | no | Network passphrase the SDK signs against. Defaults to testnet. | `Test SDF Network ; September 2015` for testnet. |
 
 Only variables prefixed with `VITE_` are exposed to the browser. Restart the dev
 server after changing `.env`.
+
+The variables are validated once, at startup: the contract id must be a valid
+`C…` StrKey, the passphrase must name a known Stellar network (Testnet,
+Public, or Futurenet), and the RPC URL must be HTTPS (plain HTTP is allowed on
+localhost). A missing or malformed variable stops the app before any contract
+call is attempted — in development Vite shows an error naming the variable, in
+production a configuration-error screen is rendered instead. The network and
+contract id actually in use are always visible in the app header.
 
 ## 3. Run, test, and build
 
@@ -52,8 +60,8 @@ npm run build      # type-check and produce a production build in dist/
 
 Other useful scripts: `npm run lint`, `npm run typecheck`, `npm run a11y`.
 
-With Freighter on testnet and `VITE_CONTRACT_ID` set, open the dev server URL
-and the app will connect to your deployed contract.
+With Freighter on testnet and `VITE_STELLAR_CONTRACT_ID` set, open the dev
+server URL and the app will connect to your deployed contract.
 
 ## 4. Deploying your own contract
 
@@ -63,5 +71,5 @@ repository ships a workflow for this:
 - [`.github/workflows/deploy-testnet.yml`](../.github/workflows/deploy-testnet.yml)
   builds and deploys the contract to testnet and prints the resulting contract id.
 
-Copy that contract id into `VITE_CONTRACT_ID` in your `.env`, restart
+Copy that contract id into `VITE_STELLAR_CONTRACT_ID` in your `.env`, restart
 `npm run dev`, and the frontend will talk to your deployment.

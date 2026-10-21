@@ -42,6 +42,9 @@ jobs:
       - name: Test
         run: npm test --if-present
 
+      - name: Build
+        run: npm run build
+
       - name: Start preview server
         run: |
           ./node_modules/.bin/vite preview --host 127.0.0.1 --port 3000 > /tmp/vite-preview.log 2>&1 &

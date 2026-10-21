@@ -8,6 +8,7 @@ import {
   validatePeriod,
 } from "./lib/format";
 import { connectWallet } from "./lib/freighter";
+import { networkNameFor, type EnvConfig } from "./lib/envConfig";
 import { getWrap, loadDashboard, mintWrap, validateConfig } from "./lib/stellar";
 import type {
   Dashboard,
@@ -16,8 +17,13 @@ import type {
   WrapRecord,
 } from "./lib/types";
 
-const TESTNET_PASSPHRASE = "Test SDF Network ; September 2015";
-const DEFAULT_RPC_URL = "https://soroban-testnet.stellar.org";
+function rpcHost(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
 
 type BusyAction = "connect" | "refresh" | "search" | "mint" | null;
 
@@ -54,13 +60,6 @@ function resolveRecordState(record: WrapRecord): RecordState {
   }
   return "active";
 }
-
-const initialDraft: NetworkConfig = {
-  contractId: import.meta.env.VITE_STELLAR_CONTRACT_ID ?? "",
-  rpcUrl: import.meta.env.VITE_STELLAR_RPC_URL ?? DEFAULT_RPC_URL,
-  networkPassphrase:
-    import.meta.env.VITE_STELLAR_NETWORK_PASSPHRASE ?? TESTNET_PASSPHRASE,
-};
 
 function WrapCard({
   record,
@@ -132,9 +131,9 @@ function Field({
   );
 }
 
-export default function App() {
-  const [draft, setDraft] = useState(initialDraft);
-  const [config, setConfig] = useState<NetworkConfig | null>(null);
+export default function App({ initialConfig }: { initialConfig: EnvConfig }) {
+  const [draft, setDraft] = useState<NetworkConfig>(initialConfig);
+  const [config, setConfig] = useState<NetworkConfig>(initialConfig);
   const [wallet, setWallet] = useState<WalletSession | null>(null);
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [searchPeriod, setSearchPeriod] = useState("");
@@ -209,9 +208,6 @@ export default function App() {
   };
 
   const handleConnect = async () => {
-    if (!config) {
-      return;
-    }
     clearMessages();
     setBusy("connect");
     try {
@@ -248,7 +244,7 @@ export default function App() {
 
   const handleSearch = async (event: FormEvent) => {
     event.preventDefault();
-    if (!config || !wallet) {
+    if (!wallet) {
       return;
     }
     clearMessages();
@@ -266,7 +262,7 @@ export default function App() {
 
   const handleMint = async (event: FormEvent) => {
     event.preventDefault();
-    if (!config || !wallet) {
+    if (!wallet) {
       return;
     }
     clearMessages();
@@ -299,9 +295,14 @@ export default function App() {
 
   const walletStatus = !wallet
     ? "Not connected"
-    : wallet.networkPassphrase === config?.networkPassphrase
+    : wallet.networkPassphrase === config.networkPassphrase
       ? `Connected as ${shortAddress(wallet.address)} on ${wallet.network}`
       : `Wrong network: Freighter is on ${wallet.network}`;
+
+  // The values actually in use, always visible: a user whose wallet is on
+  // the wrong network can compare it against the configured network here.
+  const activeNetworkName =
+    networkNameFor(config.networkPassphrase) ?? "Unknown network";
 
   return (
     <div className="app-shell">
@@ -309,7 +310,7 @@ export default function App() {
         Skip to main content
       </a>
       <header className="topbar">
-        <a className="brand" href="#top" aria-label="Stellar Wrap home">
+        <a className="brand" href="#top">
           <span className="brand__mark" aria-hidden="true">
             W
           </span>
@@ -319,6 +320,15 @@ export default function App() {
           </span>
         </a>
         <div className="wallet-area">
+          <p className="config-summary" data-testid="config-summary">
+            <span title={config.networkPassphrase}>
+              Network: {activeNetworkName}
+            </span>
+            <span className="hash-value" title={config.contractId}>
+              Contract: {shortAddress(config.contractId)}
+            </span>
+            <span title={config.rpcUrl}>RPC: {rpcHost(config.rpcUrl)}</span>
+          </p>
           <p
             id="wallet-status"
             className="wallet-status"
@@ -333,7 +343,7 @@ export default function App() {
             type="button"
             className="button button--primary"
             onClick={handleConnect}
-            disabled={!config || isBusy}
+            disabled={isBusy}
             aria-busy={busy === "connect"}
             aria-label={
               wallet

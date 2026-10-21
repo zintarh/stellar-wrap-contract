@@ -73,6 +73,28 @@ function isLoopbackHost(hostname: string): boolean {
   );
 }
 
+/**
+ * Returns why `rpcUrl` is unusable, or `null` when it is acceptable.
+ * Shared by `validateConfig` (explicit configuration) and
+ * `readEnvConfig` (startup validation of `VITE_STELLAR_RPC_URL`).
+ */
+export function rpcUrlError(rpcUrl: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(rpcUrl);
+  } catch {
+    return "Enter a valid Soroban RPC URL.";
+  }
+  const isLocalHttp = url.protocol === "http:" && isLoopbackHost(url.hostname);
+  if (url.protocol !== "https:" && !isLocalHttp) {
+    return "The RPC URL must use HTTPS (except on localhost).";
+  }
+  if (url.username || url.password) {
+    return "The RPC URL must not contain embedded credentials.";
+  }
+  return null;
+}
+
 export function validateConfig(config: NetworkConfig): NetworkConfig {
   const contractId = config.contractId.trim();
   const rpcUrl = config.rpcUrl.trim();
@@ -82,19 +104,9 @@ export function validateConfig(config: NetworkConfig): NetworkConfig {
     throw new Error("Enter a valid Stellar contract ID beginning with C.");
   }
 
-  let url: URL;
-  try {
-    url = new URL(rpcUrl);
-  } catch {
-    throw new Error("Enter a valid Soroban RPC URL.");
-  }
-  const isLocalHttp =
-    url.protocol === "http:" && isLoopbackHost(url.hostname);
-  if (url.protocol !== "https:" && !isLocalHttp) {
-    throw new Error("The RPC URL must use HTTPS (except on localhost).");
-  }
-  if (url.username || url.password) {
-    throw new Error("The RPC URL must not contain embedded credentials.");
+  const rpcProblem = rpcUrlError(rpcUrl);
+  if (rpcProblem) {
+    throw new Error(rpcProblem);
   }
   if (!networkPassphrase) {
     throw new Error("Network passphrase is required.");

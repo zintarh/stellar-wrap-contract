@@ -282,10 +282,10 @@
     "message": "The expiration duration is not valid."
   },
   {
-    "variant": "TransferFeeNotConfigured",
+    "variant": "TransferFeeAlreadyConfigured",
     "code": 48,
     "actionable": false,
-    "message": "The transfer fee is not configured."
+    "message": "The transfer fee has already been configured."
   },
   {
     "variant": "InvalidTransfer",
@@ -334,5 +334,41 @@
     "code": 56,
     "actionable": false,
     "message": "That timelocked operation has not expired yet."
+  },
+  {
+    "variant": "BridgeRequestNotPending",
+    "code": 57,
+    "actionable": true,
+    "message": "This bridge request is not pending. Wait for it to change state, then try again."
+  },
+  {
+    "variant": "BridgeRequestAlreadyRefunded",
+    "code": 59,
+    "actionable": false,
+    "message": "This bridge request has already been refunded."
+  },
+  {
+    "variant": "BridgeRefundDelayNotElapsed",
+    "code": 58,
+    "actionable": true,
+    "message": "The bridge refund delay has not elapsed yet. Wait for the delay to pass, then try again."
+  },
+  {
+    "variant": "StaleProposal",
+    "code": 60,
+    "actionable": true,
+    "message": "This proposal no longer matches the current admin and cannot be executed. Create a new proposal instead."
+  },
+  {
+    "variant": "InvalidRelayerSet",
+    "code": 61,
+    "actionable": true,
+    "message": "The relayer set is not valid. Remove duplicate relayers and try again."
+  },
+  {
+    "variant": "SignatureExpired",
+    "code": 62,
+    "actionable": true,
+    "message": "The signature has expired. Request a new signature and try again."
   }
 ]

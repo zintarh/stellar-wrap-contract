@@ -12,6 +12,17 @@ import * as stellar from './lib/stellar';
  * responses as untrusted input.
  */
 
+/**
+ * A valid startup configuration (issue #839): the app is booted with a
+ * validated environment instead of reading `import.meta.env` itself.
+ */
+const INITIAL_CONFIG = {
+  contractId: 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC',
+  rpcUrl: 'https://soroban-testnet.stellar.org',
+  networkPassphrase: 'Test SDF Network ; September 2015',
+  networkName: 'Testnet',
+};
+
 const WALLET_MATERIAL_PATTERNS = [
   /private[_-]?key/i,
   /secret[_-]?key/i,
@@ -49,7 +60,7 @@ describe('wallet data handling (#846)', () => {
   });
 
   it('never persists wallet material to localStorage, sessionStorage, or cookies', async () => {
-    render(<App />);
+    render(<App initialConfig={INITIAL_CONFIG} />);
 
     // Allow any async wallet/RPC initialization to settle.
     await waitFor(() => {
@@ -67,7 +78,7 @@ describe('wallet data handling (#846)', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    render(<App />);
+    render(<App initialConfig={INITIAL_CONFIG} />);
 
     await waitFor(() => {
       expect(document.body).toBeTruthy();
@@ -106,7 +117,7 @@ describe('wallet data handling (#846)', () => {
       json: async () => ({ name: malicious, symbol: malicious }),
     } as unknown as Response);
 
-    render(<App />);
+    render(<App initialConfig={INITIAL_CONFIG} />);
 
     await waitFor(() => {
       expect(document.body).toBeTruthy();
@@ -123,12 +134,11 @@ describe('wallet data handling (#846)', () => {
 describe('App UI states', () => {
   let connectSpy: ReturnType<typeof vi.spyOn>;
   let dashboardSpy: ReturnType<typeof vi.spyOn>;
-  let validateSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     connectSpy = vi.spyOn(freighter, 'connectWallet');
     dashboardSpy = vi.spyOn(stellar, 'loadDashboard');
-    validateSpy = vi.spyOn(stellar, 'validateConfig').mockImplementation((c) => c as any);
+    vi.spyOn(stellar, 'validateConfig').mockImplementation((c) => c);
   });
   
   afterEach(() => {
@@ -136,7 +146,7 @@ describe('App UI states', () => {
   });
   
   async function setupAndConnect() {
-    render(<App />);
+    render(<App initialConfig={INITIAL_CONFIG} />);
     // Apply config
     fireEvent.click(screen.getByRole('button', { name: /Apply configuration/i }));
     
@@ -200,7 +210,7 @@ describe('App UI states', () => {
           period: 202401,
           archetype: "builder",
           dataHash: "hash123",
-          timestamp: 1234567,
+          createdAt: 1234567n,
           revoked: false,
           burned: false,
           expired: false,
@@ -222,8 +232,14 @@ describe('App UI states', () => {
       networkPassphrase: "Test SDF Network ; September 2015"
     });
     
-    let resolveDashboard: any;
-    const dashboardPromise = new Promise((resolve) => {
+    let resolveDashboard: (value: {
+      records: unknown[];
+      totalCount: number;
+    }) => void = () => {};
+    const dashboardPromise = new Promise<{
+      records: unknown[];
+      totalCount: number;
+    }>((resolve) => {
       resolveDashboard = resolve;
     });
     dashboardSpy.mockReturnValue(dashboardPromise);
@@ -231,7 +247,7 @@ describe('App UI states', () => {
     await setupAndConnect();
     
     // While loading, we should see "Loading records..." and not "No wrap records"
-    expect(screen.getByText("Loading records…")).toBeInTheDocument();
+    expect(await screen.findByText("Loading records…")).toBeInTheDocument();
     expect(screen.queryByText("No wrap records found for this account.")).not.toBeInTheDocument();
     
     // Now resolve it
@@ -254,5 +270,37 @@ describe('App UI states', () => {
     
     expect(await screen.findByRole('alert')).toHaveTextContent("Error: RPC node timeout");
     expect(screen.queryByText("No wrap records found for this account.")).not.toBeInTheDocument();
+  });
+});
+
+describe('Visible network configuration (#839)', () => {
+  it('shows the configured network, contract id, and RPC endpoint', async () => {
+    render(<App initialConfig={INITIAL_CONFIG} />);
+
+    const summary = screen.getByTestId('config-summary');
+    expect(summary).toHaveTextContent('Network: Testnet');
+    expect(summary).toHaveTextContent('RPC: soroban-testnet.stellar.org');
+    expect(summary.querySelector('.hash-value')).toHaveAttribute(
+      'title',
+      INITIAL_CONFIG.contractId,
+    );
+    expect(
+      summary.querySelector(
+        '[title="Test SDF Network ; September 2015"]',
+      ),
+    ).not.toBeNull();
+  });
+
+  it('updates the visible network when a different configuration is applied', async () => {
+    render(<App initialConfig={INITIAL_CONFIG} />);
+
+    fireEvent.change(screen.getByLabelText('Network passphrase'), {
+      target: { value: 'Public Global Stellar Network ; September 2015' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Apply configuration/i }));
+
+    expect(screen.getByTestId('config-summary')).toHaveTextContent(
+      'Network: Public',
+    );
   });
 });
