@@ -12,7 +12,9 @@
 
 use soroban_sdk::{Address, Bytes, BytesN, Env, String, Symbol, Vec};
 
-use crate::{ContractHealth, DataKey, InvariantReport, TransferFeeConfig, WrapRecord, WrapSummary};
+use crate::{ContractHealth, DataKey, TransferFeeConfig, WrapRecord, WrapSummary};
+#[cfg(any(test, feature = "testutils"))]
+use crate::InvariantReport;
 
 pub(crate) fn get_wrap(e: Env, user: Address, period: u64) -> Option<WrapRecord> {
     e.storage().persistent().get(&DataKey::Wrap(user, period))
@@ -318,6 +320,7 @@ pub(crate) fn schema_version(e: Env) -> u32 {
 
 pub const MAX_QUERY_RESULTS: u32 = 100;
 
+#[cfg(any(test, feature = "testutils"))]
 pub(crate) fn check_user_invariants(e: Env, user: Address) -> InvariantReport {
     let wrap_count: u32 = e
         .storage()
