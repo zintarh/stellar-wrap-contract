@@ -359,6 +359,7 @@ pub struct StakeRecord {
 }
 
 /// A report on the consistency of a user's storage state.
+#[cfg(any(test, feature = "testutils"))]
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InvariantReport {

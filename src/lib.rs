@@ -59,10 +59,12 @@ pub use errors::ContractError;
 pub use mint::{validate_period, CURRENT_PAYLOAD_VERSION, MAX_PERIOD_YEAR, MIN_PERIOD_YEAR};
 pub use oracle::DataHashOracle;
 pub use storage_types::{
-    AdminProposal, BatchWrapItem, ContractHealth, DataKey, InboundBridgeRecord, InvariantReport,
+    AdminProposal, BatchWrapItem, ContractHealth, DataKey, InboundBridgeRecord,
     OutboundBridgeRequest, ProposalStatus, StakeConfig, StakeRecord, TimelockAction,
     TimelockOperation, TransferFeeConfig, WrapLifecycleFSM, WrapRecord, WrapState, WrapSummary,
 };
+#[cfg(any(test, feature = "testutils"))]
+pub use storage_types::InvariantReport;
 pub use token::TokenInterface;
 
 const MAX_WRAP_DESCRIPTION_LEN: u32 = 256;
@@ -374,6 +376,7 @@ impl StellarWrapContract {
 
     /// Read-only check to verify the internal consistency of a user's wrap state.
     /// Returns an `InvariantReport` containing boolean flags for each invariant and observed values.
+    #[cfg(any(test, feature = "testutils"))]
     pub fn check_user_invariants(e: Env, user: Address) -> InvariantReport {
         queries::check_user_invariants(e, user)
     }
