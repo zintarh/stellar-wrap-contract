@@ -5,16 +5,19 @@ on:
     tags:
       - 'v*.*.*'
 
+permissions:
+  contents: read
+
 jobs:
   preflight:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           targets: wasm32-unknown-unknown
 
@@ -87,11 +90,11 @@ jobs:
     needs: preflight
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Build WASM (release)
         run: |
-          docker build -t stellar-wrap-build .
+          docker build --platform linux/amd64 -t stellar-wrap-build .
           docker run --rm -v "$PWD/out:/out" stellar-wrap-build
 
       - name: Compute SHA256
@@ -102,7 +105,7 @@ jobs:
           echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
 
       - name: Upload WASM
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: wasm-a
           path: out/stellar_wrap_contract.wasm
@@ -114,11 +117,11 @@ jobs:
     needs: preflight
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Build WASM (release)
         run: |
-          docker build -t stellar-wrap-build .
+          docker build --platform linux/amd64 -t stellar-wrap-build .
           docker run --rm -v "$PWD/out:/out" stellar-wrap-build
 
       - name: Compute SHA256
@@ -129,7 +132,7 @@ jobs:
           echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
 
       - name: Upload WASM
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: wasm-b
           path: out/stellar_wrap_contract.wasm
@@ -157,11 +160,14 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Download verified WASM
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: wasm-a
           path: out
@@ -174,11 +180,16 @@ jobs:
           echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
           echo "$SHA  stellar_wrap_contract.wasm" > out/stellar_wrap_contract.wasm.sha256
 
+      - name: Attest WASM build provenance
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with:
+          subject-path: out/stellar_wrap_contract.wasm
+
       - name: "Reminder: update CHANGELOG before tagging"
         run: 'echo "Reminder: update CHANGELOG.md with this version details before tagging."'
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: |
             out/stellar_wrap_contract.wasm
@@ -187,3 +198,8 @@ jobs:
             ## Release ${{ github.ref_name }}
 
             **WASM SHA256:** `${{ steps.sha256.outputs.sha256 }}`
+            **Rust toolchain:** `1.94.1` (from `rust-toolchain.toml`)
+            **Build image:** `rust:1.94.1-slim-bookworm@sha256:f845b308e3104231c98dba2dab952ebd54e35cd6ab8ef4a230ecb38e2315f20c` (linux/amd64)
+            **Build provenance:** GitHub artifact attestation generated for `stellar_wrap_contract.wasm`.
+
+            Verify the downloaded artifact with `make verify-release TAG=${{ github.ref_name }}`. Verify provenance with `gh attestation verify stellar_wrap_contract.wasm --repo ${{ github.repository }}`.

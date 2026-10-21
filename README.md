@@ -8,6 +8,28 @@ Soroban contract for storing non-transferable Stellar Wrap records by wallet and
 
 The current contract interface is documented in [CHANGELOG.md](CHANGELOG.md). Backend and frontend consumers should review the migration notes there before updating integrations, especially around the versioned mint-signature payload and the expanded query surface.
 
+## Verifying a release build
+
+Release builds use the pinned `linux/amd64` Rust image and are independently
+built twice in CI. The release notes publish the WASM SHA-256, Rust toolchain,
+and container image digest; GitHub build-provenance attestations are also
+published for the WASM artifact.
+
+To download a release, verify its published checksum, rebuild the exact tag in
+the pinned container, and compare the resulting bytes, run:
+
+```sh
+make verify-release TAG=v1.2.3
+```
+
+This requires Git, Docker, `gh` authenticated to the repository, and
+`sha256sum`. To independently verify the attestation after downloading the
+WASM asset, run:
+
+```sh
+gh attestation verify stellar_wrap_contract.wasm --repo tobiadewola41-eng/stellar-wrap-contract
+```
+
 ## Contract layout
 
 The contract is split into focused modules:

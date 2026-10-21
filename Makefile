@@ -123,7 +123,7 @@ deploy-testnet: wasm-build
 ##   Requires: gh CLI (authenticated) and sha256sum.
 verify-release:
 	@if [ -z "$(TAG)" ]; then echo "usage: make verify-release TAG=v1.2.3" >&2; exit 2; fi
-	./scripts/verify_release_artifact.sh "$(TAG)"
+	bash ./scripts/verify_release_artifact.sh "$(TAG)"
 
 ## release-gate: Pre-flight checks that must pass before a mainnet release.
 ##   Runs the test suite, the optimized WASM build, and confirms the changelog
