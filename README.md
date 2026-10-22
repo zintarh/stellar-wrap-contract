@@ -1010,6 +1010,7 @@ Documentation contributions follow the manual Markdown formatting guidance in [C
 - [Canonical signed payload encoding](docs/signing-payload.md) — exact field order, XDR encoding rules, and test vectors required by backend signing services (issue #213)
 - [Admin rotation procedure](docs/admin-rotation.md) — safe procedure for rotating the admin address and signing pubkey, including verification, event monitoring, and rollback plan
 - [Timelock controller](docs/timelock.md) — architecture and operator runbook for the admin timelock
+- [Threat model](docs/threat-model.md) — compromise scenarios for signer, admin, relayer, renewal bot, and end user
 - [Off-chain whitelisting via Merkle proofs](docs/whitelist-merkle.md) — leaf encoding, tree layout, and proof verification
 - [Bridge architecture](docs/bridge-architecture.md) — cross-chain bridge workflow and components
 - [Revoke policy](docs/revoke-policy.md) — operational policy for `revoke_wrap`

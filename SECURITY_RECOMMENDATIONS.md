@@ -68,3 +68,8 @@ If any step fails, the release is blocked.
   status stays accurate.
 - Re-evaluate this document whenever a `security`-labelled issue is opened or
   closed.
+
+## Related documents
+
+- [Threat model](docs/threat-model.md) — compromise scenarios for signer, admin,
+  relayer, renewal bot, and end user

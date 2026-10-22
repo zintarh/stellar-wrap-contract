@@ -505,6 +505,7 @@ cargo test -- --nocapture --test-threads=1
 
 ## References
 
+- [Threat model](docs/threat-model.md) — actors, compromise impact, detection, and response
 - [Soroban Security Best Practices](https://soroban.stellar.org/docs/learn/security)
 - [Stellar Smart Contract Audit Guidelines](https://stellar.org/developers)
 - [Soroban Auth Framework](https://soroban.stellar.org/docs/learn/authorization)
