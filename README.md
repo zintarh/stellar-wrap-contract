@@ -120,7 +120,6 @@ The following table documents which state-mutating entrypoints honor the pause (
 | `upgrade(new_wasm_hash)` | admin |
 | `renew_all_ttls(user)` | admin |
 | `extend_ttl(user, period)` | anyone |
-| `extend_ttl_batch(user, periods)` | anyone |
 | `set_transfer_fee(token, recipient, amount)` | admin |
 | `clear_transfer_fee()` | admin |
 | `get_transfer_fee()` | — |
@@ -1007,6 +1006,7 @@ storage layout must ship as a numbered migration:
 
 Documentation contributions follow the manual Markdown formatting guidance in [CONTRIBUTING.md](CONTRIBUTING.md).
 
+- [Mint flow for integrators](docs/mint-flow.md) — end-to-end sequence (wallet → frontend → signer → RPC → contract → indexer), `data_hash` computation, and per-step client errors
 - [Canonical signed payload encoding](docs/signing-payload.md) — exact field order, XDR encoding rules, and test vectors required by backend signing services (issue #213)
 - [Admin rotation procedure](docs/admin-rotation.md) — safe procedure for rotating the admin address and signing pubkey, including verification, event monitoring, and rollback plan
 - [Timelock controller](docs/timelock.md) — architecture and operator runbook for the admin timelock
@@ -1057,7 +1057,6 @@ commands.
 | Test | `cargo test` or `make test` |
 | Fuzz `mint_wrap` | `make fuzz FUZZ_SECONDS=30` |
 | Release build (WASM) | `cargo build --release --target wasm32-unknown-unknown` or `make build` |
-| Optimized deployment artifact | `make wasm-optimize` (requires Stellar CLI; writes `target/wasm32-unknown-unknown/release/stellar_wrap_contract.optimized.wasm`) |
 | Deploy to testnet | `make deploy-testnet` |
 | Docker reproducible build | `make docker-build` or `docker build -t stellar-wrap-contract .` |
 
@@ -1074,7 +1073,6 @@ All Makefile targets are listed below with descriptions and when to use them.
 | `check-wasm-size` | Measure compiled WASM size against the 200 KB budget (see `SIGNATURE_VERIFICATION_DECISION.md`). | Before merging to verify the contract fits the size budget. |
 | `wasm-size` | Alias for `check-wasm-size`. | Same as `check-wasm-size`. |
 | `soroban-build` | Build via the Stellar CLI (`stellar contract build`). | Alternative to `cargo build --target wasm32-unknown-unknown` when using the Stellar CLI. |
-| `wasm-optimize` | Build the optimized WASM artifact using the Stellar CLI optimizer. Writes to `target/wasm32-unknown-unknown/release/stellar_wrap_contract.optimized.wasm`. Requires Stellar CLI. | Before a production deployment to reduce WASM size. |
 
 #### Test
 
@@ -1358,6 +1356,3 @@ Notes for indexers:
 
 <!-- handsoff-issue-859 -->
 - #859: [Security] Verify inbound bridge nonces cannot be replayed across source chains
-
-<!-- handsoff-issue-456 -->
-- #456: [Refactor] Use `env.storage().persistent()` optimally for WrapRecords
