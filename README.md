@@ -1013,7 +1013,7 @@ Documentation contributions follow the manual Markdown formatting guidance in [C
 - [Off-chain whitelisting via Merkle proofs](docs/whitelist-merkle.md) — leaf encoding, tree layout, and proof verification
 - [Bridge architecture](docs/bridge-architecture.md) — cross-chain bridge workflow and components
 - [Revoke policy](docs/revoke-policy.md) — operational policy for `revoke_wrap`
-- [Using `verify_data`](docs/verify-data.md) — off-chain JSON integrity checks
+- [Using `verify_data`](docs/verify-data.md) — RFC 8785 canonical wrap JSON, `schema_version`, and shared hash vectors (`schema/wrap-data.schema.json`)
 
 ## Development
 

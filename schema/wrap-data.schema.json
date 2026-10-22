@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mexes20/stellar-wrap-contract/schema/wrap-data.schema.json",
+  "title": "WrapData",
+  "description": "Off-chain wrap JSON hashed into WrapRecord.data_hash. Bytes MUST be produced with RFC 8785 (JSON Canonicalization Scheme) before SHA-256. See docs/verify-data.md.",
+  "type": "object",
+  "required": ["schema_version"],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Version of this wrap-data document schema. Distinct from the on-chain storage schema_version() query. Bump when field semantics change; verifiers MUST reject unknown versions."
+    },
+    "period": {
+      "type": "integer",
+      "minimum": 202401,
+      "maximum": 210012,
+      "description": "Optional YYYYMM period mirrored for off-chain convenience. Not checked on-chain against WrapRecord.period."
+    },
+    "archetype": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32,
+      "pattern": "^[A-Za-z0-9_]{1,32}$",
+      "description": "Optional archetype label mirrored for off-chain convenience."
+    },
+    "score": {
+      "type": "number",
+      "description": "Optional numeric score used in reference examples."
+    },
+    "level": {
+      "type": "string",
+      "description": "Optional level / tier label used in reference examples."
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Optional nested profile object."
+    },
+    "scores": {
+      "type": "array",
+      "items": { "type": "number" },
+      "description": "Optional list of numeric scores."
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Optional free-form metadata object."
+    }
+  }
+}

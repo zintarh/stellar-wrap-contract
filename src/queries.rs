@@ -56,6 +56,10 @@ pub(crate) fn total_wrap_count(e: Env) -> u32 {
 /// Returns `true` only when the record exists **and** the hashes are equal.
 /// Returns `false` for a missing record, a tampered payload, or any mismatch.
 ///
+/// For wrap JSON, `data` must be the RFC 8785 (JCS) UTF-8 bytes of a document
+/// that includes `schema_version`. See `docs/verify-data.md` and
+/// `schema/wrap-data.schema.json`. Canonicalization is off-chain only.
+///
 /// This function is pure read — it never writes storage and requires no auth.
 pub(crate) fn verify_data(e: Env, user: Address, period: u64, data: Bytes) -> bool {
     let wrap: Option<WrapRecord> = e.storage().persistent().get(&DataKey::Wrap(user, period));

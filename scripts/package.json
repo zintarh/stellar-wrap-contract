@@ -5,14 +5,17 @@
   "description": "Off-chain merkle tree builder for Stellar Wrap batch claims",
   "scripts": {
     "demo": "ts-node merkle.ts",
-    "indexer": "ts-node indexer.ts"
+    "indexer": "ts-node indexer.ts",
+    "wrap-data:vectors": "ts-node wrap-data.ts"
   },
   "dependencies": {
     "@noble/hashes": "^1.4.0",
     "@stellar/stellar-sdk": "^13.0.0",
+    "canonicalize": "^1.0.8",
     "sqlite3": "^6.0.1"
   },
   "devDependencies": {
+    "@types/node": "^26.6.5",
     "@types/sqlite3": "^3.1.11",
     "ts-node": "^10.9.2",
     "typescript": "^5.4.0"

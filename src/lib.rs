@@ -1028,6 +1028,8 @@ mod test_utils;
 #[cfg(test)]
 mod test_vectors;
 #[cfg(test)]
+mod data_hash_vectors_test;
+#[cfg(test)]
 mod timelock_cancel_test;
 #[cfg(test)]
 mod timelock_test;
