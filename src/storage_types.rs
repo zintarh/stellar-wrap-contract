@@ -1,6 +1,11 @@
 #[cfg(any(test, feature = "testutils"))]
 extern crate std;
 
+// Storage access note: keys in `DataKey` are intended to be accessed only
+// through typed accessor structs in `store/`. Direct `e.storage()` calls
+// outside `store/` should be migrated; see the `[Refactor]` issue on
+// adopting a typed storage wrapper.
+
 use soroban_sdk::{contracttype, Address, Bytes, BytesN, String, Symbol, Vec};
 
 /// Minimal reachable lifecycle for a wrap record.

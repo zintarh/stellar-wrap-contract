@@ -17,8 +17,13 @@ use crate::{
     WrapSummary, WrapView,
 };
 
-pub(crate) fn get_wrap(e: Env, user: Address, period: u64) -> Option<WrapRecord> {
+/// Single read point for wrap records: tier and key construction live here.
+fn load_wrap(e: &Env, user: Address, period: u64) -> Option<WrapRecord> {
     e.storage().persistent().get(&DataKey::Wrap(user, period))
+}
+
+pub(crate) fn get_wrap(e: Env, user: Address, period: u64) -> Option<WrapRecord> {
+    load_wrap(&e, user, period)
 }
 
 pub(crate) fn get_wrap_v2(e: Env, user: Address, period: u64) -> Option<WrapView> {
@@ -50,8 +55,7 @@ fn wrap_view(e: &Env, record: WrapRecord) -> WrapView {
 }
 
 pub(crate) fn get_mint_timestamp(e: Env, user: Address, period: u64) -> Option<u64> {
-    let wrap: Option<WrapRecord> = e.storage().persistent().get(&DataKey::Wrap(user, period));
-    wrap.map(|r| r.timestamp)
+    load_wrap(&e, user, period).map(|r| r.timestamp)
 }
 
 /// Return the ledger timestamp of the user's most recent state change via a
@@ -89,8 +93,7 @@ pub(crate) fn total_wrap_count(e: Env) -> u32 {
 ///
 /// This function is pure read — it never writes storage and requires no auth.
 pub(crate) fn verify_data(e: Env, user: Address, period: u64, data: Bytes) -> bool {
-    let wrap: Option<WrapRecord> = e.storage().persistent().get(&DataKey::Wrap(user, period));
-    wrap.is_some_and(|record| {
+    load_wrap(&e, user, period).is_some_and(|record| {
         let computed_hash = e.crypto().sha256(&data);
         let computed_hash = BytesN::from_array(&e, &computed_hash.to_array());
         record.data_hash == computed_hash

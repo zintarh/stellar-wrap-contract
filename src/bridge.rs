@@ -1,5 +1,7 @@
 use soroban_sdk::{panic_with_error, symbol_short, Address, Bytes, BytesN, Env, Symbol};
 
+use crate::store::bridge::BridgeStore;
+
 use crate::{
     signature::verify_inbound_bridge_signature,
     storage_accounting,
