@@ -298,3 +298,46 @@ fn test_upgrade_across_layout_change_migrates_stored_records() {
     client.upgrade(&new_wasm_hash);
     assert_eq!(client.contract_version(), 1);
 }
+
+/// Upgrades the last released WASM to the WASM built from HEAD, so the new code
+/// runs against state the old code wrote. Only the real artifacts can catch a
+/// storage-layout break between releases, so this test is ignored by default and
+/// run by `.github/workflows/upgrade-compat.yml` with both paths set:
+/// * `PREVIOUS_WASM_PATH` — the latest GitHub release `stellar_wrap_contract.wasm`
+/// * `HEAD_WASM_PATH` — the WASM built from this commit
+#[test]
+#[ignore = "needs PREVIOUS_WASM_PATH and HEAD_WASM_PATH; run by upgrade-compat.yml"]
+fn test_upgrade_from_previous_release_wasm_to_head() {
+    let previous_wasm = std::fs::read(
+        std::env::var("PREVIOUS_WASM_PATH").expect("PREVIOUS_WASM_PATH must be set"),
+    )
+    .expect("failed to read previous release WASM");
+    let head_wasm = std::fs::read(
+        std::env::var("HEAD_WASM_PATH").expect("HEAD_WASM_PATH must be set"),
+    )
+    .expect("failed to read HEAD WASM");
+
+    let env = Env::default();
+    env.mock_all_auths();
+
+    // Deploy the previous release exactly as it shipped and initialise it.
+    let previous_hash = env.deployer().upload_contract_wasm(previous_wasm.as_slice());
+    let contract_id = env
+        .deployer()
+        .with_address(Address::generate(&env), BytesN::from_array(&env, &[0u8; 32]))
+        .deploy_v2(previous_hash, ());
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let signing_key = SigningKey::from_bytes(&[1u8; 32]);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+    client.initialize(&admin, &admin_pubkey);
+
+    // Upgrade to HEAD, then apply the migration this release ships with.
+    let head_hash = env.deployer().upload_contract_wasm(head_wasm.as_slice());
+    client.upgrade(&head_hash);
+    client.migrate(&1u32);
+
+    assert_eq!(client.contract_version(), 1);
+    assert_eq!(client.migration_version(), 1);
+}

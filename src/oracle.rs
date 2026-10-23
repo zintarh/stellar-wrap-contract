@@ -1,7 +1,10 @@
-use soroban_sdk::{contracterror, panic_with_error, Address, BytesN, Env};
-use wrap_types::DataHashOracleClient;
+use soroban_sdk::{contractclient, contracterror, panic_with_error, Address, BytesN, Env};
 
-pub use wrap_types::DataHashOracleApi as DataHashOracle;
+/// Minimal ABI implemented by a compatible data-hash oracle.
+#[contractclient(name = "DataHashOracleClient")]
+pub trait DataHashOracle {
+    fn verify_data_hash(e: Env, data_hash: BytesN<32>) -> bool;
+}
 
 /// Distinct, deterministic outcomes for a non-conforming oracle invocation.
 ///

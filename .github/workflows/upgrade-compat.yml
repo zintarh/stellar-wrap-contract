@@ -1,0 +1,40 @@
+name: Upgrade compatibility
+
+on:
+  pull_request:
+    paths:
+      - 'src/storage_types.rs'
+      - 'src/upgrade_test.rs'
+      - '.github/workflows/upgrade-compat.yml'
+  workflow_call:
+
+jobs:
+  upgrade-from-previous-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Build HEAD WASM (release)
+        run: |
+          cargo build --release --target wasm32-unknown-unknown
+          echo "HEAD_WASM_PATH=$PWD/target/wasm32-unknown-unknown/release/stellar_wrap_contract.wasm" >> "$GITHUB_ENV"
+
+      - name: Download latest released WASM
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p tests/fixtures
+          gh release download --repo "${{ github.repository }}" \
+            --pattern stellar_wrap_contract.wasm \
+            --dir tests/fixtures --clobber
+          mv tests/fixtures/stellar_wrap_contract.wasm tests/fixtures/previous.wasm
+          echo "PREVIOUS_WASM_PATH=$PWD/tests/fixtures/previous.wasm" >> "$GITHUB_ENV"
+
+      - name: Run upgrade test from previous release
+        run: cargo test --lib test_upgrade_from_previous_release_wasm_to_head -- --ignored

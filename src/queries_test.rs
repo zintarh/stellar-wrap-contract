@@ -50,6 +50,26 @@ fn test_has_wrap_agrees_with_get_wrap() {
         client.has_wrap(&user, &period),
         client.get_wrap(&user, &period).is_some()
     );
+    let view = client
+        .get_wrap_v2(&user, &period)
+        .expect("v2 query should return the minted wrap");
+    assert_eq!(view.record, client.get_wrap(&user, &period).unwrap());
+    assert!(!view.is_expired);
+    assert_eq!(
+        view.live_until_ledger,
+        env.ledger().sequence().saturating_add(17_280 * 365)
+    );
+    let views = client.get_wraps_v2(&user, &0, &10);
+    assert_eq!(views.len(), 1);
+    assert_eq!(views.get(0).unwrap(), view);
+
+    env.ledger().with_mut(|li| {
+        li.timestamp += 7 * 24 * 60 * 60 + 1;
+    });
+    assert!(
+        client.get_wrap_v2(&user, &period).unwrap().is_expired,
+        "active wraps should report expiration after the configured timeout"
+    );
 
     // After burn
     client.burn_wrap(&user, &period);
@@ -59,6 +79,7 @@ fn test_has_wrap_agrees_with_get_wrap() {
         client.has_wrap(&user, &period),
         client.get_wrap(&user, &period).is_some()
     );
+    assert!(client.get_wrap_v2(&user, &period).is_none());
 }
 
 #[test]

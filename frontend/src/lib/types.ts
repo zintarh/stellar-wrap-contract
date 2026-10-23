@@ -35,3 +35,30 @@ export type WrapRecord = {
   period: bigint;
   /**
    * Current lifecycle state of the record. Optional so existing callers that
+   * only use the legacy query shape remain compatible.
+   */
+  revoked?: boolean;
+  burned?: boolean;
+  expired?: boolean;
+  optedOut?: boolean;
+};
+
+export type WrapView = {
+  record: WrapRecord;
+  isExpired: boolean;
+  liveUntilLedger: bigint;
+};
+
+export type Dashboard = {
+  health: ContractHealth;
+  balance: bigint;
+  latestWrap: WrapRecord | null;
+  records: WrapRecord[];
+};
+
+export type MintInput = {
+  archetype: string;
+  dataHash: Uint8Array;
+  period: bigint;
+  signature: Uint8Array;
+};

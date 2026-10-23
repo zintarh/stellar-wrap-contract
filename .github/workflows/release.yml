@@ -71,7 +71,7 @@ jobs:
           echo "Open security-labelled issues: $COUNT"
           if [ "$COUNT" -gt 0 ]; then
             echo "blocking=true" >> "$GITHUB_OUTPUT"
-            echo "::error::Release blocked: $COUNT open security-labelled issue(s). See SECURITY_AUDIT_CHECKLIST.md blocking findings."
+            echo "::error::Release blocked: $COUNT open security-labelled issue(s). See docs/security/security-audit-checklist.md blocking findings."
             gh issue list \
               --repo "${{ github.repository }}" \
               --label security \
@@ -91,7 +91,7 @@ jobs:
 
       - name: Build WASM (release)
         run: |
-          docker build -t stellar-wrap-build .
+          docker build --platform linux/amd64 -t stellar-wrap-build .
           docker run --rm -v "$PWD/out:/out" stellar-wrap-build
 
       - name: Compute SHA256
@@ -118,7 +118,7 @@ jobs:
 
       - name: Build WASM (release)
         run: |
-          docker build -t stellar-wrap-build .
+          docker build --platform linux/amd64 -t stellar-wrap-build .
           docker run --rm -v "$PWD/out:/out" stellar-wrap-build
 
       - name: Compute SHA256
@@ -151,12 +151,19 @@ jobs:
           fi
           echo "Builds are reproducible: hashes match"
 
+  upgrade-compat:
+    needs: preflight
+    uses: ./.github/workflows/upgrade-compat.yml
+
   release:
-    needs: [security-gate, verify-reproducible]
+    needs: [security-gate, verify-reproducible, upgrade-compat]
     if: needs.security-gate.outputs.blocking == 'false'
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
     steps:
       - uses: actions/checkout@v4
 
@@ -174,6 +181,11 @@ jobs:
           echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
           echo "$SHA  stellar_wrap_contract.wasm" > out/stellar_wrap_contract.wasm.sha256
 
+      - name: Attest WASM build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: out/stellar_wrap_contract.wasm
+
       - name: "Reminder: update CHANGELOG before tagging"
         run: 'echo "Reminder: update CHANGELOG.md with this version details before tagging."'
 
@@ -187,3 +199,8 @@ jobs:
             ## Release ${{ github.ref_name }}
 
             **WASM SHA256:** `${{ steps.sha256.outputs.sha256 }}`
+            **Rust toolchain:** `1.94.1` (from `rust-toolchain.toml`)
+            **Build image:** `rust:1.94.1-slim-bookworm@sha256:f845b308e3104231c98dba2dab952ebd54e35cd6ab8ef4a230ecb38e2315f20c` (linux/amd64)
+            **Build provenance:** GitHub artifact attestation generated for `stellar_wrap_contract.wasm`.
+
+            Verify the downloaded artifact with `make verify-release TAG=${{ github.ref_name }}`. Verify provenance with `gh attestation verify stellar_wrap_contract.wasm --repo ${{ github.repository }}`.

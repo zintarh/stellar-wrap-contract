@@ -390,12 +390,24 @@ fn test_pause_and_unpause_publish_typed_v1_topics() {
 #[test]
 fn test_update_admin_publishes_previous_and_new_admin() {
     let env = Env::default();
-    let (_, client, _, admin) = setup(&env, 73);
+    let (contract_id, client, _, admin) = setup(&env, 73);
     let new_admin = Address::generate(&env);
 
     client.update_admin(&new_admin);
 
-    let (topics, data) = last_event(&env);
+    let (event_contract_id, topics, data) = env
+        .events()
+        .all()
+        .into_iter()
+        .find(|(event_contract_id, topics, _)| {
+            event_contract_id.is_some()
+                && topics.len() == 3
+                && decode_symbol(&env, topics[0]) == Some(Symbol::new(&env, "v1"))
+                && decode_symbol(&env, topics[1]) == Some(Symbol::new(&env, "admin"))
+                && decode_symbol(&env, topics[2]) == Some(Symbol::new(&env, "updated"))
+        })
+        .expect("admin update contract event not found");
+    assert_eq!(event_contract_id, Some(contract_id));
     assert_topics(&env, &topics, &["v1", "admin", "updated"]);
     let (previous, next): (Address, Address) = data.try_into_val(&env).unwrap();
     assert_eq!(previous, admin);
