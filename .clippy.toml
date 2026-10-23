@@ -1,0 +1,1 @@
+disallowed-methods = [{ path = "soroban_sdk::Env::invoke_contract", reason = "Use a typed #[contractclient] client for cross-contract calls" }]

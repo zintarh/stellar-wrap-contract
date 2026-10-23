@@ -19,6 +19,6 @@ jobs:
       - name: Run Rust test suite
         run: cargo test --all-features
       - name: Run cargo clippy
-        run: cargo clippy --workspace --all-targets --all-features --no-deps
+        run: cargo clippy --workspace --all-targets --all-features --no-deps -- -D warnings
         env:
           RUSTFLAGS: "-C overflow-checks=yes"
