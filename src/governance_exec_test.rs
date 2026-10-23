@@ -42,6 +42,9 @@ fn setup() -> (
     (env, client, contract_id, admin, proposer, proposed_admin)
 }
 
+/// Shortest voting period the contract accepts.
+const DURATION: u64 = crate::governance::MIN_PROPOSAL_DURATION;
+
 /// Create a proposal with the given `duration_seconds` and return its id.
 fn create_proposal(
     client: &StellarWrapContractClient,
@@ -59,7 +62,7 @@ fn create_proposal(
 #[should_panic(expected = "Error(Contract, #28)")]
 fn execute_before_end_time_fails_with_voting_period_not_ended() {
     let (_env, client, _contract_id, _admin, proposer, proposed_admin) = setup();
-    let proposal_id = create_proposal(&client, &proposer, &proposed_admin, 100);
+    let proposal_id = create_proposal(&client, &proposer, &proposed_admin, DURATION);
 
     // time = 0, end_time = 100 → now <= end_time → panic #28
     client.execute_admin_proposal(&proposal_id);
@@ -74,12 +77,12 @@ fn execute_before_end_time_fails_with_voting_period_not_ended() {
 #[test]
 fn proposal_with_more_against_votes_is_defeated() {
     let (env, client, _contract_id, _admin, proposer, proposed_admin) = setup();
-    let proposal_id = create_proposal(&client, &proposer, &proposed_admin, 100);
+    let proposal_id = create_proposal(&client, &proposer, &proposed_admin, DURATION);
 
     // 0 for, 1 against → votes_against > votes_for → Defeated
     client.vote_admin_proposal(&proposer, &proposal_id, &false);
 
-    env.ledger().with_mut(|l| l.timestamp += 101);
+    env.ledger().with_mut(|l| l.timestamp += DURATION + 1);
     client.execute_admin_proposal(&proposal_id);
 
     let proposal = client.get_admin_proposal(&proposal_id).unwrap();
@@ -93,7 +96,7 @@ fn proposal_with_more_against_votes_is_defeated() {
 #[test]
 fn defeated_status_persists_after_execution() {
     let (env, client, _contract_id, _admin, proposer, proposed_admin) = setup();
-    let proposal_id = create_proposal(&client, &proposer, &proposed_admin, 100);
+    let proposal_id = create_proposal(&client, &proposer, &proposed_admin, DURATION);
 
     // 1 for (proposer votes yes), 2 against (two extra voters vote no) → Defeated
     let voter_b = Address::generate(&env);
@@ -102,7 +105,7 @@ fn defeated_status_persists_after_execution() {
     client.vote_admin_proposal(&voter_b, &proposal_id, &false);
     client.vote_admin_proposal(&voter_c, &proposal_id, &false);
 
-    env.ledger().with_mut(|l| l.timestamp += 101);
+    env.ledger().with_mut(|l| l.timestamp += DURATION + 1);
     client.execute_admin_proposal(&proposal_id);
 
     // Verify Defeated status was persisted
@@ -138,14 +141,14 @@ fn defeated_status_persists_after_execution() {
 #[test]
 fn tie_is_defeated_not_executed() {
     let (env, client, _contract_id, _admin, proposer, proposed_admin) = setup();
-    let proposal_id = create_proposal(&client, &proposer, &proposed_admin, 100);
+    let proposal_id = create_proposal(&client, &proposer, &proposed_admin, DURATION);
 
     let voter = Address::generate(&env);
     // 1 for (proposer), 1 against (voter) → tie → Defeated
     client.vote_admin_proposal(&proposer, &proposal_id, &true);
     client.vote_admin_proposal(&voter, &proposal_id, &false);
 
-    env.ledger().with_mut(|l| l.timestamp += 101);
+    env.ledger().with_mut(|l| l.timestamp += DURATION + 1);
     client.execute_admin_proposal(&proposal_id);
 
     let proposal = client.get_admin_proposal(&proposal_id).unwrap();
@@ -170,12 +173,12 @@ fn tie_is_defeated_not_executed() {
 #[should_panic(expected = "Error(Contract, #26)")]
 fn execute_already_executed_proposal_fails_with_not_active() {
     let (env, client, _contract_id, _admin, proposer, proposed_admin) = setup();
-    let proposal_id = create_proposal(&client, &proposer, &proposed_admin, 100);
+    let proposal_id = create_proposal(&client, &proposer, &proposed_admin, DURATION);
 
     // 1 for (proposer), 0 against → Executed
     client.vote_admin_proposal(&proposer, &proposal_id, &true);
 
-    env.ledger().with_mut(|l| l.timestamp += 101);
+    env.ledger().with_mut(|l| l.timestamp += DURATION + 1);
 
     // First execution succeeds
     client.execute_admin_proposal(&proposal_id);
@@ -193,7 +196,7 @@ fn execute_already_executed_proposal_fails_with_not_active() {
 #[should_panic(expected = "Error(Contract, #26)")]
 fn execute_cancelled_proposal_fails_with_not_active() {
     let (env, client, _contract_id, _admin, proposer, proposed_admin) = setup();
-    let proposal_id = create_proposal(&client, &proposer, &proposed_admin, 100);
+    let proposal_id = create_proposal(&client, &proposer, &proposed_admin, DURATION);
 
     client.cancel_admin_proposal(&proposer, &proposal_id);
 
@@ -201,7 +204,7 @@ fn execute_cancelled_proposal_fails_with_not_active() {
     assert_eq!(proposal.status, ProposalStatus::Cancelled);
 
     // Cannot execute after cancellation
-    env.ledger().with_mut(|l| l.timestamp += 101);
+    env.ledger().with_mut(|l| l.timestamp += DURATION + 1);
     client.execute_admin_proposal(&proposal_id);
 }
 
@@ -210,12 +213,12 @@ fn execute_cancelled_proposal_fails_with_not_active() {
 #[test]
 fn passing_execution_sets_status_to_executed() {
     let (env, client, _contract_id, _admin, proposer, proposed_admin) = setup();
-    let proposal_id = create_proposal(&client, &proposer, &proposed_admin, 100);
+    let proposal_id = create_proposal(&client, &proposer, &proposed_admin, DURATION);
 
     // 1 for (proposer), 0 against → Executed
     client.vote_admin_proposal(&proposer, &proposal_id, &true);
 
-    env.ledger().with_mut(|l| l.timestamp += 101);
+    env.ledger().with_mut(|l| l.timestamp += DURATION + 1);
     client.execute_admin_proposal(&proposal_id);
 
     let proposal = client.get_admin_proposal(&proposal_id).unwrap();

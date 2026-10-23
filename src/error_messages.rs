@@ -4,7 +4,12 @@
 //! parses the `ContractError` enum from source so a new variant fails until
 //! it has a message, a matching code, and an actionable flag.
 
+extern crate std;
+
 use std::collections::{BTreeMap, BTreeSet};
+use std::format;
+use std::string::{String, ToString};
+use std::vec::Vec;
 
 use crate::ContractError;
 

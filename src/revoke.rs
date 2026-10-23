@@ -39,9 +39,32 @@ pub(crate) fn revoke_wrap(e: Env, user: Address, period: u64, reason_hash: Bytes
         panic_with_error!(e, ContractError::WrapNotFound);
     }
 
+    remove_wrap_and_reindex(&e, &user, period);
+
+    // Increment TotalRevoked with overflow protection (instance storage).
+    let total_revoked_key = DataKey::TotalRevoked;
+    let current_total: u64 = e.storage().instance().get(&total_revoked_key).unwrap_or(0);
+    let next_total = current_total
+        .checked_add(1)
+        .unwrap_or_else(|| panic_with_error!(&e, ContractError::ArithmeticOverflow));
+    e.storage().instance().set(&total_revoked_key, &next_total);
+
+    crate::mint::update_last_updated(&e, &user);
+
+    e.events()
+        .publish((symbol_short!("revoke"), user, period), reason_hash);
+}
+
+/// Removes the wrap record for `(user, period)` and reconciles every per-user
+/// index (`WrapPeriods`, `WrapCount`, `LatestPeriod`, `UserPeriods`) and the
+/// accounted storage bytes. Shared by `revoke_wrap` and `burn_wrap` so both
+/// leave storage in exactly the same state. The caller checks that the wrap
+/// exists and is allowed to be removed.
+pub(crate) fn remove_wrap_and_reindex(e: &Env, user: &Address, period: u64) {
+    let wrap_key = DataKey::Wrap(user.clone(), period);
     // Remove the wrap entry and subtract estimated bytes
     e.storage().persistent().remove(&wrap_key);
-    storage_accounting::sub_storage_bytes(&e, storage_accounting::estimate_wrap_bytes_new());
+    storage_accounting::sub_storage_bytes(e, storage_accounting::estimate_wrap_bytes_new());
 
     // Update WrapPeriods, WrapCount, and LatestPeriod atomically — mirrors
     // burn_wrap so the invariant WrapCount == WrapPeriods.len() always holds.
@@ -50,9 +73,9 @@ pub(crate) fn revoke_wrap(e: Env, user: Address, period: u64, reason_hash: Bytes
         .storage()
         .persistent()
         .get(&wrap_periods_key)
-        .unwrap_or_else(|| Vec::new(&e));
+        .unwrap_or_else(|| Vec::new(e));
 
-    let mut remaining_wrap_periods: Vec<u64> = Vec::new(&e);
+    let mut remaining_wrap_periods: Vec<u64> = Vec::new(e);
     for p in wrap_periods.iter() {
         if p != period {
             remaining_wrap_periods.push_back(p);
@@ -72,7 +95,7 @@ pub(crate) fn revoke_wrap(e: Env, user: Address, period: u64, reason_hash: Bytes
             &e,
             storage_accounting::estimate_wrapcount_bytes_new(),
         );
-        storage_accounting::sub_storage_bytes(&e, storage_accounting::estimate_latest_bytes_new());
+        storage_accounting::sub_storage_bytes(e, storage_accounting::estimate_latest_bytes_new());
     } else {
         e.storage()
             .persistent()
@@ -106,9 +129,9 @@ pub(crate) fn revoke_wrap(e: Env, user: Address, period: u64, reason_hash: Bytes
         .storage()
         .persistent()
         .get(&user_periods_key)
-        .unwrap_or_else(|| Vec::new(&e));
+        .unwrap_or_else(|| Vec::new(e));
 
-    let mut remaining_user_periods: Vec<u64> = Vec::new(&e);
+    let mut remaining_user_periods: Vec<u64> = Vec::new(e);
     for p in user_periods.iter() {
         if p != period {
             remaining_user_periods.push_back(p);
@@ -129,15 +152,4 @@ pub(crate) fn revoke_wrap(e: Env, user: Address, period: u64, reason_hash: Bytes
             .persistent()
             .extend_ttl(&user_periods_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
     }
-
-    // Increment TotalRevoked with overflow protection (instance storage).
-    let total_revoked_key = DataKey::TotalRevoked;
-    let current_total: u64 = e.storage().instance().get(&total_revoked_key).unwrap_or(0);
-    let next_total = current_total
-        .checked_add(1)
-        .unwrap_or_else(|| panic_with_error!(&e, ContractError::ArithmeticOverflow));
-    e.storage().instance().set(&total_revoked_key, &next_total);
-
-    e.events()
-        .publish((symbol_short!("revoke"), user, period), reason_hash);
 }

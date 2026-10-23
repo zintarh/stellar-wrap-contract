@@ -93,7 +93,7 @@ fn setup_fixture_env_for_version(
         FIXTURE_PERIOD,
         &archetype,
         &data_hash,
-        version,
+        version, u64::MAX,
     );
 
     let mut buf = [0u8; 512];
@@ -193,6 +193,7 @@ fn test_vector_per_supported_version() {
             &archetype,
             &data_hash,
             version,
+            u64::MAX,
             &signature,
         )
         .is_ok());
@@ -219,6 +220,7 @@ fn test_unknown_version_is_rejected() {
         &archetype,
         &data_hash,
         unknown,
+        u64::MAX,
         &signature,
     )
     .is_err());

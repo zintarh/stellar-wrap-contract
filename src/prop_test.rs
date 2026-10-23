@@ -7,7 +7,7 @@ extern crate std;
 use ed25519_dalek::{Signer, SigningKey};
 use proptest::prelude::*;
 use soroban_sdk::{
-    testutils::Address as _, Address, BytesN, Env, String, Symbol, TryIntoVal,
+    testutils::Address as _, Address, BytesN, Env, Symbol, TryIntoVal,
 };
 
 use super::*;
@@ -176,19 +176,29 @@ fn mint_storage_snapshot(
     })
 }
 
+/// The contract error code carried by a failed `try_` call, if any.
+fn contract_error_code(error: Result<soroban_sdk::Error, soroban_sdk::InvokeError>) -> Option<u32> {
+    match error {
+        Ok(error) if error.is_type(soroban_sdk::xdr::ScErrorType::Contract) => Some(error.get_code()),
+        Err(soroban_sdk::InvokeError::Contract(code)) => Some(code),
+        _ => None,
+    }
+}
+
 fn decode_batch_mint_events(env: &Env) -> std::vec::Vec<MintEventPayload> {
     crate::test_utils::decode_events(env)
         .into_iter()
-        .map(|(_, data)| {
+        .filter_map(|(_, data)| {
             let event: crate::events::MintEventData = data
                 .try_into_val(env)
                 .expect("batch mint event should decode as MintEventData");
             match event {
-                crate::events::MintEventData::Mint(user, period, archetype) => MintEventPayload {
+                crate::events::MintEventData::Mint(user, period, archetype) => Some(MintEventPayload {
                     user,
                     period,
                     archetype,
-                },
+                }),
+                crate::events::MintEventData::Transition(..) => None,
             }
         })
         .collect()
@@ -456,12 +466,12 @@ proptest! {
                 &item.valid_until,
                 &item.signature,
             ) {
-                Ok(()) => {
+                Ok(_) => {
                     sequential_events.extend(decode_single_mint_events(&env));
                     sequential_mint_count += 1;
                 }
                 Err(error) => {
-                    sequential_error_code = error.contract_error();
+                    sequential_error_code = contract_error_code(error);
                     prop_assert!(
                         crate::test_utils::decode_events(&env).is_empty(),
                         "failed sequential mint must not emit events"
@@ -483,7 +493,7 @@ proptest! {
             };
             let batch_error_code = batch_result
                 .err()
-                .and_then(|error| error.contract_error());
+                .and_then(contract_error_code);
 
             prop_assert_eq!(batch_error_code, Some(expected_error_code));
             prop_assert_eq!(sequential_error_code, Some(expected_error_code));
@@ -541,12 +551,12 @@ proptest! {
 
         let data_hash_first = make_data_hash(&env, raw_hash_first);
         let sig_first = sign_mint(&env, &signing_key, &contract_id, &user, period, &archetype, &data_hash_first, CURRENT_PAYLOAD_VERSION);
-        client.mint_wrap(&user, &period, &archetype, &data_hash_first, &CURRENT_PAYLOAD_VERSION, &sig_first);
+        client.mint_wrap(&user, &period, &archetype, &data_hash_first, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &sig_first);
 
         let data_hash_second = make_data_hash(&env, raw_hash_second);
         let sig_second = sign_mint(&env, &signing_key, &contract_id, &user, period, &archetype, &data_hash_second, CURRENT_PAYLOAD_VERSION);
 
-        let result = client.try_mint_wrap(&user, &period, &archetype, &data_hash_second, &CURRENT_PAYLOAD_VERSION, &sig_second);
+        let result = client.try_mint_wrap(&user, &period, &archetype, &data_hash_second, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &sig_second);
         prop_assert!(result.is_err());
 
         let stored = client.get_wrap(&user, &period).expect("original wrap must still exist");
@@ -750,14 +760,10 @@ proptest! {
         ],
     ) {
         let (env, client, _, _, _) = setup_env();
-        let title = String::from_str(&env, "proposal");
-        let description = String::from_str(&env, "duration bounds");
-        let data_hash = make_data_hash(&env, [0x42; 32]);
 
         let result = client.try_create_admin_proposal(
-            &title,
-            &description,
-            &data_hash,
+            &Address::generate(&env),
+            &Address::generate(&env),
             &duration,
         );
 
@@ -774,14 +780,10 @@ proptest! {
         ],
     ) {
         let (env, client, _, _, _) = setup_env();
-        let title = String::from_str(&env, "proposal");
-        let description = String::from_str(&env, "duration bounds");
-        let data_hash = make_data_hash(&env, [0x43; 32]);
 
         let result = client.try_create_admin_proposal(
-            &title,
-            &description,
-            &data_hash,
+            &Address::generate(&env),
+            &Address::generate(&env),
             &duration,
         );
 
@@ -866,7 +868,7 @@ proptest! {
         client.set_bridge_relayer(&relayer_addr);
 
         let sig = sign_mint(&env, &signing_key, &contract_id, &user, period, &archetype, &data_hash, CURRENT_PAYLOAD_VERSION);
-        let _ = client.try_mint_wrap(&user, &period, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &sig);
+        let _ = client.try_mint_wrap(&user, &period, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &sig);
 
         let mut expected_supply: i32 = 1;
         let mut outstanding_outbound: i32 = 0;
@@ -877,7 +879,7 @@ proptest! {
             match op {
                 BridgeOp::BridgeOut => {
                     let recipient = BytesN::from_array(&env, &[0; 32]).into();
-                    if let Ok(nonce) = client.try_bridge_wrap_out(&user, &1u32, &recipient, &period) {
+                    if let Ok(Ok(nonce)) = client.try_bridge_wrap_out(&user, &1u32, &recipient, &period) {
                         active_nonce = Some(nonce);
                         outstanding_outbound += 1;
                     }
@@ -907,7 +909,7 @@ proptest! {
                 BridgeOp::Revoke => {
                     let mut was_active = false;
                     if let Some(wrap) = client.get_wrap(&user, &period) {
-                        if wrap.fsm.state == crate::storage_types::WrapState::Active {
+                        if wrap.lifecycle.state == crate::storage_types::WrapState::Active {
                             was_active = true;
                         }
                     }
@@ -921,7 +923,7 @@ proptest! {
                 BridgeOp::Burn => {
                     let mut was_active = false;
                     if let Some(wrap) = client.get_wrap(&user, &period) {
-                        if wrap.fsm.state == crate::storage_types::WrapState::Active {
+                        if wrap.lifecycle.state == crate::storage_types::WrapState::Active {
                             was_active = true;
                         }
                     }
@@ -935,7 +937,7 @@ proptest! {
             
             let mut local_active: i32 = 0;
             if let Some(wrap) = client.get_wrap(&user, &period) {
-                if wrap.fsm.state == crate::storage_types::WrapState::Active {
+                if wrap.lifecycle.state == crate::storage_types::WrapState::Active {
                     local_active = 1;
                 }
             }

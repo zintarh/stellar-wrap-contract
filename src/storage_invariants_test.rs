@@ -192,7 +192,7 @@ impl<'a> StorageInspector<'a> {
 struct TestFixture {
     env: Env,
     contract_id: Address,
-    client: StellarWrapContractClient,
+    client: StellarWrapContractClient<'static>,
     admin: Address,
     signing_key: ed25519_dalek::SigningKey,
 }
@@ -237,7 +237,8 @@ impl TestFixture {
             &period,
             &archetype,
             &data_hash,
-            &1u32,
+            &crate::mint::CURRENT_PAYLOAD_VERSION,
+            &u64::MAX,
             &signature,
         );
     }
@@ -411,9 +412,9 @@ fn test_invariant_user_periods_all_have_live_wraps_after_revoke() {
     // Revoke middle wrap
     fixture.revoke_wrap(&user, 202402);
 
-    // After revoke, not all periods have live wraps anymore
-    // (UserPeriods still contains 202402 but the wrap is gone)
-    assert!(!inspector.all_user_periods_have_wraps(&user));
+    // Revoke removes the period from UserPeriods, so every listed period
+    // still has a live wrap.
+    assert!(inspector.all_user_periods_have_wraps(&user));
 
     // But WrapCount should match actual live wraps
     assert_eq!(inspector.get_wrap_count(&user), 2);
@@ -477,7 +478,7 @@ fn test_invariant_total_wrap_count_across_users() {
 }
 
 #[test]
-fn test_invariant_total_wrap_count_decrements_after_revoke() {
+fn test_invariant_total_wrap_count_is_lifetime_and_ignores_revoke() {
     let fixture = TestFixture::new();
     let user1 = Address::generate(&fixture.env);
     let user2 = Address::generate(&fixture.env);
@@ -491,15 +492,15 @@ fn test_invariant_total_wrap_count_decrements_after_revoke() {
 
     // Revoke one from user1
     fixture.revoke_wrap(&user1, 202401);
-    assert_eq!(inspector.get_total_wrap_count(), 2);
+    assert_eq!(inspector.get_total_wrap_count(), 3);
 
     // Revoke one from user2
     fixture.revoke_wrap(&user2, 202401);
-    assert_eq!(inspector.get_total_wrap_count(), 1);
+    assert_eq!(inspector.get_total_wrap_count(), 3);
 
     // Revoke last one
     fixture.revoke_wrap(&user1, 202402);
-    assert_eq!(inspector.get_total_wrap_count(), 0);
+    assert_eq!(inspector.get_total_wrap_count(), 3);
 }
 
 // ============================================================================
@@ -588,7 +589,8 @@ fn test_invariants_multi_user_interleaved_operations() {
     // Verify counts after revocations
     assert_eq!(inspector.get_wrap_count(&user1), 2);
     assert_eq!(inspector.get_wrap_count(&user2), 1);
-    assert_eq!(inspector.get_total_wrap_count(), 4);
+    // TotalWrapCount is a lifetime counter; revokes do not lower it.
+    assert_eq!(inspector.get_total_wrap_count(), 6);
 
     // Verify all invariants still hold
     assert!(inspector.latest_period_is_valid(&user1));
@@ -694,7 +696,7 @@ fn random_data_hash(env: &Env, rng: &mut SimRng) -> BytesN<32> {
 
 /// Records the largest read-byte cost seen for each contract entrypoint.
 fn record_read_bytes(env: &Env, max_read_bytes: &mut BTreeMap<&'static str, u64>, entrypoint: &'static str) {
-    let read_bytes = env.cost_estimate().resources().read_bytes as u64;
+    let read_bytes = env.cost_estimate().resources().disk_read_bytes as u64;
     let slot = max_read_bytes.entry(entrypoint).or_insert(0);
     *slot = (*slot).max(read_bytes);
 }

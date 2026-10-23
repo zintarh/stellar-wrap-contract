@@ -51,7 +51,7 @@ fn wrap_view(e: &Env, record: WrapRecord) -> WrapView {
 
 pub(crate) fn get_mint_timestamp(e: Env, user: Address, period: u64) -> Option<u64> {
     let wrap: Option<WrapRecord> = e.storage().persistent().get(&DataKey::Wrap(user, period));
-    wrap.map(|r| r.timestamp)
+    wrap.map(|r| r.created_at)
 }
 
 /// Return the ledger timestamp of the user's most recent state change via a

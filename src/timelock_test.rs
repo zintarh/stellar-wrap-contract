@@ -9,7 +9,7 @@ use ed25519_dalek::SigningKey;
 use soroban_sdk::{
     symbol_short,
     testutils::{Address as _, Events, Ledger},
-    xdr, Address, BytesN, Env, IntoVal, Symbol,
+    xdr, Address, BytesN, Env, IntoVal, Symbol, TryFromVal,
 };
 
 #[test]
@@ -337,7 +337,7 @@ mod grace_period_tests {
     }
 
     #[test]
-    #[should_panic(expected = "Error(Contract, #54)")]
+    #[should_panic(expected = "Error(Contract, #55)")]
     fn test_execute_just_outside_grace_period_fails() {
         // Execute at eta + GRACE_PERIOD + 1 should fail with TimelockOperationExpired
         let env = Env::default();
@@ -386,7 +386,7 @@ mod grace_period_tests {
     }
 
     #[test]
-    #[should_panic(expected = "Error(Contract, #55)")]
+    #[should_panic(expected = "Error(Contract, #56)")]
     fn test_sweep_before_grace_period_fails() {
         // Sweep before grace period ends should fail with TimelockOperationNotExpired
         let env = Env::default();
@@ -435,14 +435,13 @@ mod grace_period_tests {
         env.set_auths(&[]);
         client.timelock_sweep_expired(&id);
 
-        let events = env.events().all();
+        let events = crate::test_utils::contract_events(&env);
         let mut sweep_found = false;
         for (_contract_id, topics, _data) in events.into_iter() {
             if topics.len() >= 2 {
-                if topics.get(0).unwrap().into_val(&env) == symbol_short!("timelock").into_val(&env)
-                {
-                    let event_type = topics.get(1).unwrap().into_val(&env);
-                    if event_type == symbol_short!("sweep").into_val(&env) {
+                let topic = |i: u32| Symbol::try_from_val(&env, &topics.get(i).unwrap()).ok();
+                if topic(0) == Some(symbol_short!("timelock")) {
+                    if topic(1) == Some(symbol_short!("sweep")) {
                         sweep_found = true;
                     }
                 }

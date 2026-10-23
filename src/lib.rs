@@ -245,9 +245,9 @@ impl StellarWrapContract {
     }
     /// Updates the optional display metadata for an existing wrap.
     ///
-    /// Only the wrap owner (`user`) may update the metadata. Both fields are
-    /// optional: pass `None` to clear, or `Some(...)` to set. The description
-    /// is limited to 256 bytes and the image URL to 2048 bytes.
+    /// Admin-only. Both fields are optional: pass `None` to clear, or
+    /// `Some(...)` to set. The description is limited to 256 bytes and the
+    /// image URL to 2048 bytes.
     ///
     /// Emits a `set_wrap_metadata` event with the resulting metadata.
     pub fn set_wrap_metadata(
@@ -257,7 +257,7 @@ impl StellarWrapContract {
         description: Option<String>,
         image_url: Option<String>,
     ) {
-        wrap_record_helpers::set_wrap_metadata(e, user, period, description, image_url);
+        admin::set_wrap_metadata(e, user, period, description, image_url);
     }
 
     /// Transfers one wrap record and atomically charges the configured fee.
@@ -370,7 +370,7 @@ impl StellarWrapContract {
     /// The oracle must expose `verify_data_hash(BytesN<32>) -> bool`.
     /// Oracle invocation and ABI errors propagate to the caller.
     pub fn verify_with_oracle(e: Env, oracle: Address, data_hash: BytesN<32>) -> bool {
-        oracle::verify_data_hash(&e, &oracle, &data_hash)
+        oracle::verify_data_hash(&e, &oracle, &data_hash).unwrap_or_else(|err| oracle::fail(&e, err))
     }
 
     pub fn get_latest_wrap(e: Env, user: Address) -> Option<WrapRecord> {
@@ -591,8 +591,8 @@ impl StellarWrapContract {
     /// inside the alias module. The hash is stored as opaque 32-byte data so
     /// no raw personal information ever touches the chain.
     /// Does not require the contract to be initialized.
-    pub fn set_alias_hash(e: Env, user: Address, alias_hash: BytesN<32>) {
-        alias::set_alias_hash(e, user, alias_hash);
+    pub fn set_alias_hash(e: Env, user: Address, alias_hash: BytesN<32>) -> Result<(), ContractError> {
+        alias::set_alias_hash(e, user, alias_hash)
     }
 
     /// Return the alias hash for `user`, or `None` if one has not been set.
@@ -614,7 +614,7 @@ impl StellarWrapContract {
 
     /// Returns `true` if the user has opted out of future mints.
     pub fn is_opted_out(e: Env, user: Address) -> bool {
-        optout::is_opted_out(e, user)
+        optout::is_opted_out(&e, &user)
     }
 
     /// Return the current contract version number.
@@ -811,6 +811,12 @@ impl StellarWrapContract {
     /// the destination chain. Restores the locked wrap to `Active`.
     pub fn bridge_wrap_refund(e: Env, outbound_nonce: u64) {
         bridge::bridge_wrap_refund(e, outbound_nonce);
+    }
+
+    /// Admin: mark an outbound bridge request as honoured on the destination
+    /// chain. A completed request can no longer be refunded.
+    pub fn bridge_wrap_out_complete(e: Env, outbound_nonce: u64) {
+        bridge::bridge_wrap_out_complete(e, outbound_nonce);
     }
 
     /// Fulfill an inbound cross-chain wrap bridge transfer from external chain.
@@ -1150,7 +1156,7 @@ mod invalid_signature_test {
         );
 
         assert!(result.is_err());
-        assert_eq!(StellarWrapContract::balance_of(&e, user.clone()), 0i128);
-        assert_eq!(StellarWrapContract::get_latest_wrap(&e, user), None);
+        assert_eq!(client.balance_of(&user), 0i128);
+        assert_eq!(client.get_latest_wrap(&user), None);
     }
 }

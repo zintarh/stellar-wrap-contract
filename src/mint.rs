@@ -14,6 +14,10 @@ use crate::{
 pub const CURRENT_PAYLOAD_VERSION: u32 = 2;
 /// Default expiration duration for unverified wraps: 7 days in seconds.
 const DEFAULT_EXPIRATION_SECONDS: u64 = 7 * 24 * 60 * 60;
+/// Shortest expiration duration the admin may configure: 1 hour.
+pub const MIN_EXPIRATION_SECONDS: u64 = 60 * 60;
+/// Longest expiration duration the admin may configure: 30 days.
+pub const MAX_EXPIRATION_SECONDS: u64 = 30 * 24 * 60 * 60;
 pub const MIN_PERIOD_YEAR: u64 = 2024;
 pub const MAX_PERIOD_YEAR: u64 = 2100;
 
@@ -32,9 +36,11 @@ pub fn validate_period(e: &Env, period: u64) {
 /// from an uninitialised buffer, and storing it would permanently record a
 /// meaningless wrap.
 pub fn validate_data_hash(e: &Env, data_hash: &BytesN<32>) {
-    if *data_hash == BytesN::from_array(e, &[0u8; 32]) {
-        panic_with_error!(e, ContractError::InvalidDataHash);
-    }
+    guard::ensure(
+        e,
+        *data_hash != BytesN::from_array(e, &[0u8; 32]),
+        ContractError::InvalidDataHash,
+    );
 }
 
 fn validate_payload_version(e: &Env, version: u32) {
@@ -184,16 +190,21 @@ pub(crate) fn insert_wrap_record(e: &Env, user: &Address, period: u64, record: &
         .unwrap_or(soroban_sdk::Vec::new(e));
 
     if !periods.contains(period) {
+        // Account for the entry only when the key is created, matching the
+        // refund in `revoke::remove_wrap_and_reindex` when it is deleted.
+        let creates_entry = periods.is_empty();
         periods.push_back(period);
         e.storage().persistent().set(&user_periods_key, &periods);
         e.storage()
             .persistent()
             .extend_ttl(&user_periods_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
 
-        storage_accounting::add_storage_bytes(
-            e,
-            storage_accounting::estimate_userperiods_bytes_new(),
-        );
+        if creates_entry {
+            storage_accounting::add_storage_bytes(
+                e,
+                storage_accounting::estimate_userperiods_bytes_new(),
+            );
+        }
     }
 
     // WrapPeriods: transfer-index maintained alongside UserPeriods. A user that
@@ -280,7 +291,10 @@ pub(crate) fn mint_wrap(
     crate::events::publish_event(&e, crate::events::Event::Mint(user, period, archetype));
 }
 
-pub const MAX_BATCH_SIZE: u32 = 100;
+/// Largest batch accepted by `mint_wrap_batch`. Each item publishes a ~204 byte
+/// event and a transaction may emit at most 16 KiB of events, so 64 items keeps
+/// a full batch under the network limit with headroom.
+pub const MAX_BATCH_SIZE: u32 = 64;
 
 #[allow(deprecated)] // TODO(#718): migrate to #[contractevent]
 pub(crate) fn mint_wrap_batch(
@@ -331,7 +345,6 @@ pub(crate) fn mint_wrap_batch(
             validate_payload_version(&e, item.payload_version);
             guard::ensure(&e, now <= item.valid_until, ContractError::SignatureExpired);
         }
-        let payload_version = items.get(0).unwrap().payload_version;
         guard::require_ok(
             &e,
             crate::signature::verify_batch_aggregated_signature(
@@ -339,7 +352,7 @@ pub(crate) fn mint_wrap_batch(
                 &admin_pubkey,
                 &contract_id,
                 &items,
-                payload_version,
+                crate::signature::BATCH_MINT_SCHEME_VERSION,
                 &agg_sig,
             ),
         );
@@ -447,7 +460,11 @@ pub(crate) fn get_expiration_duration(e: &Env) -> u64 {
 /// can be expired by anyone via [`expire_wrap`].
 pub(crate) fn set_expiration_duration(e: &Env, duration: u64) {
     crate::admin::read_admin(e).require_auth();
-    guard::ensure(e, duration != 0, ContractError::InvalidExpirationDuration);
+    guard::ensure(
+        e,
+        (MIN_EXPIRATION_SECONDS..=MAX_EXPIRATION_SECONDS).contains(&duration),
+        ContractError::InvalidExpirationDuration,
+    );
     e.storage()
         .instance()
         .set(&DataKey::ExpirationDuration, &duration);

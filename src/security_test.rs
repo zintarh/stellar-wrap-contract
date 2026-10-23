@@ -14,6 +14,7 @@ use soroban_sdk::{
 
 use super::*;
 use crate::signature::construct_mint_payload;
+use crate::test_utils::ContractErrorCode;
 
 /// Test 1: Replay Attack Simulation
 /// Ensures that a valid signature cannot be reused for the same period
@@ -1272,7 +1273,7 @@ fn test_all_mutating_entrypoints_honor_pause() {
     let pubkey = BytesN::from_array(&env, &[11u8; 32]);
 
     env.mock_all_auths();
-    client.initialize(&admin, &admin_pubkey);
+    client.initialize(&admin, &pubkey);
 
     client.pause();
 
@@ -1282,18 +1283,6 @@ fn test_all_mutating_entrypoints_honor_pause() {
 
     let res = client.try_mint_wrap(&user, &202401, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &signature);
     assert!(res.is_err(), "mint_wrap should fail when paused");
-
-    // Attacker submits hash B together with the signature that was made for hash A.
-    // The contract must detect the mismatch and panic with InvalidSignature (#5).
-    client.mint_wrap(
-        &user,
-        &period,
-        &archetype,
-        &data_hash_b, // tampered: different from what was signed
-        &CURRENT_PAYLOAD_VERSION,
-        &u64::MAX,
-        &signature,
-    );
 
     let res = client.try_transfer_wrap(&user, &admin, &202401);
     assert!(res.is_err(), "transfer_wrap should fail when paused");
@@ -1326,7 +1315,15 @@ fn test_all_mutating_entrypoints_honor_pause() {
     let res = client.try_bridge_wrap_out(&user, &1, &Bytes::new(&env), &202401);
     assert!(res.is_err(), "bridge_wrap_out should fail when paused");
 
-    let res = client.try_bridge_wrap_in(&1, &1, &user, &202401, &archetype, &data_hash);
+    let res = client.try_bridge_wrap_in(
+        &1,
+        &1,
+        &user,
+        &202401,
+        &archetype,
+        &data_hash,
+        &soroban_sdk::Vec::new(&env),
+    );
     assert!(res.is_err(), "bridge_wrap_in should fail when paused");
 }
 
@@ -1346,10 +1343,12 @@ fn test_create_admin_proposal_duration_overflow_asserts_arithmetic_overflow() {
         li.timestamp = 1;
     });
 
-    let result = client.try_create_admin_proposal(&u64::MAX);
+    let result =
+        client.try_create_admin_proposal(&admin, &Address::generate(&env), &u64::MAX);
     assert_eq!(
         result.err().unwrap().contract_error(),
-        Some(ContractError::ArithmeticOverflow as u32)
+        // The duration bound rejects u64::MAX before the end time is computed.
+        Some(ContractError::InvalidProposalDuration as u32)
     );
 }
 
@@ -1390,13 +1389,15 @@ fn test_bridge_wrap_out_nonce_overflow_asserts_arithmetic_overflow() {
         &signature,
     );
 
+    client.set_chain_status(&1, &true);
     env.as_contract(&contract_id, || {
         env.storage()
             .instance()
-            .set(&Symbol::new(&env, "outbound_nonce"), &u32::MAX);
+            .set(&crate::DataKey::OutboundBridgeNonce, &u64::MAX);
     });
 
-    let result = client.try_bridge_wrap_out(&user, &1, &Bytes::new(&env), &period);
+    let recipient = Bytes::from_array(&env, b"0x1234567890abcdef1234567890abcdef12345678");
+    let result = client.try_bridge_wrap_out(&user, &1, &recipient, &period);
     assert_eq!(
         result.err().unwrap().contract_error(),
         Some(ContractError::ArithmeticOverflow as u32)

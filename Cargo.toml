@@ -16,7 +16,7 @@ path = "src/lib.rs"
 testutils = ["soroban-sdk/testutils"]
 
 [dependencies]
-soroban-sdk = "=27.0.3"
+soroban-sdk = { version = "=27.0.3", features = ["alloc"] }
 # In-guest Ed25519 verification dependency (see docs/adr/0001-in-guest-ed25519.md).
 # default-features = false is required to prevent pulling in std on no_std targets (wasm32v1-none / wasm32-unknown-unknown).
 # ed25519-dalek is a direct dependency (not just dev) to force Cargo version

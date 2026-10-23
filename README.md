@@ -442,7 +442,7 @@ tree layout, and proof ordering.
 
 ## Batch minting
 
-`mint_wrap_batch` mints up to `MAX_BATCH_SIZE` (100) wraps in one call. Each item
+`mint_wrap_batch` mints up to `MAX_BATCH_SIZE` (64) wraps in one call. Each item
 is validated for period, payload version, authorization, and signature.
 
 ### Signature modes
@@ -1322,8 +1322,8 @@ shapes. `<..>` marks a value that varies per call.
 | `update_admin_pubkey` | `v1 / pubkey / rotate` | `new_pubkey: BytesN<32>` |
 | `set_wrap_metadata` | `v1 / admin / metadata` | `(user, period, description, image_url)` |
 | `mint_wrap` | `v1 / wrap / mint` | `Event::Mint(user, period, archetype)` |
-| `mint_wrap_batch` | `Mint / <user> / <period>` | `MintEventData::Mint(user, period, archetype)` |
-| `expire_wrap` | `expire / <user> / <period>` | `symbol_short!(\` |
+| `mint_wrap_batch` | `mint / <user> / <period>` | `MintEventData::Mint(user, period, archetype)` |
+| `expire_wrap` | `expire / <user> / <period>` | `symbol_short!("expired")` |
 | `transfer_wrap (no fee)` | `transfer / <from> / <to> / <period>` | `()` |
 | `transfer_wrap (fee charged)` | `transfer / <from> / <to> / <period>` | `(token, recipient, amount)` |
 | `backfill_wrap_periods` | `backfill / <user>` | `period_count: u32` |
