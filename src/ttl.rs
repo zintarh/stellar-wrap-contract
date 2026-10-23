@@ -11,8 +11,7 @@ use crate::mint::MAX_BATCH_SIZE;
 use crate::storage_types::DataKey;
 use crate::ContractError;
 
-/// TVL (ledgers) applied to persistent entries (/1 year at 5s/ledger).
-const TTL_ONE_YEAR: u32 = 17_280 * 365;
+pub(crate) use crate::constants::TTL_ONE_YEAR;
 
 /// Temporary TTL constant for short-lived data (30 days).
 pub(crate) const TTL_TEMP: u32 = 17_280 * 30;
@@ -36,7 +35,7 @@ fn calculate_live_until_ledger(e: &Env) -> u32 {
 /// All persistent storage entries are stored with a TTL of ~1 year.
 ///
 /// **Automatic renewal (metadata only):** When `mint_wrap` is called, the
-/// `WrapCount` and `WrapMetadata` entries are automatically renewed.
+/// The user's `WrapCount` entry is automatically renewed.
 ///
 /// **Manual renewal (individual wraps):** Historical wrap records for specific
 /// `(user, token)` pairs are **not** automatically renewed. Anyone can call
@@ -71,7 +70,7 @@ pub(crate) fn extend_ttl(e: Env, user: Address, period: u64) {
     e.storage().instance().extend_ttl(TTL_ONE_YEAR, TTL_ONE_YEAR);
 }
 
-/// Renew the per-user metadata keys (`WrapCount`, `WrapMetadata`) when present.
+/// Renew the per-user `WrapCount` key when present.
 ///
 /// Shared by [`extend_ttl`] and [`extend_ttl_batch`] so both entrypoints apply
 /// the same one-year window to the metadata the user's records depend on.
@@ -81,13 +80,6 @@ fn extend_user_metadata_ttl(e: &Env, user: &Address) {
         e.storage()
             .persistent()
             .extend_ttl(&count_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
-    }
-
-    let metadata_key = DataKey::WrapMetadata(user.clone());
-    if e.storage().persistent().has(&metadata_key) {
-        e.storage()
-            .persistent()
-            .extend_ttl(&metadata_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
     }
 }
 
@@ -149,7 +141,7 @@ pub(crate) fn extend_ttl_batch(e: Env, user: Address, periods: Vec<u64>) {
 /// Admin-only function to extend the TTL for all metadata entries associated
 /// with a user.
 ///
-/// This extends the TTL for `WrapCount` and `WrapMetadata` entries. Individual
+/// This extends the TTL for the `WrapCount` entry. Individual
 /// wrap records are **not** extended — use [`extend_ttl`] or
 /// [`extend_ttl_batch`] for those.
 ///
@@ -167,13 +159,6 @@ pub(crate) fn renew_all_ttls(e: Env, user: Address) {
         e.storage()
             .persistent()
             .extend_ttl(&count_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
-    }
-
-    let metadata_key = DataKey::WrapMetadata(user);
-    if e.storage().persistent().has(&metadata_key) {
-        e.storage()
-            .persistent()
-            .extend_ttl(&metadata_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
     }
 
     e.storage().instance().extend_ttl(TTL_ONE_YEAR, TTL_ONE_YEAR);

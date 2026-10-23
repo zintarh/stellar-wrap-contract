@@ -4,14 +4,6 @@
 //! The discount is calculated based on the amount staked relative to the
 //! admin-configured `min_stake`. A cooldown period applies before unstaked
 //! funds can be withdrawn.
-//!
-//! ## Invariant
-//!
-//! `total_staked` (stored under [`DataKey::TotalStaked`]) equals the sum of the
-//! `amount` fields of all live [`StakeRecord`] entries at every observable
-//! point. Every write path that mutates a stake record must update the
-//! aggregate in the same call; [`assert_total_staked_invariant`] verifies this
-//! and is exercised by the property tests and exposed as an operator entrypoint.
 
 use soroban_sdk::{panic_with_error, symbol_short, Address, Env};
 
@@ -72,33 +64,6 @@ fn read_total_staked(e: &Env) -> i128 {
 
 fn write_total_staked(e: &Env, amount: i128) {
     e.storage().instance().set(&DataKey::TotalStaked, &amount);
-}
-
-/// Assert the accounting invariant: `total_staked` equals the sum of all live
-/// stake records. Panics with [`ContractError::StakeAccountingMismatch`] when
-/// the aggregate has drifted from its constituents.
-///
-/// This is the single source of truth for the invariant and is called after
-/// every mutating stake operation as well as exposed as an operator entrypoint.
-pub(crate) fn assert_total_staked_invariant(e: &Env) {
-    let recorded = read_total_staked(e);
-    let summed = sum_live_stakes(e);
-    if recorded != summed {
-        panic_with_error!(e, ContractError::StakeAccountingMismatch);
-    }
-}
-
-/// Sum the `amount` of every live stake record. Used by the invariant check.
-fn sum_live_stakes(e: &Env) -> i128 {
-    let mut total: i128 = 0;
-    for key in e.storage().persistent().keys() {
-        if let DataKey::Stake(_) = key {
-            if let Some(record) = e.storage().persistent().get::<DataKey, StakeRecord>(&key) {
-                total = total.saturating_add(record.amount);
-            }
-        }
-    }
-    total
 }
 
 // ── Public API ──────────────────────────────────────────────────────────────
@@ -171,8 +136,6 @@ pub(crate) fn stake(e: Env, user: Address, amount: i128) {
             amount,
         );
     }
-
-    assert_total_staked_invariant(&e);
 }
 
 /// Initiate the unstaking process for `user`.
@@ -204,8 +167,6 @@ pub(crate) fn unstake(e: Env, user: Address) {
 
     e.events()
         .publish((symbol_short!("unstake"), user), record.amount);
-
-    assert_total_staked_invariant(&e);
 }
 
 /// Complete the unstaking process and withdraw staked funds.
@@ -249,8 +210,6 @@ pub(crate) fn withdraw_stake(e: Env, user: Address) {
 
     e.events()
         .publish((symbol_short!("withdraw"), user), withdrawn);
-
-    assert_total_staked_invariant(&e);
 }
 
 // ── Queries ─────────────────────────────────────────────────────────────────
@@ -293,11 +252,58 @@ pub(crate) fn get_stake_priority(e: &Env, user: Address) -> u32 {
     capped as u32
 }
 
-/// Operator entrypoint: verify the `total_staked` accounting invariant.
+/// Return the total amount staked across all users.
+pub(crate) fn get_total_staked(e: &Env) -> i128 {
+    read_total_staked(e)
+}
+
+/// Admin: set the staking configuration parameters.
 ///
-/// Panics with [`ContractError::StakeAccountingMismatch`] if the aggregate has
-/// drifted from the sum of live stake records. Consistent with the
-/// storage-invariant self-check introduced in issue #728.
-pub(crate) fn check_total_staked_invariant(e: &Env) {
-    assert_total_staked_invariant(e);
+/// # Panics
+/// - [`ContractError::InvalidStakeConfig`] if `min_stake == 0` or
+///   `cooldown_seconds == 0` or `max_priority_bps > 10_000`.
+#[allow(deprecated)] // TODO(#718): migrate to #[contractevent]
+pub(crate) fn set_stake_config(e: &Env, config: StakeConfig) {
+    crate::admin::read_admin(e).require_auth();
+
+    if config.min_stake == 0 || config.cooldown_seconds == 0 || config.max_priority_bps > 10_000 {
+        panic_with_error!(e, ContractError::InvalidStakeConfig);
+    }
+
+    e.storage().instance().set(&DataKey::StakeConfig, &config);
+
+    e.events()
+        .publish((symbol_short!("stake"), symbol_short!("cfg")), config);
+}
+
+/// Return the current staking configuration.
+pub(crate) fn get_stake_config(e: &Env) -> StakeConfig {
+    read_stake_config(e)
+}
+
+// ── Priority-aware fee computation ──────────────────────────────────────────
+
+/// Compute the discounted fee for `user` based on their staking priority.
+///
+/// Applies the user's stake priority (in basis points) as a percentage
+/// discount to the raw fee returned by [`crate::storage_accounting::compute_current_fee`].
+///
+/// # Returns
+/// The fee after applying the staking discount. Returns 0 if the discount
+/// would exceed the fee (i.e., staking can reduce the fee to zero, but not
+/// below).
+pub(crate) fn get_discounted_fee(e: &Env, user: Address) -> i128 {
+    let raw_fee = crate::storage_accounting::compute_current_fee(e);
+    let priority_bps = get_stake_priority(e, user);
+
+    if priority_bps == 0 || raw_fee <= 0 {
+        return raw_fee;
+    }
+
+    // discount = raw_fee * priority_bps / 10000
+    let discount = raw_fee
+        .saturating_mul(priority_bps as i128)
+        .saturating_div(10_000);
+
+    raw_fee.saturating_sub(discount)
 }

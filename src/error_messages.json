@@ -340,5 +340,17 @@
     "code": 63,
     "actionable": true,
     "message": "The data hash is all zeros. Recompute it from the wrap data and resubmit."
+  },
+  {
+    "variant": "AliasConflict",
+    "code": 64,
+    "actionable": true,
+    "message": "That alias is already in use or matches an account address. Choose a different alias."
+  },
+  {
+    "variant": "MetadataTooLong",
+    "code": 65,
+    "actionable": true,
+    "message": "The description must be at most 256 bytes and the image URL at most 2048 bytes. Shorten them and resubmit."
   }
 ]

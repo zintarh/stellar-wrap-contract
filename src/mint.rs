@@ -32,9 +32,11 @@ pub fn validate_period(e: &Env, period: u64) {
 /// from an uninitialised buffer, and storing it would permanently record a
 /// meaningless wrap.
 pub fn validate_data_hash(e: &Env, data_hash: &BytesN<32>) {
-    if *data_hash == BytesN::from_array(e, &[0u8; 32]) {
-        panic_with_error!(e, ContractError::InvalidDataHash);
-    }
+    guard::ensure(
+        e,
+        *data_hash != BytesN::from_array(e, &[0u8; 32]),
+        ContractError::InvalidDataHash,
+    );
 }
 
 fn validate_payload_version(e: &Env, version: u32) {

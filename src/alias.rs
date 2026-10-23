@@ -22,29 +22,28 @@
 //! 2. An alias hash may not already be claimed by a different address, so a
 //!    user cannot take over a label that another user has registered.
 //!
-//! Both violations are rejected with `Error::AliasConflict`.
+//! Both violations are rejected with `ContractError::AliasConflict`.
 
-use soroban_sdk::{Address, BytesN, Env};
+use soroban_sdk::{xdr::ToXdr, Address, BytesN, Env};
 
 use crate::constants::TTL_ONE_YEAR;
-use crate::errors::Error;
-use crate::DataKey;
+use crate::{ContractError, DataKey};
 
 /// Store a 32-byte alias hash for the calling user.
 ///
 /// `require_auth` is called so only the user themselves can set or update
 /// their alias hash — no admin involvement required.
 ///
-/// Rejects the write with `Error::AliasConflict` if the hash would shadow an
+/// Rejects the write with `ContractError::AliasConflict` if the hash would shadow an
 /// address or is already claimed by another user. Re-setting the caller's own
 /// current alias is allowed (idempotent update).
-pub(crate) fn set_alias_hash(e: Env, user: Address, alias_hash: BytesN<32>) -> Result<(), Error> {
+pub(crate) fn set_alias_hash(e: Env, user: Address, alias_hash: BytesN<32>) -> Result<(), ContractError> {
     user.require_auth();
 
     // An alias must not shadow a real address key. The caller's own address is
     // included: a label equal to an account key is ambiguous and rejected.
-    if alias_hash == user.clone().to_bytes() {
-        return Err(Error::AliasConflict);
+    if address_key(&e, &user) == alias_hash {
+        return Err(ContractError::AliasConflict);
     }
 
     // An alias must be unique across users. Re-setting the caller's own alias
@@ -52,7 +51,7 @@ pub(crate) fn set_alias_hash(e: Env, user: Address, alias_hash: BytesN<32>) -> R
     let owner_key = DataKey::AliasOwner(alias_hash.clone());
     if let Some(existing) = e.storage().persistent().get::<DataKey, Address>(&owner_key) {
         if existing != user {
-            return Err(Error::AliasConflict);
+            return Err(ContractError::AliasConflict);
         }
     }
 
@@ -76,4 +75,12 @@ pub(crate) fn set_alias_hash(e: Env, user: Address, alias_hash: BytesN<32>) -> R
 /// mint guard are keyed by `Address` and are unaffected by aliases.
 pub(crate) fn get_alias_hash(e: Env, user: Address) -> Option<BytesN<32>> {
     e.storage().persistent().get(&DataKey::AliasHash(user))
+}
+
+/// The 32-byte key behind `address`: the Ed25519 public key of an account or
+/// the hash of a contract. Both are the trailing 32 bytes of the address XDR.
+fn address_key(e: &Env, address: &Address) -> BytesN<32> {
+    let xdr = address.clone().to_xdr(e);
+    let key = xdr.slice(xdr.len() - 32..);
+    BytesN::try_from(key).unwrap()
 }
