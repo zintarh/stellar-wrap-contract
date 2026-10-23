@@ -269,6 +269,15 @@ pub(crate) fn execute(e: Env, id: BytesN<32>) {
         },
         TimelockAction::SetAdminPubKey(key) => {
             e.storage().instance().set(&DataKey::AdminPubKey, &key);
+            e.storage().instance().remove(&DataKey::PendingAdminPubKey);
+            e.events().publish(
+                (
+                    symbol_short!("v1"),
+                    symbol_short!("pubkey"),
+                    symbol_short!("rotate"),
+                ),
+                key,
+            );
         },
         TimelockAction::SetWhitelistRoot(root) => {
             e.storage().instance().set(&DataKey::WhitelistRoot, &root);

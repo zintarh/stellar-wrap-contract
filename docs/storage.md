@@ -43,6 +43,8 @@ Every variant of the `DataKey` enum is documented below with its assigned storag
 | `Admin` | Instance | `Address` | Contract Instance Lifetime | 32 bytes | Core protocol admin authorization address. Fixed size configuration. |
 | `AdminPubKey` | Instance | `BytesN<32>` | Contract Instance Lifetime | 32 bytes | Backend Ed25519 public key used for payload signature verification. |
 | `PendingAdmin` | Instance | `Address` | Contract Instance Lifetime | 32 bytes | Proposed new admin address during two-step admin transfer handover. |
+| `PendingAdminPubKey` | Instance | `BytesN<32>` | Contract Instance Lifetime | 32 bytes | Proposed new admin public key during two-step key rotation. |
+| `SigningKeyNonce` | Instance | `u64` | Contract Instance Lifetime | 8 bytes | Nonce sequence counter for signing key rotation challenges. |
 | `Wrap(Address, u64)` | Persistent | `WrapRecord` | 1 Year (`6,307,200` ledgers) | ~64–100 bytes | Core user wrap record keyed by `(user, period)`. Unbounded collection. |
 | `WrapCount(Address)` | Persistent | `u32` | 1 Year (`6,307,200` ledgers) | 4 bytes | Number of active wraps owned by a user. |
 | `LatestPeriod(Address)` | Persistent | `u64` | 1 Year (`6,307,200` ledgers) | 8 bytes | Highest period index minted for a user. |

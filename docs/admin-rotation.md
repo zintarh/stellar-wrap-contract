@@ -34,11 +34,14 @@ Each privileged function appears exactly once, with all of its routes.
 | `propose_admin` | Admin direct | Admin direct (no delay) |
 | `accept_admin` | Pending admin direct | Pending admin direct (no delay) |
 | `cancel_proposed_admin` | Admin direct | Admin direct (no delay) |
+| `propose_signing_key` | Admin direct | Admin direct (no delay) |
+| `accept_signing_key` | Anyone with valid challenge signature | Caller with signature (no delay) |
+| `cancel_proposed_signing_key` | Admin direct | Admin direct (no delay) |
+| `update_admin_pubkey` | Admin direct; governance → timelock | Admin direct (no delay) |
 | `pause` | Admin direct; governance → timelock | Admin direct (no delay) |
 | `unpause` | Admin direct; governance → timelock | Admin direct (no delay) |
 | `upgrade` | Admin direct; governance → timelock | Admin direct (no delay) |
 | `migrate` | Admin direct; governance → timelock | Admin direct (no delay) |
-| `update_admin_pubkey` (via upgrade + migrate) | Admin direct; governance → timelock | Admin direct (no delay) |
 | Mint (payload-signed) | Bridge relayer | Bridge relayer (no delay) |
 
 ### Actions reachable by more than one route with different guarantees
@@ -265,36 +268,76 @@ flows. **Do not infer state from events alone.**
 
 ## Signing pubkey rotation
 
-The Ed25519 signing pubkey (`DataKey::AdminPubKey`) is set during `initialize`
-and is **not** exposed via a dedicated rotation function. Rotating it requires a
-contract upgrade that includes a migration:
+The Ed25519 signing pubkey (`DataKey::AdminPubKey`) verifies mint payloads.
+To prevent accidental lockout caused by key typos, pubkey rotation requires
+proving cryptographic possession of the new key through a two-step confirmation
+handover:
 
-1. Deploy a new WASM version that exposes an `update_admin_pubkey` function (or
-   equivalent migration path).
-2. Call `upgrade` with the new WASM hash (requires admin auth):
-   ```bash
-   stellar contract invoke \
-     --id <CONTRACT_ID> \
-     --network <NETWORK> \
-     --source <ADMIN_SECRET> \
-     -- upgrade \
-     --new_wasm_hash <NEW_WASM_HASH_HEX>
-   ```
-3. Call `migrate` with the new migration version to apply the key change:
-   ```bash
-   stellar contract invoke \
-     --id <CONTRACT_ID> \
-     --network <NETWORK> \
-     --source <ADMIN_SECRET> \
-     -- migrate \
-     --version <NEXT_MIGRATION_VERSION>
-   ```
-4. Verify with `health` that `has_signing_key` is still `true` and test a mint
-   with a payload signed by the new key on testnet before mainnet.
+### Ruta A — Two-step key rotation (`propose_signing_key` + `accept_signing_key`) — recommended
 
-> **Key difference from admin address rotation:** rotating the signing pubkey
-> requires a contract upgrade and is a more involved process. Plan for a
-> maintenance window and test thoroughly on testnet.
+This path requires the incoming key to sign an on-chain challenge bound to the
+contract ID and proposal nonce before becoming active.
+
+**Step 1 — Current admin proposes a new signing pubkey:**
+```bash
+stellar contract invoke \
+  --id <CONTRACT_ID> \
+  --network <NETWORK> \
+  --source <CURRENT_ADMIN_SECRET> \
+  -- propose_signing_key \
+  --new_pubkey <NEW_PUBKEY_HEX>
+```
+This increments the rotation nonce (`get_signing_key_nonce`) and stores `PendingAdminPubKey`.
+
+**Step 2 — Verify pending proposal and fetch nonce:**
+```bash
+stellar contract invoke \
+  --id <CONTRACT_ID> \
+  --network <NETWORK> \
+  -- get_pending_signing_key
+
+stellar contract invoke \
+  --id <CONTRACT_ID> \
+  --network <NETWORK> \
+  -- get_signing_key_nonce
+```
+
+**Step 3 — Sign challenge and accept:**
+The new key signs the canonical challenge payload:
+`b"stellar-wrap-pubkey-rot" || XDR(SigningKeyChallenge { contract_id, nonce })`.
+
+Submit the 64-byte Ed25519 signature:
+```bash
+stellar contract invoke \
+  --id <CONTRACT_ID> \
+  --network <NETWORK> \
+  -- accept_signing_key \
+  --signature <SIGNATURE_HEX>
+```
+
+The contract cryptographically validates the signature in-guest with `verify_strict`.
+Upon successful verification:
+- `DataKey::AdminPubKey` is replaced with `new_pubkey`.
+- `DataKey::PendingAdminPubKey` is removed.
+- An event `("v1", "pubkey", "rotate")` carrying `new_pubkey` is emitted.
+
+**Cancel a pending proposal:**
+If an incorrect key was proposed before acceptance:
+```bash
+stellar contract invoke \
+  --id <CONTRACT_ID> \
+  --network <NETWORK> \
+  --source <CURRENT_ADMIN_SECRET> \
+  -- cancel_proposed_signing_key
+```
+
+### Ruta B — Emergency direct replacement (timelock / governor)
+
+Direct replacement (`update_admin_pubkey`) bypasses cryptographic challenge
+verification and is intended only for emergency recovery. Once the timelock
+is enabled, direct calls to `update_admin_pubkey` are rejected; operators
+must schedule `TimelockAction::SetAdminPubKey(new_pubkey)` through the timelock
+or execute a governance proposal.
 
 ---
 
@@ -302,17 +345,18 @@ contract upgrade that includes a migration:
 
 | Scenario | Recovery action |
 |---|---|
-| Wrong address proposed, not yet accepted (Ruta B) | Current admin calls `cancel_proposed_admin` |
-| Tx not sent yet (Ruta A) | Do not broadcast; re-run with correct address |
+| Wrong address proposed, not yet accepted (Admin) | Current admin calls `cancel_proposed_admin` |
+| Wrong signing key proposed, not yet accepted (Pubkey) | Current admin calls `cancel_proposed_signing_key` |
+| Tx not sent yet | Do not broadcast; re-run with correct address / key |
 | Wrong admin active, new admin **cooperates** | New admin calls `update_admin` to the correct address |
 | Wrong admin active, new admin **does not cooperate** | Requires governance → timelock `update_admin`; subject to timelock delay |
+| Wrong pubkey active | Admin initiates new two-step rotation with valid key, or schedules timelock emergency update |
 
-**The safest default is always Ruta B (propose + accept).** It provides a
-cancel window and requires the new admin to prove key control before the old
-admin loses access.
+**The safest default is always the two-step rotation (propose + accept).** It provides a
+cancel window and requires proof of key possession before changes take effect.
 
 For mainnet rotations, always rehearse the full procedure on testnet with the
-exact addresses involved before executing on mainnet.
+exact keys involved before executing on mainnet.
 
 ---
 

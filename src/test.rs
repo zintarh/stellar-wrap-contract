@@ -3123,6 +3123,8 @@ fn test_storage_md_documents_every_datakey_variant() {
         "Admin",
         "AdminPubKey",
         "PendingAdmin",
+        "PendingAdminPubKey",
+        "SigningKeyNonce",
         "Wrap",
         "WrapCount",
         "LatestPeriod",
