@@ -12,13 +12,19 @@
 //! point. Every write path that mutates a stake record must update the
 //! aggregate in the same call; [`assert_total_staked_invariant`] verifies this
 //! and is exercised by the property tests and exposed as an operator entrypoint.
+//!
+//! ## Storage access
+//!
+//! All persistent and instance storage access for stake state goes through the
+//! `store` module (see `crate::store::stake`). This module never calls
+//! `e.storage()` directly.
 
 use soroban_sdk::{panic_with_error, symbol_short, Address, Env};
 
-use crate::constants::TTL_ONE_YEAR;
+use crate::store::stake as stake_store;
 use crate::{
     storage_types::{StakeConfig, StakeRecord},
-    ContractError, DataKey,
+    ContractError,
 };
 
 const DEFAULT_MIN_STAKE: i128 = 100;
@@ -28,51 +34,18 @@ const DEFAULT_MAX_PRIORITY_BPS: u32 = 5_000; // 50% max discount
 
 // ── Config helpers ──────────────────────────────────────────────────────────
 
-/// Read the current stake config from instance storage, falling back to
-/// sensible defaults when none has been set.
+/// Read the current stake config, falling back to sensible defaults when none
+/// has been set.
 fn read_stake_config(e: &Env) -> StakeConfig {
-    e.storage()
-        .instance()
-        .get(&DataKey::StakeConfig)
-        .unwrap_or(StakeConfig {
-            min_stake: DEFAULT_MIN_STAKE,
-            cooldown_seconds: DEFAULT_COOLDOWN_SECONDS,
-            priority_multiplier_bps: DEFAULT_PRIORITY_MULTIPLIER_BPS,
-            max_priority_bps: DEFAULT_MAX_PRIORITY_BPS,
-        })
+    stake_store::config(e).unwrap_or(StakeConfig {
+        min_stake: DEFAULT_MIN_STAKE,
+        cooldown_seconds: DEFAULT_COOLDOWN_SECONDS,
+        priority_multiplier_bps: DEFAULT_PRIORITY_MULTIPLIER_BPS,
+        max_priority_bps: DEFAULT_MAX_PRIORITY_BPS,
+    })
 }
 
-// ── Internal helpers ────────────────────────────────────────────────────────
-
-/// Read the stake record for `user`, returning `None` if not found.
-fn read_stake(e: &Env, user: &Address) -> Option<StakeRecord> {
-    e.storage().persistent().get(&DataKey::Stake(user.clone()))
-}
-
-fn write_stake(e: &Env, user: &Address, record: &StakeRecord) {
-    let key = DataKey::Stake(user.clone());
-    e.storage().persistent().set(&key, record);
-    e.storage()
-        .persistent()
-        .extend_ttl(&key, TTL_ONE_YEAR, TTL_ONE_YEAR);
-}
-
-fn remove_stake(e: &Env, user: &Address) {
-    e.storage()
-        .persistent()
-        .remove(&DataKey::Stake(user.clone()));
-}
-
-fn read_total_staked(e: &Env) -> i128 {
-    e.storage()
-        .instance()
-        .get(&DataKey::TotalStaked)
-        .unwrap_or(0i128)
-}
-
-fn write_total_staked(e: &Env, amount: i128) {
-    e.storage().instance().set(&DataKey::TotalStaked, &amount);
-}
+// ── Invariant ───────────────────────────────────────────────────────────────
 
 /// Assert the accounting invariant: `total_staked` equals the sum of all live
 /// stake records. Panics with [`ContractError::StakeAccountingMismatch`] when
@@ -81,24 +54,11 @@ fn write_total_staked(e: &Env, amount: i128) {
 /// This is the single source of truth for the invariant and is called after
 /// every mutating stake operation as well as exposed as an operator entrypoint.
 pub(crate) fn assert_total_staked_invariant(e: &Env) {
-    let recorded = read_total_staked(e);
-    let summed = sum_live_stakes(e);
+    let recorded = stake_store::total_staked(e);
+    let summed = stake_store::sum_live_stakes(e);
     if recorded != summed {
         panic_with_error!(e, ContractError::StakeAccountingMismatch);
     }
-}
-
-/// Sum the `amount` of every live stake record. Used by the invariant check.
-fn sum_live_stakes(e: &Env) -> i128 {
-    let mut total: i128 = 0;
-    for key in e.storage().persistent().keys() {
-        if let DataKey::Stake(_) = key {
-            if let Some(record) = e.storage().persistent().get::<DataKey, StakeRecord>(&key) {
-                total = total.saturating_add(record.amount);
-            }
-        }
-    }
-    total
 }
 
 // ── Public API ──────────────────────────────────────────────────────────────
@@ -123,7 +83,7 @@ pub(crate) fn stake(e: Env, user: Address, amount: i128) {
         panic_with_error!(e, ContractError::StakeTooLow);
     }
 
-    if let Some(existing) = read_stake(&e, &user) {
+    if let Some(existing) = stake_store::record(&e, &user) {
         // If an unstake is already in progress, reject new stakes until resolved.
         if existing.unstaking_at != 0 {
             panic_with_error!(e, ContractError::StakeCooldownActive);
@@ -139,13 +99,13 @@ pub(crate) fn stake(e: Env, user: Address, amount: i128) {
             staked_at: existing.staked_at, // keep original stake time
             unstaking_at: 0,
         };
-        write_stake(&e, &user, &updated);
+        stake_store::set_record(&e, &user, &updated);
 
-        let total = read_total_staked(&e);
+        let total = stake_store::total_staked(&e);
         let new_total = total
             .checked_add(amount)
             .unwrap_or_else(|| panic_with_error!(e, ContractError::StakeArithmeticOverflow));
-        write_total_staked(&e, new_total);
+        stake_store::set_total_staked(&e, new_total);
 
         e.events().publish(
             (symbol_short!("stake"), user.clone(), symbol_short!("add")),
@@ -158,13 +118,13 @@ pub(crate) fn stake(e: Env, user: Address, amount: i128) {
             staked_at: now,
             unstaking_at: 0,
         };
-        write_stake(&e, &user, &record);
+        stake_store::set_record(&e, &user, &record);
 
-        let total = read_total_staked(&e);
+        let total = stake_store::total_staked(&e);
         let new_total = total
             .checked_add(amount)
             .unwrap_or_else(|| panic_with_error!(e, ContractError::StakeArithmeticOverflow));
-        write_total_staked(&e, new_total);
+        stake_store::set_total_staked(&e, new_total);
 
         e.events().publish(
             (symbol_short!("stake"), user.clone(), symbol_short!("init")),
@@ -191,8 +151,8 @@ pub(crate) fn unstake(e: Env, user: Address) {
     crate::admin::require_not_paused(&e);
     user.require_auth();
 
-    let mut record =
-        read_stake(&e, &user).unwrap_or_else(|| panic_with_error!(e, ContractError::StakeNotFound));
+    let mut record = stake_store::record(&e, &user)
+        .unwrap_or_else(|| panic_with_error!(e, ContractError::StakeNotFound));
 
     if record.unstaking_at != 0 {
         panic_with_error!(e, ContractError::StakeCooldownActive);
@@ -200,7 +160,7 @@ pub(crate) fn unstake(e: Env, user: Address) {
 
     let now = e.ledger().timestamp();
     record.unstaking_at = now;
-    write_stake(&e, &user, &record);
+    stake_store::set_record(&e, &user, &record);
 
     e.events()
         .publish((symbol_short!("unstake"), user), record.amount);
@@ -225,8 +185,8 @@ pub(crate) fn withdraw_stake(e: Env, user: Address) {
     crate::admin::require_not_paused(&e);
     user.require_auth();
 
-    let record =
-        read_stake(&e, &user).unwrap_or_else(|| panic_with_error!(e, ContractError::StakeNotFound));
+    let record = stake_store::record(&e, &user)
+        .unwrap_or_else(|| panic_with_error!(e, ContractError::StakeNotFound));
 
     if record.unstaking_at == 0 {
         panic_with_error!(e, ContractError::StakeNotUnstaking);
@@ -241,11 +201,11 @@ pub(crate) fn withdraw_stake(e: Env, user: Address) {
 
     let withdrawn = record.amount;
 
-    let total = read_total_staked(&e);
+    let total = stake_store::total_staked(&e);
     let new_total = total.saturating_sub(withdrawn);
-    write_total_staked(&e, new_total);
+    stake_store::set_total_staked(&e, new_total);
 
-    remove_stake(&e, &user);
+    stake_store::remove_record(&e, &user);
 
     e.events()
         .publish((symbol_short!("withdraw"), user), withdrawn);
@@ -257,7 +217,7 @@ pub(crate) fn withdraw_stake(e: Env, user: Address) {
 
 /// Return the stake record for `user`, or `None` if they have not staked.
 pub(crate) fn get_stake(e: &Env, user: Address) -> Option<StakeRecord> {
-    read_stake(e, &user)
+    stake_store::record(e, &user)
 }
 
 /// Compute the fee-discount priority for `user` in basis points.
@@ -267,7 +227,7 @@ pub(crate) fn get_stake(e: &Env, user: Address) -> Option<StakeRecord> {
 ///
 /// Returns 0 if the user has no stake or is in the unstaking process.
 pub(crate) fn get_stake_priority(e: &Env, user: Address) -> u32 {
-    let record = match read_stake(e, &user) {
+    let record = match stake_store::record(e, &user) {
         Some(r) => r,
         None => return 0,
     };

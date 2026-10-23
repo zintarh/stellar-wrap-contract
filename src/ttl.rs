@@ -3,12 +3,15 @@
 //! Soroban persistent storage entries expire after their TVL lapses. This
 //! module owns the renewal helpers so the `lib.rs` facade stays a pure
 //! delegation layer.
+//!
+//! All persistent storage access goes through the typed accessors in
+//! `crate::store`, so tier choice and TTL policy live in one place.
 
 use soroban_sdk::{panic_with_error, Address, Env, Vec};
 
 use crate::admin;
 use crate::mint::MAX_BATCH_SIZE;
-use crate::storage_types::DataKey;
+use crate::store::{UserIndexStore, WrapStore};
 use crate::ContractError;
 
 /// TVL (ledgers) applied to persistent entries (/1 year at 5s/ledger).
@@ -54,18 +57,14 @@ fn calculate_live_until_ledger(e: &Env) -> u32 {
 /// - `user`: The address whose storage entries will be extended.
 /// - `period`: The specific wrap period whose record TTL will be extended.
 pub(crate) fn extend_ttl(e: Env, user: Address, period: u64) {
-    let wrap_key = DataKey::Wrap(user.clone(), period);
-
     // Without a matching record there is nothing to renew. Return before any
     // metadata or instance write so a caller cannot bump the contract instance
     // TTL with a call that has no other effect.
-    if !e.storage().persistent().has(&wrap_key) {
+    if !WrapStore::has(&e, &user, period) {
         return;
     }
 
-    e.storage()
-        .persistent()
-        .extend_ttl(&wrap_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
+    WrapStore::bump(&e, &user, period, TTL_ONE_YEAR);
 
     extend_user_metadata_ttl(&e, &user);
     e.storage().instance().extend_ttl(TTL_ONE_YEAR, TTL_ONE_YEAR);
@@ -76,19 +75,8 @@ pub(crate) fn extend_ttl(e: Env, user: Address, period: u64) {
 /// Shared by [`extend_ttl`] and [`extend_ttl_batch`] so both entrypoints apply
 /// the same one-year window to the metadata the user's records depend on.
 fn extend_user_metadata_ttl(e: &Env, user: &Address) {
-    let count_key = DataKey::WrapCount(user.clone());
-    if e.storage().persistent().has(&count_key) {
-        e.storage()
-            .persistent()
-            .extend_ttl(&count_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
-    }
-
-    let metadata_key = DataKey::WrapMetadata(user.clone());
-    if e.storage().persistent().has(&metadata_key) {
-        e.storage()
-            .persistent()
-            .extend_ttl(&metadata_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
-    }
+    UserIndexStore::bump_count(e, user, TTL_ONE_YEAR);
+    UserIndexStore::bump_metadata(e, user, TTL_ONE_YEAR);
 }
 
 /// Extend the TTL of several of a user's wrap records in a single call.
@@ -127,11 +115,8 @@ pub(crate) fn extend_ttl_batch(e: Env, user: Address, periods: Vec<u64>) {
 
     let mut renewed_any = false;
     for period in periods.iter() {
-        let wrap_key = DataKey::Wrap(user.clone(), period);
-        if e.storage().persistent().has(&wrap_key) {
-            e.storage()
-                .persistent()
-                .extend_ttl(&wrap_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
+        if WrapStore::has(&e, &user, period) {
+            WrapStore::bump(&e, &user, period, TTL_ONE_YEAR);
             renewed_any = true;
         }
     }
@@ -162,19 +147,8 @@ pub(crate) fn renew_all_ttls(e: Env, user: Address) {
     let admin: Address = admin::read_admin(&e);
     admin.require_auth();
 
-    let count_key = DataKey::WrapCount(user.clone());
-    if e.storage().persistent().has(&count_key) {
-        e.storage()
-            .persistent()
-            .extend_ttl(&count_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
-    }
-
-    let metadata_key = DataKey::WrapMetadata(user);
-    if e.storage().persistent().has(&metadata_key) {
-        e.storage()
-            .persistent()
-            .extend_ttl(&metadata_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
-    }
+    UserIndexStore::bump_count(&e, &user, TTL_ONE_YEAR);
+    UserIndexStore::bump_metadata(&e, &user, TTL_ONE_YEAR);
 
     e.storage().instance().extend_ttl(TTL_ONE_YEAR, TTL_ONE_YEAR);
 }

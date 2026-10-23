@@ -55,6 +55,7 @@ mod revoke;
 pub mod signature;
 mod stake;
 mod storage_accounting;
+mod store;
 mod storage_types;
 mod timelock;
 mod token;
