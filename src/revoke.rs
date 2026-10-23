@@ -3,8 +3,9 @@ use crate::constants::TTL_ONE_YEAR;
 use crate::{storage_accounting, ContractError, DataKey};
 
 /// Revokes an existing wrap record for the given user and period.
-/// This function decrements the global `TotalWrapCount`, which tracks the
-/// number of currently live wraps.
+///
+/// The global `TotalWrapCount` is a lifetime counter and is left unchanged;
+/// only the per-user `WrapCount` and indexes are decremented.
 ///
 /// #Authorization
 /// Only the contract admin can revoke wraps. The caller must provide admin

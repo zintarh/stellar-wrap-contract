@@ -318,10 +318,12 @@ impl StellarWrapContract {
         queries::get_last_updated(e, user)
     }
 
-    /// Returns the number of wraps currently live on this contract.
+    /// Returns the lifetime number of wrap records created on this contract.
     ///
     /// This counter is incremented by `mint_wrap`, `mint_wrap_batch`, and
-    /// `bridge_wrap_in`, and decremented by `revoke_wrap` and `burn_wrap`.
+    /// `bridge_wrap_in`. It is intentionally **not** decremented by
+    /// `revoke_wrap`, `burn_wrap`, or `transfer_wrap`; use [`Self::balance_of`]
+    /// for the number of live wraps a user currently owns.
     pub fn total_wrap_count(e: Env) -> u32 {
         queries::total_wrap_count(e)
     }
