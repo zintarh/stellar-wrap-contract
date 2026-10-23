@@ -995,7 +995,7 @@ mod signature_expiry {
 
         let wrap = client.get_wrap(&user, &period).expect("wrap must exist");
         assert_eq!(wrap.period, period);
-        assert_eq!(wrap.fsm.state, WrapState::Active);
+        assert_eq!(wrap.lifecycle.state, WrapState::Active);
     }
 
     /// Exactly at `valid_until` → signature still accepted because the check
@@ -1047,13 +1047,13 @@ mod signature_expiry {
 
         let wrap = client.get_wrap(&user, &period).expect("wrap must exist");
         assert_eq!(wrap.period, period);
-        assert_eq!(wrap.fsm.state, WrapState::Active);
+        assert_eq!(wrap.lifecycle.state, WrapState::Active);
     }
 
     /// One ledger second *after* `valid_until` → the signature must be
     /// rejected with `SignatureExpired` (contract error #57).
     #[test]
-    #[should_panic(expected = "Error(Contract, #57)")]
+    #[should_panic(expected = "Error(Contract, #62)")]
     fn test_signature_expiry_just_after_deadline_fails() {
         let env = Env::default();
         let contract_id = env.register(StellarWrapContract, ());

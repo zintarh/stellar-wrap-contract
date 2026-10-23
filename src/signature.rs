@@ -20,7 +20,10 @@ pub const MINT_DOMAIN_SEPARATOR: &[u8; 15] = b"stellar-wrap-v1";
 /// future scheme can be introduced without invalidating every outstanding
 /// signature at once. See [`SUPPORTED_MINT_SCHEME_VERSIONS`] for the migration
 /// window semantics.
-pub const MINT_SCHEME_VERSION: u32 = 1;
+///
+/// Version 2 adds `valid_until` to the signed payload; it must match
+/// [`crate::mint::CURRENT_PAYLOAD_VERSION`].
+pub const MINT_SCHEME_VERSION: u32 = 2;
 
 /// Scheme versions accepted by [`verify_mint_signature`].
 ///
@@ -169,7 +172,10 @@ pub fn verify_mint_signature(
 pub const BATCH_MINT_DOMAIN_SEPARATOR: &[u8; 21] = b"stellar-wrap-batch-v1";
 
 /// Current batch mint signature scheme version.
-pub const BATCH_MINT_SCHEME_VERSION: u32 = 1;
+///
+/// Version 2 binds each item's `valid_until`, so a submitter cannot extend
+/// an item's expiry after the batch was signed.
+pub const BATCH_MINT_SCHEME_VERSION: u32 = 2;
 
 /// Scheme versions accepted by [`verify_batch_aggregated_signature`].
 ///
@@ -195,6 +201,7 @@ pub fn construct_batch_mint_payload(
         payload.append(&item.period.to_xdr(e));
         payload.append(&item.archetype.to_xdr(e));
         payload.append(&item.data_hash.to_xdr(e));
+        payload.append(&item.valid_until.to_xdr(e));
     }
     payload
 }
@@ -319,7 +326,7 @@ mod tests {
     use soroban_sdk::{symbol_short, testutils::Address as _, Address, Bytes, BytesN, Env, Symbol};
 
     use super::*;
-    use crate::{StellarWrapContract, StellarWrapContractClient};
+    use crate::{mint::CURRENT_PAYLOAD_VERSION, StellarWrapContract, StellarWrapContractClient};
 
     fn sign_payload(
         env: &Env,
@@ -383,7 +390,7 @@ mod tests {
         expected.append(&typed_payload.to_xdr(&env));
 
         let payload =
-            construct_mint_payload(&env, &contract_id, &user, period, &archetype, &data_hash, 1);
+            construct_mint_payload(&env, &contract_id, &user, period, &archetype, &data_hash, 1, u64::MAX);
         let mut expected = Bytes::new(&env);
         expected.append(&Bytes::from_array(&env, MINT_DOMAIN_SEPARATOR));
         expected.append(
@@ -392,6 +399,7 @@ mod tests {
                 contract_id: contract_id.clone(),
                 data_hash: data_hash.clone(),
                 payload_version: 1,
+                valid_until: u64::MAX,
                 period,
                 user: user.clone(),
             }
@@ -489,7 +497,7 @@ mod tests {
             202602,
             &archetype,
             &data_hash,
-            2,
+            3, u64::MAX,
       );
 
         assert_eq!(
@@ -501,7 +509,8 @@ mod tests {
                 202602,
                 &archetype,
                 &data_hash,
-                2,
+                3,
+                u64::MAX,
                 &signature,
             ),
             Err(ContractError::InvalidSignature)
@@ -526,7 +535,7 @@ mod tests {
             202603,
             &archetype,
             &data_hash,
-            1,
+            1, u64::MAX,
         );
 
         assert!(verify_mint_signature(
@@ -538,6 +547,7 @@ mod tests {
             &archetype,
             &data_hash,
             1,
+            u64::MAX,
             &wrong_signature,
         )
         .is_err());
@@ -586,12 +596,13 @@ mod tests {
                 archetype: archetype.clone(),
                 data_hash: data_hash.clone(),
                 payload_version: 1,
+                valid_until: u64::MAX,
                 signature: BytesN::from_array(&env, &[0u8; 64]),
             });
         }
         let signing_key = SigningKey::from_bytes(&[25u8; 32]);
         let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
-        let payload = construct_batch_mint_payload(&env, &contract_id, &items, 1);
+        let payload = construct_batch_mint_payload(&env, &contract_id, &items, BATCH_MINT_SCHEME_VERSION);
         let mut output = vec![0u8; payload.len() as usize];
         payload.copy_into_slice(&mut output);
         let signature = BytesN::from_array(&env, &signing_key.sign(&output).to_bytes());
@@ -601,7 +612,7 @@ mod tests {
             &admin_pubkey,
             &contract_id,
             &items,
-            1,
+            BATCH_MINT_SCHEME_VERSION,
             &signature,
         )
         .is_ok());
@@ -631,7 +642,7 @@ mod tests {
             });
         }
 
-        let payload = construct_batch_mint_payload(&env, &contract_id, &items, 1);
+        let payload = construct_batch_mint_payload(&env, &contract_id, &items, BATCH_MINT_SCHEME_VERSION);
         let len = payload.len() as usize;
         assert!(
             len > 512,
@@ -647,7 +658,7 @@ mod tests {
             &admin_pubkey,
             &contract_id,
             &items,
-            1,
+            BATCH_MINT_SCHEME_VERSION,
             &agg_sig,
         )
         .is_ok());

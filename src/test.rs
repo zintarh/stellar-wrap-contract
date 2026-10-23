@@ -2,19 +2,17 @@
 
 extern crate std;
 
-use ed25519_dalek::SigningKey;
+use ed25519_dalek::{Signer, SigningKey};
 use soroban_sdk::{
     symbol_short,
     testutils::{budget::ContractCostType, Address as _, Events, Ledger},
-    testutils::{
-        budget::ContractCostType,
-        {Address as _, Events, Ledger},
-    },
     Address, Bytes, BytesN, Env, IntoVal, String, Symbol, TryFromVal, TryIntoVal,
 };
+use std::format;
 use std::vec::Vec;
 
 use super::*;
+use crate::mint::MAX_BATCH_SIZE;
 use crate::test_utils::{decode_events, sign_batch_payload, sign_payload, sign_payload_versioned};
 
 const STRESS_USER_COUNT: usize = 128;
@@ -84,9 +82,12 @@ fn test_mint_emits_event() {
     let events = crate::test_utils::decode_events(&env);
     let (topics, data) = events.last().expect("no events found");
 
-    let _event_topic: Symbol = topics[0].try_into_val(&env).unwrap();
-    let _event_user: Address = topics[1].try_into_val(&env).unwrap();
-    let _event_period: u64 = topics[2].try_into_val(&env).unwrap();
+    // mint_wrap publishes the typed `v1 / wrap / mint` envelope.
+    let names: Vec<Symbol> = topics.iter().map(|t| t.try_into_val(&env).unwrap()).collect();
+    assert_eq!(
+        names,
+        std::vec![symbol_short!("v1"), symbol_short!("wrap"), symbol_short!("mint")]
+    );
     let (event_topic_data, event_user_data, _, event_archetype): (Symbol, Address, u64, Symbol) =
         data.try_into_val(&env).unwrap();
     assert_eq!(event_topic_data, Symbol::new(&env, "Mint"));
@@ -323,7 +324,7 @@ fn test_balance_of_and_count() {
     client.initialize(&admin, &admin_pubkey);
 
     let archetype = symbol_short!("soroban");
-    let hash = BytesN::from_array(&env, &[0u8; 32]);
+    let hash = BytesN::from_array(&env, &[1u8; 32]);
 
     let sig1 = sign_payload(
         &env,
@@ -377,10 +378,10 @@ fn test_defeated_admin_proposal_is_persisted() {
 
     env.mock_all_auths();
     client.initialize(&admin, &pubkey);
-    let proposal_id = client.create_admin_proposal(&proposer, &proposed_admin, &100);
+    let proposal_id = client.create_admin_proposal(&proposer, &proposed_admin, &crate::governance::MIN_PROPOSAL_DURATION);
     client.vote_admin_proposal(&proposer, &proposal_id, &false);
     env.ledger().with_mut(|ledger| {
-        ledger.timestamp += 101;
+        ledger.timestamp += crate::governance::MIN_PROPOSAL_DURATION + 1;
     });
 
     client.execute_admin_proposal(&proposal_id);
@@ -413,10 +414,10 @@ fn test_passing_admin_proposal_is_timelocked() {
     env.mock_all_auths();
     client.initialize(&admin, &pubkey);
     client.enable_timelock(&timelock::MIN_DELAY);
-    let proposal_id = client.create_admin_proposal(&proposer, &proposed_admin, &100);
+    let proposal_id = client.create_admin_proposal(&proposer, &proposed_admin, &crate::governance::MIN_PROPOSAL_DURATION);
     client.vote_admin_proposal(&proposer, &proposal_id, &true);
     env.ledger().with_mut(|ledger| {
-        ledger.timestamp += 101;
+        ledger.timestamp += crate::governance::MIN_PROPOSAL_DURATION + 1;
     });
 
     client.execute_admin_proposal(&proposal_id);
@@ -472,7 +473,7 @@ fn test_low_participation_proposal_passes_with_minimal_votes() {
     client.initialize(&admin, &pubkey);
 
     // Create a proposal
-    let proposal_id = client.create_admin_proposal(&proposer, &proposed_admin, &100);
+    let proposal_id = client.create_admin_proposal(&proposer, &proposed_admin, &crate::governance::MIN_PROPOSAL_DURATION);
     let proposal_before = client.get_admin_proposal(&proposal_id).unwrap();
     assert_eq!(proposal_before.status, ProposalStatus::Active);
     assert_eq!(proposal_before.votes_for, 0);
@@ -488,7 +489,7 @@ fn test_low_participation_proposal_passes_with_minimal_votes() {
 
     // Advance ledger time past voting period
     env.ledger().with_mut(|ledger| {
-        ledger.timestamp += 101;
+        ledger.timestamp += crate::governance::MIN_PROPOSAL_DURATION + 1;
     });
 
     // Execute proposal
@@ -598,6 +599,7 @@ fn test_health_reflects_initialization_state() {
 }
 
 #[test]
+#[should_panic(expected = "Error(Contract, #4)")]
 fn test_duplicate_period_fails() {
     let env = Env::default();
     let contract_id = env.register(StellarWrapContract, ());
@@ -1271,7 +1273,7 @@ fn test_invalid_period_max_fails_without_storage_changes() {
 
     assert_eq!(
         result.unwrap_err(),
-        Ok(ContractError::InvalidPeriod),
+        Ok(soroban_sdk::Error::from(ContractError::InvalidPeriod)),
         "u64::MAX must fail period validation"
     );
     assert!(!client.has_wrap(&user, &period));
@@ -1317,7 +1319,7 @@ fn test_stress_mint_100_plus_unique_users() {
         env.cost_estimate().budget().reset_default();
 
         let user = Address::generate(&env);
-        let hash = BytesN::from_array(&env, &[i as u8; 32]);
+        let hash = BytesN::from_array(&env, &[(i % 255 + 1) as u8; 32]);
         let signature = sign_payload(
             &env,
             &signing_key,
@@ -1351,7 +1353,7 @@ fn test_stress_mint_100_plus_unique_users() {
     env.cost_estimate().budget().reset_unlimited();
 
     for (i, user) in users.iter().enumerate() {
-        let expected_hash = BytesN::from_array(&env, &[i as u8; 32]);
+        let expected_hash = BytesN::from_array(&env, &[(i % 255 + 1) as u8; 32]);
         let wrap = client.get_wrap(user, &period).unwrap();
 
         assert_eq!(wrap.period, period);
@@ -2207,6 +2209,7 @@ fn test_index_invariants_across_mint_batch_and_bridge_in() {
         202404,
         &archetype,
         &hash4,
+        crate::signature::INBOUND_BRIDGE_SCHEME_VERSION,
     );
     let mut out = [0u8; 512];
     let len = inbound_payload.len() as usize;
@@ -3353,9 +3356,11 @@ fn test_mint_wrap_batch_max_size_succeeds() {
     let start_period = 202401u64;
     let dummy_sig = BytesN::from_array(&env, &[0u8; 64]);
     let mut items = soroban_sdk::vec![&env];
+    // Consecutive valid YYYYMM periods starting at `start_period`.
+    let nth_period = |i: u64| (2024 + i / 12) * 100 + i % 12 + 1;
     for i in 0..MAX_BATCH_SIZE {
-        let period = start_period + i as u64;
-        let data_hash = BytesN::from_array(&env, &[(i % 256) as u8; 32]);
+        let period = nth_period(i as u64);
+        let data_hash = BytesN::from_array(&env, &[(i % 255 + 1) as u8; 32]);
         items.push_back(crate::storage_types::BatchWrapItem {
             user: user.clone(),
             period,
@@ -3368,13 +3373,13 @@ fn test_mint_wrap_batch_max_size_succeeds() {
     }
 
     let agg_sig =
-        crate::test_utils::sign_batch_payload(&env, &signing_key, &contract_id, &items, 1);
+        crate::test_utils::sign_batch_payload(&env, &signing_key, &contract_id, &items, crate::signature::BATCH_MINT_SCHEME_VERSION);
     client.mint_wrap_batch(&items, &Some(agg_sig));
 
-    assert_eq!(client.balance_of(&user), MAX_BATCH_SIZE as u32);
+    assert_eq!(client.balance_of(&user), MAX_BATCH_SIZE as i128);
     assert!(client.get_wrap(&user, &start_period).is_some());
     assert!(client
-        .get_wrap(&user, &start_period + MAX_BATCH_SIZE as u64 - 1)
+        .get_wrap(&user, &nth_period(MAX_BATCH_SIZE as u64 - 1))
         .is_some());
 }
 
@@ -3646,7 +3651,7 @@ fn test_batch_aggregated_sig_rejects_opted_out_user() {
     items.push_back(item_b);
 
     let agg_sig =
-        crate::test_utils::sign_batch_payload(&env, &signing_key, &contract_id, &items, 1);
+        crate::test_utils::sign_batch_payload(&env, &signing_key, &contract_id, &items, crate::signature::BATCH_MINT_SCHEME_VERSION);
 
     // Must panic with UserOptedOut (#32).
     client.mint_wrap_batch(&items, &Some(agg_sig));
@@ -3700,7 +3705,7 @@ fn test_batch_aggregated_sig_opted_out_leaves_no_partial_state() {
     items.push_back(item_b);
 
     let agg_sig =
-        crate::test_utils::sign_batch_payload(&env, &signing_key, &contract_id, &items, 1);
+        crate::test_utils::sign_batch_payload(&env, &signing_key, &contract_id, &items, crate::signature::BATCH_MINT_SCHEME_VERSION);
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         client.mint_wrap_batch(&items, &Some(agg_sig));

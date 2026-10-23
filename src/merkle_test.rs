@@ -43,7 +43,7 @@ fn whitelist_leaf_and_pair_hash_use_domain_prefixes() {
     let mut leaf_input = Bytes::new(&env);
     leaf_input.append(&Bytes::from_array(&env, &[0x00]));
     leaf_input.append(&Bytes::from_array(&env, WHITELIST_DOMAIN_SEPARATOR));
-    leaf_input.append(&user.to_xdr(&env));
+    leaf_input.append(&user.clone().to_xdr(&env));
     let expected_leaf = env.crypto().sha256(&leaf_input);
     assert_eq!(
         compute_whitelist_leaf(&env, &user).to_array(),

@@ -18,7 +18,7 @@ fn sign_mint(
     archetype: &Symbol,
     data_hash: &BytesN<32>,
 ) -> BytesN<64> {
-    let payload = construct_mint_payload(env, contract, user, period, archetype, data_hash, 1);
+    let payload = construct_mint_payload(env, contract, user, period, archetype, data_hash, 2, u64::MAX);
     let mut out = [0u8; 512];
     let len = payload.len() as usize;
     payload.copy_into_slice(&mut out[..len]);
@@ -72,13 +72,13 @@ fn first_mint_increments_storage_bytes_by_full_estimate() {
     let sig = sign_mint(
         &env,
         &signing_key,
-        &env.current_contract_address(),
+        &client.address,
         &user,
         period,
         &archetype,
         &hash,
     );
-    client.mint_wrap(&user, &period, &archetype, &hash, &1u32, &sig);
+    client.mint_wrap(&user, &period, &archetype, &hash, &2u32, &u64::MAX, &sig);
 
     let expected = ESTIMATE_WRAP
         + ESTIMATE_WRAPCOUNT
@@ -89,7 +89,7 @@ fn first_mint_increments_storage_bytes_by_full_estimate() {
 }
 
 #[test]
-fn second_mint_same_user_adds_wrap_and_userperiods_only() {
+fn second_mint_same_user_adds_wrap_only() {
     let (env, client, _, user, signing_key) = setup();
 
     let archetype = symbol_short!("arch");
@@ -97,18 +97,19 @@ fn second_mint_same_user_adds_wrap_and_userperiods_only() {
     let period1 = 202401u64;
     let period2 = 202402u64;
 
-    let addr = env.current_contract_address();
+    let addr = client.address.clone();
 
     let sig1 = sign_mint(&env, &signing_key, &addr, &user, period1, &archetype, &hash);
-    client.mint_wrap(&user, &period1, &archetype, &hash, &1u32, &sig1);
+    client.mint_wrap(&user, &period1, &archetype, &hash, &2u32, &u64::MAX, &sig1);
     let after_first = client.storage_bytes();
 
     let sig2 = sign_mint(&env, &signing_key, &addr, &user, period2, &archetype, &hash);
-    client.mint_wrap(&user, &period2, &archetype, &hash, &1u32, &sig2);
+    client.mint_wrap(&user, &period2, &archetype, &hash, &2u32, &u64::MAX, &sig2);
     let after_second = client.storage_bytes();
 
+    // UserPeriods already exists, so only the new wrap entry is added.
     let delta = after_second - after_first;
-    assert_eq!(delta, ESTIMATE_WRAP + ESTIMATE_USERPERIODS);
+    assert_eq!(delta, ESTIMATE_WRAP);
 }
 
 #[test]
@@ -120,12 +121,12 @@ fn revoke_single_wrap_returns_wrap_delta() {
     let period1 = 202401u64;
     let period2 = 202402u64;
 
-    let addr = env.current_contract_address();
+    let addr = client.address.clone();
 
     let sig1 = sign_mint(&env, &signing_key, &addr, &user, period1, &archetype, &hash);
-    client.mint_wrap(&user, &period1, &archetype, &hash, &1u32, &sig1);
+    client.mint_wrap(&user, &period1, &archetype, &hash, &2u32, &u64::MAX, &sig1);
     let sig2 = sign_mint(&env, &signing_key, &addr, &user, period2, &archetype, &hash);
-    client.mint_wrap(&user, &period2, &archetype, &hash, &1u32, &sig2);
+    client.mint_wrap(&user, &period2, &archetype, &hash, &2u32, &u64::MAX, &sig2);
 
     let before = client.storage_bytes();
     let reason = BytesN::from_array(&env, &[0u8; 32]);
@@ -144,12 +145,12 @@ fn burn_single_wrap_returns_wrap_delta() {
     let period1 = 202401u64;
     let period2 = 202402u64;
 
-    let addr = env.current_contract_address();
+    let addr = client.address.clone();
 
     let sig1 = sign_mint(&env, &signing_key, &addr, &user, period1, &archetype, &hash);
-    client.mint_wrap(&user, &period1, &archetype, &hash, &1u32, &sig1);
+    client.mint_wrap(&user, &period1, &archetype, &hash, &2u32, &u64::MAX, &sig1);
     let sig2 = sign_mint(&env, &signing_key, &addr, &user, period2, &archetype, &hash);
-    client.mint_wrap(&user, &period2, &archetype, &hash, &1u32, &sig2);
+    client.mint_wrap(&user, &period2, &archetype, &hash, &2u32, &u64::MAX, &sig2);
 
     let before = client.storage_bytes();
     client.burn_wrap(&user, &period1);
@@ -164,7 +165,7 @@ fn burn_matches_revoke_delta() {
 
     let archetype = symbol_short!("arch");
     let hash = BytesN::from_array(&env, &[42u8; 32]);
-    let addr = env.current_contract_address();
+    let addr = client.address.clone();
 
     // ── Revoke path ──
     let sig_a = sign_mint(
@@ -176,7 +177,7 @@ fn burn_matches_revoke_delta() {
         &archetype,
         &hash,
     );
-    client.mint_wrap(&user, &202401u64, &archetype, &hash, &1u32, &sig_a);
+    client.mint_wrap(&user, &202401u64, &archetype, &hash, &2u32, &u64::MAX, &sig_a);
     let sig_b = sign_mint(
         &env,
         &signing_key,
@@ -186,7 +187,7 @@ fn burn_matches_revoke_delta() {
         &archetype,
         &hash,
     );
-    client.mint_wrap(&user, &202402u64, &archetype, &hash, &1u32, &sig_b);
+    client.mint_wrap(&user, &202402u64, &archetype, &hash, &2u32, &u64::MAX, &sig_b);
 
     let before_revoke = client.storage_bytes();
     let reason = BytesN::from_array(&env, &[0u8; 32]);
@@ -208,7 +209,7 @@ fn burn_matches_revoke_delta() {
         &archetype,
         &hash,
     );
-    client.mint_wrap(&user, &202403u64, &archetype, &hash, &1u32, &sig_c);
+    client.mint_wrap(&user, &202403u64, &archetype, &hash, &2u32, &u64::MAX, &sig_c);
     let sig_d = sign_mint(
         &env,
         &signing_key,
@@ -218,7 +219,7 @@ fn burn_matches_revoke_delta() {
         &archetype,
         &hash,
     );
-    client.mint_wrap(&user, &202404u64, &archetype, &hash, &1u32, &sig_d);
+    client.mint_wrap(&user, &202404u64, &archetype, &hash, &2u32, &u64::MAX, &sig_d);
 
     let before_burn = client.storage_bytes();
     client.burn_wrap(&user, &202403u64);
@@ -246,13 +247,13 @@ fn burn_last_wrap_subtracts_all_accounted_entries() {
     let sig = sign_mint(
         &env,
         &signing_key,
-        &env.current_contract_address(),
+        &client.address,
         &user,
         period,
         &archetype,
         &hash,
     );
-    client.mint_wrap(&user, &period, &archetype, &hash, &1u32, &sig);
+    client.mint_wrap(&user, &period, &archetype, &hash, &2u32, &u64::MAX, &sig);
 
     let before = client.storage_bytes();
     assert_eq!(
@@ -286,13 +287,13 @@ fn revoke_last_wrap_subtracts_all_accounted_entries() {
     let sig = sign_mint(
         &env,
         &signing_key,
-        &env.current_contract_address(),
+        &client.address,
         &user,
         period,
         &archetype,
         &hash,
     );
-    client.mint_wrap(&user, &period, &archetype, &hash, &1u32, &sig);
+    client.mint_wrap(&user, &period, &archetype, &hash, &2u32, &u64::MAX, &sig);
 
     let before = client.storage_bytes();
     let reason = BytesN::from_array(&env, &[0u8; 32]);

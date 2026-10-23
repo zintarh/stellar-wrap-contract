@@ -60,6 +60,7 @@ fn sign_inbound_payload(
         period,
         archetype,
         data_hash,
+        crate::signature::INBOUND_BRIDGE_SCHEME_VERSION,
     );
     let mut out = [0u8; 512];
     let len = payload.len() as usize;
@@ -148,7 +149,7 @@ fn test_pause_blocks_all_require_not_paused_entrypoints() {
 
     // ── transition_wrap_state ────────────────────────────────────────────
     let result = catch_unwind(AssertUnwindSafe(|| {
-        client.transition_wrap_state(&user, &period, &WrapState::Revoked);
+        client.transition_wrap_state(&user, &period, &WrapState::Archived);
     }));
     assert!(
         result.is_err(),
@@ -249,7 +250,7 @@ fn test_pause_allows_documented_entrypoints() {
     );
     client.mint_wrap(&user, &period, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &sig);
 
-    // Prepare a wrap that is bridged out, so we can test refund while paused
+    // Prepare a wrap that is bridged out, so we can check refund is blocked while paused
     let bridge_period = 202609u64;
     let bridge_sig = sign_mint_payload(
         &env,
@@ -260,7 +261,7 @@ fn test_pause_allows_documented_entrypoints() {
         &archetype,
         &data_hash,
     );
-    client.mint_wrap(&user, &bridge_period, &archetype, &data_hash, &1, &bridge_sig);
+    client.mint_wrap(&user, &bridge_period, &archetype, &data_hash, &crate::mint::CURRENT_PAYLOAD_VERSION, &u64::MAX, &bridge_sig);
     
     let chain_2 = 2u32;
     client.set_chain_status(&chain_2, &true);
@@ -270,6 +271,28 @@ fn test_pause_allows_documented_entrypoints() {
 
     let recipient_bytes = Bytes::from_array(&env, b"recipient");
     let outbound_nonce = client.bridge_wrap_out(&user, &chain_2, &recipient_bytes, &bridge_period);
+
+    // Mint the wrap burned below before pausing: minting is blocked while paused.
+    let burn_user = Address::generate(&env);
+    let burn_period = 202608u64;
+    let burn_sig = sign_mint_payload(
+        &env,
+        &signing_key,
+        &client.address,
+        &burn_user,
+        burn_period,
+        &archetype,
+        &data_hash,
+    );
+    client.mint_wrap(
+        &burn_user,
+        &burn_period,
+        &archetype,
+        &data_hash,
+        &CURRENT_PAYLOAD_VERSION,
+        &u64::MAX,
+        &burn_sig,
+    );
 
     client.pause();
 
@@ -304,37 +327,20 @@ fn test_pause_allows_documented_entrypoints() {
     // - create_admin_proposal / vote_admin_proposal / execute_admin_proposal /
     //   cancel_admin_proposal: DAO governance; must remain available.
     // - set_stake_config: Admin staking configuration.
-    // - bridge_wrap_refund: Relayer refund; users should not be trapped during a pause.
     // ─────────────────────────────────────────────────────────────────────
 
     // burn_wrap — user burn should still work while paused
-    let burn_user = Address::generate(&env);
-    let burn_period = 202608u64;
-    let burn_sig = sign_mint_payload(
-        &env,
-        &signing_key,
-        &client.address,
-        &burn_user,
-        burn_period,
-        &archetype,
-        &data_hash,
-    );
-    client.mint_wrap(
-        &burn_user,
-        &burn_period,
-        &archetype,
-        &data_hash,
-        &CURRENT_PAYLOAD_VERSION,
-        &u64::MAX,
-        &burn_sig,
-    );
     client.burn_wrap(&burn_user, &burn_period);
     assert!(client.get_wrap(&burn_user, &burn_period).is_none());
 
-    // bridge_wrap_refund — user refund should still work while paused
-    client.bridge_wrap_refund(&outbound_nonce);
-    let refunded_wrap = client.get_wrap(&user, &bridge_period).unwrap();
-    assert_eq!(refunded_wrap.fsm.state, WrapState::Active);
+    // bridge_wrap_refund is blocked while paused (docs/incident-runbook.md:
+    // pausing freezes bridge_wrap_in, bridge_wrap_out and bridge_wrap_refund).
+    let refund_result = catch_unwind(AssertUnwindSafe(|| {
+        client.bridge_wrap_refund(&outbound_nonce);
+    }));
+    assert!(refund_result.is_err(), "bridge_wrap_refund must be blocked while paused");
+    let bridged_wrap = client.get_wrap(&user, &bridge_period).unwrap();
+    assert_eq!(bridged_wrap.lifecycle.state, WrapState::Bridged);
 
     // set_alias_hash — user preference
     let alias_user = Address::generate(&env);
@@ -351,8 +357,8 @@ fn test_pause_allows_documented_entrypoints() {
     client.extend_ttl(&user, &period);
 
     // set_name / set_symbol — admin metadata
-    client.set_name(&symbol_short!("Test"));
-    client.set_symbol(&symbol_short!("TST"));
+    client.set_name(&String::from_str(&env, "Test"));
+    client.set_symbol(&String::from_str(&env, "TST"));
 
     // set_fee_params — admin accounting
     client.set_fee_params(&storage_types::FeeParams {
@@ -428,7 +434,7 @@ fn test_unpause_restores_blocked_entrypoints() {
         &data_hash,
     );
     let unpaused_result = catch_unwind(AssertUnwindSafe(|| {
-        client.mint_wrap(&user, &period + 1, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &sig2);
+        client.mint_wrap(&user, &(period + 1), &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &sig2);
     }));
     assert!(
         unpaused_result.is_ok(),

@@ -813,6 +813,12 @@ impl StellarWrapContract {
         bridge::bridge_wrap_refund(e, outbound_nonce);
     }
 
+    /// Admin: mark an outbound bridge request as honoured on the destination
+    /// chain. A completed request can no longer be refunded.
+    pub fn bridge_wrap_out_complete(e: Env, outbound_nonce: u64) {
+        bridge::bridge_wrap_out_complete(e, outbound_nonce);
+    }
+
     /// Fulfill an inbound cross-chain wrap bridge transfer from external chain.
     #[allow(clippy::too_many_arguments)]
     pub fn bridge_wrap_in(
@@ -1150,7 +1156,7 @@ mod invalid_signature_test {
         );
 
         assert!(result.is_err());
-        assert_eq!(StellarWrapContract::balance_of(&e, user.clone()), 0i128);
-        assert_eq!(StellarWrapContract::get_latest_wrap(&e, user), None);
+        assert_eq!(client.balance_of(&user), 0i128);
+        assert_eq!(client.get_latest_wrap(&user), None);
     }
 }

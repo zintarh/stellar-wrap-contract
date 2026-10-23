@@ -1,13 +1,11 @@
 extern crate std;
 use std::vec;
 
-use std::vec;
-
 use ed25519_dalek::{Signer, SigningKey};
 use soroban_sdk::{
     testutils::Events,
     xdr::{ContractEventBody, ScVal},
-    Address, BytesN, Env, Symbol, TryIntoVal, Val,
+    Address, BytesN, Env, Symbol, TryFromVal, TryIntoVal, Val,
 };
 
 use crate::signature::{construct_batch_mint_payload, construct_mint_payload};
@@ -100,6 +98,48 @@ pub(crate) fn decode_events(env: &Env) -> std::vec::Vec<(std::vec::Vec<Val>, Val
         .collect()
 }
 
+/// Every contract event recorded so far as `(contract, topics, data)`, the
+/// shape `env.events().all()` returned before soroban-sdk 23.
+#[allow(dead_code)]
+pub(crate) fn contract_events(env: &Env) -> soroban_sdk::Vec<(Address, soroban_sdk::Vec<Val>, Val)> {
+    let mut out = soroban_sdk::Vec::new(env);
+    for event in env.events().all().events() {
+        let Some(contract_id) = event.contract_id.clone() else {
+            continue;
+        };
+        let contract = Address::try_from_val(
+            env,
+            &ScVal::Address(soroban_sdk::xdr::ScAddress::Contract(contract_id)),
+        )
+        .unwrap();
+        let ContractEventBody::V0(body) = &event.body;
+        let mut topics = soroban_sdk::Vec::new(env);
+        for topic in body.topics.iter() {
+            topics.push_back(topic.try_into_val(env).unwrap());
+        }
+        out.push_back((contract, topics, body.data.try_into_val(env).unwrap()));
+    }
+    out
+}
+
+/// Pulls the contract error code out of a failed `try_` call.
+#[allow(dead_code)]
+pub(crate) trait ContractErrorCode {
+    fn contract_error(self) -> Option<u32>;
+}
+
+impl ContractErrorCode for Result<soroban_sdk::Error, soroban_sdk::InvokeError> {
+    fn contract_error(self) -> Option<u32> {
+        match self {
+            Ok(error) if error.is_type(soroban_sdk::xdr::ScErrorType::Contract) => {
+                Some(error.get_code())
+            }
+            Err(soroban_sdk::InvokeError::Contract(code)) => Some(code),
+            _ => None,
+        }
+    }
+}
+
 #[allow(dead_code)]
 pub(crate) fn scval_to_val(env: &Env, scval: &ScVal) -> Val {
     scval.try_into_val(env).unwrap()
@@ -108,17 +148,31 @@ pub(crate) fn scval_to_val(env: &Env, scval: &ScVal) -> Val {
 #[cfg(test)]
 mod get_wraps_tests {
     use super::*;
-    use crate::contract::Wrap;
+    use crate::{StellarWrapContract, StellarWrapContractClient};
+    use soroban_sdk::testutils::Address as _;
     use std::vec::Vec;
+
+    // Tests use small logical periods (1, 10, 30, ...) for readability; the
+    // contract only accepts YYYYMM periods, so map `p` to January of 2024 + p.
+    fn real_period(p: u64) -> u64 {
+        (crate::mint::MIN_PERIOD_YEAR + p) * 100 + 1
+    }
+
+    fn logical_period(period: u64) -> u64 {
+        period / 100 - crate::mint::MIN_PERIOD_YEAR
+    }
 
     fn setup_env() -> (Env, Address, SigningKey, Address, Symbol, BytesN<32>) {
         let env = Env::default();
         env.mock_all_auths();
-        let signer = SigningKey::from_bytes(&[0u8; 32]);
-        let contract = env.register_contract(None, Wrap);
+        let signer = SigningKey::from_bytes(&[7u8; 32]);
+        let contract = env.register(StellarWrapContract, ());
+        let admin = Address::generate(&env);
+        let pubkey = BytesN::from_array(&env, &signer.verifying_key().to_bytes());
+        StellarWrapContractClient::new(&env, &contract).initialize(&admin, &pubkey);
         let user = Address::generate(&env);
         let archetype = Symbol::new(&env, "Wrap");
-        let data_hash = BytesN::from_array(&env, &[0u8; 32]);
+        let data_hash = BytesN::from_array(&env, &[1u8; 32]);
         (env, contract, signer, user, archetype, data_hash)
     }
 
@@ -131,20 +185,33 @@ mod get_wraps_tests {
         archetype: &Symbol,
         data_hash: &BytesN<32>,
     ) {
+        let period = real_period(period);
         let signature = sign_payload(env, signer, contract, user, period, archetype, data_hash);
-        env.invoke_contract::<()>(
-            contract,
-            "mint_wrap",
-            (user.clone(), period, archetype.clone(), data_hash.clone(), crate::mint::CURRENT_PAYLOAD_VERSION, u64::MAX, signature),
+        StellarWrapContractClient::new(env, contract).mint_wrap(
+            user,
+            &period,
+            archetype,
+            data_hash,
+            &crate::mint::CURRENT_PAYLOAD_VERSION,
+            &u64::MAX,
+            &signature,
         );
     }
 
     fn get_wraps(env: &Env, contract: &Address, user: &Address, start: u32, limit: u32) -> Vec<u64> {
-        env.invoke_contract(contract, "get_wraps", (user.clone(), start, limit))
+        StellarWrapContractClient::new(env, contract)
+            .get_wraps(user, &start, &limit)
+            .iter()
+            .map(|record| logical_period(record.period))
+            .collect()
     }
 
     fn revoke(env: &Env, contract: &Address, user: &Address, period: u64) {
-        env.invoke_contract::<()>(contract, "revoke", (user.clone(), period));
+        StellarWrapContractClient::new(env, contract).revoke_wrap(
+            user,
+            &real_period(period),
+            &BytesN::from_array(env, &[9u8; 32]),
+        );
     }
 
     #[test]

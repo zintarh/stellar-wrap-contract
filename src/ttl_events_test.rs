@@ -5,8 +5,8 @@
 //! containing (user, period, live_until_ledger) for indexers and renewal bots.
 
 use crate::{
+    bridge_test::{setup_test_env, sign_mint_payload},
     events::Event,
-    testutils::*,
     StellarWrapContract, StellarWrapContractClient,
 };
 use soroban_sdk::{
@@ -26,15 +26,16 @@ fn test_ttl_event_structure() {
     // Create the event variant
     let event = Event::TtlExtended(user.clone(), period, live_until);
 
-    // Verify it can be published (compilation test)
-    crate::events::publish_event(&env, event);
+    // Publish from inside a contract so the event is recorded against it.
+    let contract_id = env.register(StellarWrapContract, ());
+    env.as_contract(&contract_id, || crate::events::publish_event(&env, event));
 
     // Check that the event was emitted with correct topics
-    let events = env.events().all();
+    let events = crate::test_utils::contract_events(&env);
     let last_event = events.last().unwrap();
 
     // Verify topics: ("v1", "wrap", "ttl")
-    assert_eq!(last_event.0.len(), 3);
+    assert_eq!(last_event.1.len(), 3);
     // Note: Full event validation will be added when integrated into entrypoints
 }
 
@@ -75,7 +76,7 @@ fn test_extend_ttl_emits_event_placeholder() {
     );
 
     // Record current event count
-    let events_before = env.events().all().len();
+    let events_before = crate::test_utils::contract_events(&env).len();
 
     // Extend TTL (currently does NOT emit event - that's the remaining 99%)
     client.extend_ttl(&user, &period);

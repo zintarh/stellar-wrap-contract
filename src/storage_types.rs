@@ -180,13 +180,13 @@ pub struct OutboundBridgeRequest {
     pub timestamp: u64,
     /// Where the request is in its lifecycle. Only a `Pending` request can be
     /// refunded, so a wrap can never be restored twice.
-    pub state: OutboundRequestState,
+    pub status: OutboundStatus,
 }
 
 /// Lifecycle of an outbound bridge request.
 #[contracttype]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum OutboundRequestState {
+pub enum OutboundStatus {
     /// Waiting for the destination chain to honour or reject the transfer.
     Pending = 1,
     /// Honoured on the destination chain.

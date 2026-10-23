@@ -98,7 +98,7 @@ const EVENT_SHAPES: &[EventShape] = &[
     },
     EventShape {
         emitter: "mint_wrap_batch",
-        topics: "Mint / <user> / <period>",
+        topics: "mint / <user> / <period>",
         data: "MintEventData::Mint(user, period, archetype)",
     },
     EventShape {
@@ -315,7 +315,7 @@ fn mint(
     hash: &BytesN<32>,
 ) {
     let signature = sign_payload(env, signing_key, contract_id, user, period, archetype, hash);
-    client.mint_wrap(user, &period, archetype, hash, &1u32, &signature);
+    client.mint_wrap(user, &period, archetype, hash, &crate::mint::CURRENT_PAYLOAD_VERSION, &u64::MAX, &signature);
 }
 
 // ── Catalogue consistency ───────────────────────────────────────────────────
@@ -395,19 +395,17 @@ fn test_update_admin_publishes_previous_and_new_admin() {
 
     client.update_admin(&new_admin);
 
-    let (event_contract_id, topics, data) = env
-        .events()
-        .all()
-        .into_iter()
-        .find(|(event_contract_id, topics, _)| {
-            event_contract_id.is_some()
-                && topics.len() == 3
-                && decode_symbol(&env, topics[0]) == Some(Symbol::new(&env, "v1"))
-                && decode_symbol(&env, topics[1]) == Some(Symbol::new(&env, "admin"))
-                && decode_symbol(&env, topics[2]) == Some(Symbol::new(&env, "updated"))
+    let (event_contract_id, topics, data) = crate::test_utils::contract_events(&env)
+        .iter()
+        .find(|(_, topics, _)| {
+            topics.len() == 3
+                && decode_symbol(&env, topics.get(0).unwrap()) == Some(Symbol::new(&env, "v1"))
+                && decode_symbol(&env, topics.get(1).unwrap()) == Some(Symbol::new(&env, "admin"))
+                && decode_symbol(&env, topics.get(2).unwrap()) == Some(Symbol::new(&env, "updated"))
         })
         .expect("admin update contract event not found");
-    assert_eq!(event_contract_id, Some(contract_id));
+    assert_eq!(event_contract_id, contract_id);
+    let topics: Vec<Val> = topics.iter().collect();
     assert_topics(&env, &topics, &["v1", "admin", "updated"]);
     let (previous, next): (Address, Address) = data.try_into_val(&env).unwrap();
     assert_eq!(previous, admin);
@@ -535,16 +533,17 @@ fn test_mint_wrap_batch_publishes_one_event_per_item() {
             user: user.clone(),
             period: first_period + offset,
             archetype: archetype.clone(),
-            data_hash: BytesN::from_array(&env, &[offset as u8; 32]),
-            payload_version: 1,
+            data_hash: BytesN::from_array(&env, &[offset as u8 + 1; 32]),
+            payload_version: crate::mint::CURRENT_PAYLOAD_VERSION,
+            valid_until: u64::MAX,
             signature: dummy_sig.clone(),
         });
     }
 
-    let aggregated = sign_batch_payload(&env, &signing_key, &contract_id, &items, 1);
+    let aggregated = sign_batch_payload(&env, &signing_key, &contract_id, &items, crate::signature::BATCH_MINT_SCHEME_VERSION);
     client.mint_wrap_batch(&items, &Some(aggregated));
 
-    let batch_mint_topic = Symbol::new(&env, "Mint");
+    let batch_mint_topic = symbol_short!("mint");
     let mint_events: Vec<(Vec<Val>, Val)> = decode_events(&env)
         .into_iter()
         .filter(|(topics, _)| {
@@ -561,7 +560,7 @@ fn test_mint_wrap_batch_publishes_one_event_per_item() {
 
     // Every item publishes the identical shape.
     let (topics, data) = &mint_events[0];
-    assert_leading_topics(&env, topics, &["Mint"]);
+    assert_leading_topics(&env, topics, &["mint"]);
     let topic_user: Address = topics[1].try_into_val(&env).unwrap();
     let topic_period: u64 = topics[2].try_into_val(&env).unwrap();
     assert_eq!(topic_user, user);
@@ -573,7 +572,8 @@ fn test_mint_wrap_batch_publishes_one_event_per_item() {
         u64,
         Symbol,
     ) = data.clone().try_into_val(&env).unwrap();
-    assert_eq!(event_kind, batch_mint_topic);
+    // The data is `MintEventData::Mint`, which serializes with its variant name.
+    assert_eq!(event_kind, Symbol::new(&env, "Mint"));
     assert_eq!(emitted_user, user);
     assert_eq!(emitted_period, first_period);
     assert_eq!(emitted_archetype, archetype);
@@ -599,6 +599,10 @@ fn test_expire_wrap_publishes_period_and_marker() {
         &hash,
     );
 
+    // Only unverified (Draft/Pending) wraps can expire; a fresh mint is Active.
+    client.transition_wrap_state(&user, &period, &crate::storage_types::WrapState::Pending);
+    // Default expiration is 7 days after the last lifecycle update.
+    env.ledger().with_mut(|ledger| ledger.timestamp += 7 * 24 * 60 * 60 + 1);
     client.expire_wrap(&user, &period);
 
     let (topics, data) = last_event(&env);
@@ -749,6 +753,8 @@ fn test_unstake_and_withdraw_publish_two_topic_shapes() {
     let env = Env::default();
     let (_, client, _, _) = setup(&env, 84);
     let user = Address::generate(&env);
+    // `unstaking_at == 0` means "not unstaking", so start from a real clock.
+    env.ledger().with_mut(|ledger| ledger.timestamp = 1_700_000_000);
 
     client.stake(&user, &1_000i128);
     client.unstake(&user);

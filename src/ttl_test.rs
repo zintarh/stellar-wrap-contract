@@ -164,7 +164,7 @@ fn test_extend_ttl_post_revocation() {
         &signature,
     );
 
-    client.revoke_wrap(&user, &period);
+    client.revoke_wrap(&user, &period, &BytesN::from_array(&env, &[9u8; 32]));
 
     // After revocation, user might not have latest period if we revoked all wraps?
     // Wait, revocation doesn't clear `LatestPeriod` automatically, it just marks wrap revoked.
@@ -229,6 +229,7 @@ fn mint(
         &archetype,
         &data_hash,
         &CURRENT_PAYLOAD_VERSION,
+        &u64::MAX,
         &signature,
     );
 }

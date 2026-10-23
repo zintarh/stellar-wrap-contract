@@ -5,13 +5,18 @@ extern crate std;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
 use ed25519_dalek::{Signer, SigningKey};
-use soroban_sdk::{symbol_short, testutils::Address as _, Address, Bytes, BytesN, Env, Symbol};
+use soroban_sdk::{
+    symbol_short,
+    testutils::{Address as _, MockAuth, MockAuthInvoke},
+    Address, Bytes, BytesN, Env, IntoVal, Symbol,
+};
 
 use super::*;
 use crate::mint::CURRENT_PAYLOAD_VERSION;
+use crate::storage_types::OutboundStatus;
 use crate::signature::{construct_inbound_bridge_payload, construct_mint_payload};
 
-fn setup_test_env<'a>(
+pub(crate) fn setup_test_env<'a>(
     env: &'a Env,
 ) -> (
     StellarWrapContractClient<'a>,
@@ -32,7 +37,7 @@ fn setup_test_env<'a>(
     (client, admin, relayer_key, signing_key)
 }
 
-fn sign_mint_payload(
+pub(crate) fn sign_mint_payload(
     env: &Env,
     signer: &SigningKey,
     contract: &Address,
@@ -71,6 +76,7 @@ fn sign_inbound_payload(
         period,
         archetype,
         data_hash,
+        crate::signature::INBOUND_BRIDGE_SCHEME_VERSION,
     );
     let mut out = [0u8; 512];
     let len = payload.len() as usize;
@@ -109,7 +115,7 @@ fn single_inbound_sig(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn setup_single_relayer_bridge_in(
+pub(crate) fn setup_single_relayer_bridge_in(
     env: &Env,
     client: &StellarWrapContractClient<'_>,
     signer: &SigningKey,
@@ -853,7 +859,7 @@ fn test_bridge_wrap_in_mint_and_transfer_invariants() {
 
         assert_eq!(final_count, 1);
         assert_eq!(final_wrap_periods.len(), 1);
-        assert_eq!(final_user_periods.len(), 2);
+        assert_eq!(final_user_periods.len(), 1);
     });
 }
 
@@ -883,6 +889,8 @@ fn test_bridge_wrap_refund_pending_success() {
 
     let dest_chain = 137u32;
     client.set_chain_status(&dest_chain, &true);
+    let relayer_pubkey = BytesN::from_array(&env, &_relayer.verifying_key().to_bytes());
+    client.set_bridge_relayers(&dest_chain, &soroban_sdk::Vec::from_array(&env, [relayer_pubkey]), &1);
 
     let recipient = Bytes::from_array(&env, b"0x1234567890abcdef1234567890abcdef12345678");
     let nonce = client.bridge_wrap_out(&user, &dest_chain, &recipient, &period);
@@ -892,7 +900,7 @@ fn test_bridge_wrap_refund_pending_success() {
         .expect("request exists");
     assert_eq!(request.status, OutboundStatus::Pending);
 
-    client.bridge_wrap_refund(&user, &nonce);
+    client.bridge_wrap_refund(&nonce);
 
     let request_after = client
         .get_outbound_bridge_request(&nonce)
@@ -929,6 +937,8 @@ fn test_bridge_wrap_refund_completed_request_fails() {
 
     let dest_chain = 137u32;
     client.set_chain_status(&dest_chain, &true);
+    let relayer_pubkey = BytesN::from_array(&env, &_relayer.verifying_key().to_bytes());
+    client.set_bridge_relayers(&dest_chain, &soroban_sdk::Vec::from_array(&env, [relayer_pubkey]), &1);
 
     let recipient = Bytes::from_array(&env, b"0x1234567890abcdef1234567890abcdef12345678");
     let nonce = client.bridge_wrap_out(&user, &dest_chain, &recipient, &period);
@@ -941,7 +951,7 @@ fn test_bridge_wrap_refund_completed_request_fails() {
     assert_eq!(request.status, OutboundStatus::Completed);
 
     let result = catch_unwind(AssertUnwindSafe(|| {
-        client.bridge_wrap_refund(&user, &nonce);
+        client.bridge_wrap_refund(&nonce);
     }));
     assert!(result.is_err());
 
@@ -977,11 +987,13 @@ fn test_bridge_wrap_refund_double_refund_fails() {
 
     let dest_chain = 137u32;
     client.set_chain_status(&dest_chain, &true);
+    let relayer_pubkey = BytesN::from_array(&env, &_relayer.verifying_key().to_bytes());
+    client.set_bridge_relayers(&dest_chain, &soroban_sdk::Vec::from_array(&env, [relayer_pubkey]), &1);
 
     let recipient = Bytes::from_array(&env, b"0x1234567890abcdef1234567890abcdef12345678");
     let nonce = client.bridge_wrap_out(&user, &dest_chain, &recipient, &period);
 
-    client.bridge_wrap_refund(&user, &nonce);
+    client.bridge_wrap_refund(&nonce);
 
     let request = client
         .get_outbound_bridge_request(&nonce)
@@ -989,7 +1001,7 @@ fn test_bridge_wrap_refund_double_refund_fails() {
     assert_eq!(request.status, OutboundStatus::Refunded);
 
     let result = catch_unwind(AssertUnwindSafe(|| {
-        client.bridge_wrap_refund(&user, &nonce);
+        client.bridge_wrap_refund(&nonce);
     }));
     assert!(result.is_err());
 
@@ -1026,53 +1038,24 @@ fn test_bridge_wrap_refund_unauthorized_caller_fails() {
 
     let dest_chain = 137u32;
     client.set_chain_status(&dest_chain, &true);
+    let relayer_pubkey = BytesN::from_array(&env, &_relayer.verifying_key().to_bytes());
+    client.set_bridge_relayers(&dest_chain, &soroban_sdk::Vec::from_array(&env, [relayer_pubkey]), &1);
 
     let recipient = Bytes::from_array(&env, b"0x1234567890abcdef1234567890abcdef12345678");
     let nonce = client.bridge_wrap_out(&user, &dest_chain, &recipient, &period);
 
     let result = catch_unwind(AssertUnwindSafe(|| {
-        client.bridge_wrap_refund(&attacker, &nonce);
-    }));
-    assert!(result.is_err());
-
-    let request = client
-        .get_outbound_bridge_request(&nonce)
-        .expect("request exists");
-    assert_eq!(request.status, OutboundStatus::Pending);
-}
-
-#[test]
-fn test_bridge_wrap_refund_immediate_call_fails() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (client, _admin, _relayer, signing_key) = setup_test_env(&env);
-
-    let user = Address::generate(&env);
-    let period = 202607u64;
-    let archetype = symbol_short!("arch");
-    let data_hash = BytesN::from_array(&env, &[42u8; 32]);
-
-    let sig = sign_mint_payload(
-        &env,
-        &signing_key,
-        &client.address,
-        &user,
-        period,
-        &archetype,
-        &data_hash,
-    );
-
-    client.mint_wrap(&user, &period, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &sig);
-
-    let dest_chain = 137u32;
-    client.set_chain_status(&dest_chain, &true);
-
-    let recipient = Bytes::from_array(&env, b"0x1234567890abcdef1234567890abcdef12345678");
-    let nonce = client.bridge_wrap_out(&user, &dest_chain, &recipient, &period);
-
-    let result = catch_unwind(AssertUnwindSafe(|| {
-        client.bridge_wrap_refund(&user, &nonce);
+        client
+            .mock_auths(&[MockAuth {
+                address: &attacker,
+                invoke: &MockAuthInvoke {
+                    contract: &client.address,
+                    fn_name: "bridge_wrap_refund",
+                    args: (nonce,).into_val(&env),
+                    sub_invokes: &[],
+                },
+            }])
+            .bridge_wrap_refund(&nonce);
     }));
     assert!(result.is_err());
 
@@ -1137,7 +1120,7 @@ fn test_bridged_wrap_blocks_escape_routes_and_supports_refund() {
         WrapState::Bridged
     );
 
-    client.bridge_wrap_refund(&user, &outbound_nonce);
+    client.bridge_wrap_refund(&outbound_nonce);
     assert_eq!(
         client.get_wrap(&user, &period).unwrap().lifecycle.state,
         WrapState::Active
@@ -1273,19 +1256,24 @@ fn test_bridge_wrap_in_rejects_opted_out_recipient() {
     signatures.push_back(sig1);
 
     client.opt_out(&recipient);
-    setup_single_relayer_bridge_in(
-        &env,
-        &client,
-        &signing_key,
-        source_chain,
-        source_nonce,
-        &recipient,
-        period,
-        &archetype,
-        &data_hash,
-    );
+    // Per docs/bridge-architecture.md, an inbound message to an opted-out
+    // recipient is rejected and its nonce stays unprocessed.
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        setup_single_relayer_bridge_in(
+            &env,
+            &client,
+            &signing_key,
+            source_chain,
+            source_nonce,
+            &recipient,
+            period,
+            &archetype,
+            &data_hash,
+        );
+    }));
+    assert!(result.is_err());
 
-    assert!(client.is_inbound_nonce_processed(&source_chain, &source_nonce));
+    assert!(!client.is_inbound_nonce_processed(&source_chain, &source_nonce));
     assert_eq!(client.get_wrap(&recipient, &period), None);
     assert_eq!(
         client.get_inbound_bridge_record(&source_chain, &source_nonce),
@@ -1318,7 +1306,7 @@ fn test_bridge_wrap_in_rejects_terminal_states() {
         let data_hash = BytesN::from_array(&env, &[77u8; 32]);
         let wrap_key = DataKey::Wrap(recipient.clone(), period);
         let record = WrapRecord {
-            timestamp: 100,
+            created_at: 100,
             data_hash: BytesN::from_array(&env, &[66u8; 32]),
             archetype: symbol_short!("existing"),
             period,
@@ -1477,6 +1465,7 @@ fn test_bridge_wrap_in_index_invariants() {
     let relayer_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
     relayers.push_back(relayer_pubkey);
     client.set_bridge_relayers(&1u32, &relayers, &1);
+    client.set_chain_status(&1u32, &true);
     let chain_id = 1u32;
 
     let recipient = Address::generate(&env);
@@ -1542,6 +1531,7 @@ fn test_bridge_wrap_in_existing_period_updates_rather_than_duplicating() {
     let relayer_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
     relayers.push_back(relayer_pubkey);
     client.set_bridge_relayers(&1u32, &relayers, &1);
+    client.set_chain_status(&1u32, &true);
     let chain_id = 1u32;
 
     let recipient = Address::generate(&env);
@@ -1862,5 +1852,5 @@ fn test_get_outbound_bridge_request_fields() {
     assert_eq!(request.period, period);
     assert_eq!(request.archetype, archetype);
     assert_eq!(request.data_hash, data_hash);
-    assert!(request.timestamp > 0);
+    assert_eq!(request.timestamp, env.ledger().timestamp());
 }

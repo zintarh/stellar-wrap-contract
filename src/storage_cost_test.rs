@@ -87,7 +87,11 @@ impl LayoutProbe {
             LayoutKey::UserPeriods(user.clone()),
             LayoutKey::WrapPeriods(user.clone()),
         ] {
-            let mut periods: Vec<u64> = env.storage().persistent().get(&key).unwrap_or_default();
+            let mut periods: Vec<u64> = env
+                .storage()
+                .persistent()
+                .get(&key)
+                .unwrap_or_else(|| Vec::new(&env));
             periods.push_back(period);
             env.storage().persistent().set(&key, &periods);
             env.storage()

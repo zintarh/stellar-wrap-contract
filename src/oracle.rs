@@ -73,7 +73,7 @@ pub(crate) fn fail(e: &Env, error: OracleError) -> ! {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::{contract, contractimpl, testutils::Address as _, Env};
+    use soroban_sdk::{contract, contractimpl, Env};
 
     /// Hostile oracle that re-enters `verify_data_hash` on every callback,
     /// simulating a reentrancy attempt through the cross-contract surface.
@@ -97,16 +97,27 @@ mod tests {
         let oracle = e.register(ReentrantOracle, ());
         let data_hash = BytesN::from_array(&e, &[7u8; 32]);
 
-        // The call completes and returns the oracle's verdict; no state is
-        // written around the external call, so re-entry is harmless.
+        // The host rejects the re-entrant call, and the failure is contained
+        // as an oracle error instead of aborting the caller.
         let result = verify_data_hash(&e, &oracle, &data_hash);
-        assert_eq!(result, Ok(true));
+        assert_eq!(result, Err(OracleError::OracleCallFailed));
+    }
+
+    /// Oracle that recognizes every hash.
+    #[contract]
+    pub struct HonestOracle;
+
+    #[contractimpl]
+    impl HonestOracle {
+        pub fn verify_data_hash(_e: Env, _data_hash: BytesN<32>) -> bool {
+            true
+        }
     }
 
     #[test]
     fn verify_data_hash_forwards_to_oracle() {
         let e = Env::default();
-        let oracle = e.register(ReentrantOracle, ());
+        let oracle = e.register(HonestOracle, ());
         let data_hash = BytesN::from_array(&e, &[1u8; 32]);
         assert_eq!(verify_data_hash(&e, &oracle, &data_hash), Ok(true));
     }

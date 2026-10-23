@@ -4,7 +4,7 @@ use crate::{
     signature::verify_inbound_bridge_signature,
     storage_accounting,
     storage_types::{
-        BridgeRelayerSet, InboundBridgeRecord, OutboundBridgeRequest, OutboundRequestState,
+        BridgeRelayerSet, InboundBridgeRecord, OutboundBridgeRequest, OutboundStatus,
         WrapLifecycleFSM, WrapRecord, WrapState,
     },
     ContractError, DataKey,
@@ -149,7 +149,7 @@ pub(crate) fn bridge_wrap_out(
         archetype: wrap_record.archetype.clone(),
         data_hash: wrap_record.data_hash.clone(),
         timestamp: now,
-        state: OutboundRequestState::Pending,
+        status: OutboundStatus::Pending,
     };
 
     let req_key = DataKey::OutboundBridgeRequest(next_nonce);
@@ -185,7 +185,7 @@ pub(crate) fn bridge_wrap_refund(e: Env, outbound_nonce: u64) {
     // already been completed (honoured on the destination chain) or refunded
     // must never be refunded again, otherwise the same wrap could exist on
     // both chains.
-    if request.state != OutboundRequestState::Pending {
+    if request.status != OutboundStatus::Pending {
         panic_with_error!(e, ContractError::InvalidStateTransition);
     }
 
@@ -208,7 +208,7 @@ pub(crate) fn bridge_wrap_refund(e: Env, outbound_nonce: u64) {
 
     // Mark the outbound request terminally as refunded so it cannot be
     // refunded twice and so any later completion is rejected.
-    request.state = OutboundRequestState::Refunded;
+    request.status = OutboundStatus::Refunded;
     e.storage().persistent().set(&request_key, &request);
     e.storage()
         .persistent()
@@ -226,6 +226,36 @@ pub(crate) fn bridge_wrap_refund(e: Env, outbound_nonce: u64) {
             request.sender.clone(),
             request.period,
         ),
+        outbound_nonce,
+    );
+}
+
+/// Mark an outbound bridge request as honoured on the destination chain.
+/// After this the request can no longer be refunded. Requires admin
+/// authorization, matching `bridge_wrap_refund`.
+#[allow(deprecated)] // TODO(#718): migrate to #[contractevent]
+pub(crate) fn bridge_wrap_out_complete(e: Env, outbound_nonce: u64) {
+    crate::admin::read_admin(&e).require_auth();
+
+    let request_key = DataKey::OutboundBridgeRequest(outbound_nonce);
+    let mut request: OutboundBridgeRequest = e
+        .storage()
+        .persistent()
+        .get(&request_key)
+        .unwrap_or_else(|| panic_with_error!(e, ContractError::InvalidBridgePayload));
+
+    if request.status != OutboundStatus::Pending {
+        panic_with_error!(e, ContractError::BridgeRequestNotPending);
+    }
+
+    request.status = OutboundStatus::Completed;
+    e.storage().persistent().set(&request_key, &request);
+    e.storage()
+        .persistent()
+        .extend_ttl(&request_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
+
+    e.events().publish(
+        (symbol_short!("br_done"), request.sender.clone(), request.period),
         outbound_nonce,
     );
 }

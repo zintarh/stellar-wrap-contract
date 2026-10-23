@@ -8,6 +8,7 @@ use soroban_sdk::{
 };
 
 use super::*;
+use crate::test_utils::ContractErrorCode;
 use crate::{
     storage_types::BatchWrapItem,
     test_utils::{decode_events, sign_payload},
@@ -96,6 +97,8 @@ fn test_mint_wrap_batch_happy_path() {
     let items = vec![&env, item1, item2, item3];
 
     client.mint_wrap_batch(&items, &None);
+    // Events only cover the latest invocation, so capture them right away.
+    let events = decode_events(&env);
 
     // Acceptance criteria 1: A batch of 3 items for 3 distinct users succeeds.
     // (If it didn't succeed, it would have panicked above).
@@ -117,21 +120,14 @@ fn test_mint_wrap_batch_happy_path() {
     }
 
     // Acceptance criteria 5: A mint event is emitted per item.
-    let events = decode_events(&env);
     let mint_events: std::vec::Vec<_> = events
         .iter()
         .filter(|(topics, _data)| {
-            if topics.is_empty() {
-                return false;
-            }
-            if let Ok(sym) = topics[0].try_into_val(&env) {
-                let s: Symbol = sym;
-                // Wait, Mint events are sometimes MintEventType::Mint or symbol_short!("mint")
-                // Let's check both possibilities.
-                s == symbol_short!("mint") || s == Symbol::new(&env, "Mint")
-            } else {
-                false
-            }
+            // Mint events publish ("v1", "wrap", "mint").
+            topics.iter().any(|topic| {
+                let decoded: Result<Symbol, _> = topic.try_into_val(&env);
+                decoded.map_or(false, |sym| sym == symbol_short!("mint"))
+            })
         })
         .collect();
 
@@ -173,7 +169,7 @@ fn test_mint_wrap_batch_aggregated_signature_success() {
     let period = 202401u64;
     let archetype = symbol_short!("arch");
     let data_hash = BytesN::from_array(&env, &[42u8; 32]);
-    let payload_version = 1u32;
+    let payload_version = crate::mint::CURRENT_PAYLOAD_VERSION;
 
     // Per-item `signature` fields are irrelevant on the aggregated path (only
     // `verify_batch_aggregated_signature` runs), so leave them as dummy zeros.
@@ -185,6 +181,7 @@ fn test_mint_wrap_batch_aggregated_signature_success() {
         archetype: archetype.clone(),
         data_hash: data_hash.clone(),
         payload_version,
+        valid_until: u64::MAX,
         signature: dummy_sig.clone(),
     };
     let item2 = BatchWrapItem {
@@ -193,6 +190,7 @@ fn test_mint_wrap_batch_aggregated_signature_success() {
         archetype: archetype.clone(),
         data_hash: data_hash.clone(),
         payload_version,
+        valid_until: u64::MAX,
         signature: dummy_sig.clone(),
     };
     let item3 = BatchWrapItem {
@@ -201,6 +199,7 @@ fn test_mint_wrap_batch_aggregated_signature_success() {
         archetype: archetype.clone(),
         data_hash: data_hash.clone(),
         payload_version,
+        valid_until: u64::MAX,
         signature: dummy_sig,
     };
 
@@ -234,7 +233,7 @@ fn test_mint_wrap_batch_aggregated_signature_rejects_reordered_items() {
     let user2 = Address::generate(&env);
     let archetype = symbol_short!("arch");
     let data_hash = BytesN::from_array(&env, &[7u8; 32]);
-    let payload_version = 1u32;
+    let payload_version = crate::mint::CURRENT_PAYLOAD_VERSION;
     let dummy_sig = BytesN::from_array(&env, &[0u8; 64]);
 
     let item1 = BatchWrapItem {
@@ -243,6 +242,7 @@ fn test_mint_wrap_batch_aggregated_signature_rejects_reordered_items() {
         archetype: archetype.clone(),
         data_hash: data_hash.clone(),
         payload_version,
+        valid_until: u64::MAX,
         signature: dummy_sig.clone(),
     };
     let item2 = BatchWrapItem {
@@ -251,6 +251,7 @@ fn test_mint_wrap_batch_aggregated_signature_rejects_reordered_items() {
         archetype: archetype.clone(),
         data_hash: data_hash.clone(),
         payload_version,
+        valid_until: u64::MAX,
         signature: dummy_sig,
     };
 
@@ -291,7 +292,7 @@ fn test_mint_wrap_batch_aggregated_signature_rejects_mutated_data_hash() {
     let user1 = Address::generate(&env);
     let user2 = Address::generate(&env);
     let archetype = symbol_short!("arch");
-    let payload_version = 1u32;
+    let payload_version = crate::mint::CURRENT_PAYLOAD_VERSION;
     let dummy_sig = BytesN::from_array(&env, &[0u8; 64]);
 
     let item1 = BatchWrapItem {
@@ -300,6 +301,7 @@ fn test_mint_wrap_batch_aggregated_signature_rejects_mutated_data_hash() {
         archetype: archetype.clone(),
         data_hash: BytesN::from_array(&env, &[9u8; 32]),
         payload_version,
+        valid_until: u64::MAX,
         signature: dummy_sig.clone(),
     };
     let item2 = BatchWrapItem {
@@ -308,6 +310,7 @@ fn test_mint_wrap_batch_aggregated_signature_rejects_mutated_data_hash() {
         archetype: archetype.clone(),
         data_hash: BytesN::from_array(&env, &[9u8; 32]),
         payload_version,
+        valid_until: u64::MAX,
         signature: dummy_sig,
     };
 
@@ -349,7 +352,7 @@ fn test_mint_wrap_batch_aggregated_signature_rejects_wrong_key() {
     let user1 = Address::generate(&env);
     let archetype = symbol_short!("arch");
     let data_hash = BytesN::from_array(&env, &[11u8; 32]);
-    let payload_version = 1u32;
+    let payload_version = crate::mint::CURRENT_PAYLOAD_VERSION;
     let dummy_sig = BytesN::from_array(&env, &[0u8; 64]);
 
     let item1 = BatchWrapItem {
@@ -358,6 +361,7 @@ fn test_mint_wrap_batch_aggregated_signature_rejects_wrong_key() {
         archetype,
         data_hash,
         payload_version,
+        valid_until: u64::MAX,
         signature: dummy_sig,
     };
     let items = vec![&env, item1];

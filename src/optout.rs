@@ -81,23 +81,26 @@ mod tests {
     fn opt_out_opt_in_does_not_allow_reminting_a_minted_period() {
         let e = Env::default();
         e.mock_all_auths();
+        let contract = e.register(crate::StellarWrapContract, ());
 
         let user = Address::generate(&e);
         let period = 42u32;
 
         // Simulate the mint path recording the period for the user.
         let period_key = DataKey::MintedPeriod(user.clone(), period);
-        e.storage().persistent().set(&period_key, &true);
+        e.as_contract(&contract, || e.storage().persistent().set(&period_key, &true));
 
-        // Opt out, then opt back in.
-        opt_out(e.clone(), user.clone());
-        assert!(is_opted_out(&e, &user));
-        opt_in(e.clone(), user.clone());
-        assert!(!is_opted_out(&e, &user));
+        // Opt out, then opt back in, as two separate invocations.
+        e.as_contract(&contract, || opt_out(e.clone(), user.clone()));
+        e.as_contract(&contract, || assert!(is_opted_out(&e, &user)));
+        e.as_contract(&contract, || opt_in(e.clone(), user.clone()));
 
         // The previously minted period record survives the opt-out round trip,
         // so the once-per-period guarantee still holds.
-        assert!(e.storage().persistent().has(&period_key));
+        e.as_contract(&contract, || {
+            assert!(!is_opted_out(&e, &user));
+            assert!(e.storage().persistent().has(&period_key));
+        });
     }
 
     /// Opting out must not remove existing records.
@@ -105,15 +108,17 @@ mod tests {
     fn opt_out_preserves_existing_records() {
         let e = Env::default();
         e.mock_all_auths();
+        let contract = e.register(crate::StellarWrapContract, ());
+        e.as_contract(&contract, || {
+            let user = Address::generate(&e);
+            let period_key = DataKey::MintedPeriod(user.clone(), 7u32);
+            e.storage().persistent().set(&period_key, &true);
 
-        let user = Address::generate(&e);
-        let period_key = DataKey::MintedPeriod(user.clone(), 7u32);
-        e.storage().persistent().set(&period_key, &true);
+            opt_out(e.clone(), user.clone());
 
-        opt_out(e.clone(), user.clone());
-
-        assert!(is_opted_out(&e, &user));
-        assert!(e.storage().persistent().has(&period_key));
+            assert!(is_opted_out(&e, &user));
+            assert!(e.storage().persistent().has(&period_key));
+        });
     }
 
     /// Opt-out cannot be set on another user's behalf: the flag is keyed by
@@ -122,13 +127,15 @@ mod tests {
     fn opt_out_only_affects_the_authenticated_caller() {
         let e = Env::default();
         e.mock_all_auths();
+        let contract = e.register(crate::StellarWrapContract, ());
+        e.as_contract(&contract, || {
+            let alice = Address::generate(&e);
+            let bob = Address::generate(&e);
 
-        let alice = Address::generate(&e);
-        let bob = Address::generate(&e);
+            opt_out(e.clone(), alice.clone());
 
-        opt_out(e.clone(), alice.clone());
-
-        assert!(is_opted_out(&e, &alice));
-        assert!(!is_opted_out(&e, &bob));
+            assert!(is_opted_out(&e, &alice));
+            assert!(!is_opted_out(&e, &bob));
+        });
     }
 }

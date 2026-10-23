@@ -83,10 +83,12 @@ fn test_mint_fails_one_second_after_deadline() {
     }));
 
     assert!(result.is_err(), "mint must be rejected after valid_until");
-    let err = result.unwrap_err().downcast::<String>().unwrap_or_default();
-    assert!(
-        err.contains("Error(Contract, #57)"),
-        "expected SignatureExpired (#57), got: {err}"
-    );
+    let err = result
+        .unwrap_err()
+        .downcast::<std::string::String>()
+        .map(|err| *err)
+        .unwrap_or_default();
+    let expected = std::format!("Error(Contract, #{})", ContractError::SignatureExpired as u32);
+    assert!(err.contains(&expected), "expected SignatureExpired, got: {err}");
     assert!(client.get_wrap(&user, &period).is_none());
 }
