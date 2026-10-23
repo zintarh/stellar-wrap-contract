@@ -19,13 +19,16 @@
 
 extern crate std;
 
+use std::collections::BTreeMap;
+
 use soroban_sdk::{
     symbol_short,
-    testutils::Address as _,
+    testutils::{Address as _, Ledger},
     Address, BytesN, Env,
 };
 
 use crate::{
+    mint::CURRENT_PAYLOAD_VERSION,
     test_utils::sign_payload,
     DataKey, StellarWrapContract, StellarWrapContractClient,
 };
@@ -626,4 +629,175 @@ fn test_invariants_revoke_all_then_mint_new() {
     assert!(inspector.latest_period_is_valid(&user));
     assert!(inspector.latest_period_is_max(&user));
     assert!(inspector.periods_are_synchronized(&user));
+}
+
+// ============================================================================
+// LONG-RUN SIMULATION
+// ============================================================================
+
+const SIM_SEED: u64 = 0x5EED_1057;
+const SIM_USERS: usize = 1_000;
+const SIM_MONTHS: u64 = 24;
+const SIM_OPS_PER_MONTH: usize = 2_000;
+const SIM_SAMPLE_STRIDE: usize = 50;
+const SIM_START_TIMESTAMP: u64 = 1_700_000_000;
+const SECONDS_PER_MONTH: u64 = 30 * 24 * 60 * 60;
+
+/// Deterministic SplitMix64 generator so any failure reproduces from `SIM_SEED`.
+struct SimRng(u64);
+
+impl SimRng {
+    fn next_u64(&mut self) -> u64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z >> 31)
+    }
+
+    fn below(&mut self, n: usize) -> usize {
+        (self.next_u64() % n as u64) as usize
+    }
+}
+
+#[derive(Clone, Copy)]
+enum SimOp {
+    Mint,
+    Transfer,
+    Revoke,
+    Expire,
+    Burn,
+}
+
+/// Operation mix per simulated month. Mints dominate; lifecycle changes are rarer.
+fn pick_sim_op(rng: &mut SimRng) -> SimOp {
+    match rng.below(100) {
+        0..=44 => SimOp::Mint,
+        45..=64 => SimOp::Transfer,
+        65..=76 => SimOp::Revoke,
+        77..=88 => SimOp::Expire,
+        _ => SimOp::Burn,
+    }
+}
+
+/// Maps a zero-based month index to a YYYYMM period, starting January 2024.
+fn sim_period(month: u64) -> u64 {
+    (2024 + month / 12) * 100 + month % 12 + 1
+}
+
+fn random_data_hash(env: &Env, rng: &mut SimRng) -> BytesN<32> {
+    let mut raw = [0u8; 32];
+    raw[..8].copy_from_slice(&rng.next_u64().to_le_bytes());
+    raw[31] = 1; // keeps the hash non-zero
+    BytesN::from_array(env, &raw)
+}
+
+/// Records the largest read-byte cost seen for each contract entrypoint.
+fn record_read_bytes(env: &Env, max_read_bytes: &mut BTreeMap<&'static str, u64>, entrypoint: &'static str) {
+    let read_bytes = env.cost_estimate().resources().read_bytes as u64;
+    let slot = max_read_bytes.entry(entrypoint).or_insert(0);
+    *slot = (*slot).max(read_bytes);
+}
+
+/// 1,000 users over 24 simulated months of interleaved mints, transfers,
+/// revocations, expirations and burns. Invariants are checked for sampled users
+/// after every month, and the maximum read bytes per entrypoint are reported.
+///
+/// Ignored by default because it is slow; run with:
+/// `cargo test long_run_simulation -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn long_run_simulation_1000_users_24_months() {
+    let fixture = TestFixture::new();
+    let env = &fixture.env;
+    let contract_id = fixture.contract_id.clone();
+    let archetype = symbol_short!("test");
+    let mut rng = SimRng(SIM_SEED);
+    let mut max_read_bytes: BTreeMap<&'static str, u64> = BTreeMap::new();
+
+    let users: std::vec::Vec<Address> = (0..SIM_USERS).map(|_| Address::generate(env)).collect();
+    std::println!("SIM seed={:#x} users={} months={} ops_per_month={}", SIM_SEED, SIM_USERS, SIM_MONTHS, SIM_OPS_PER_MONTH);
+
+    for month in 0..SIM_MONTHS {
+        env.ledger().with_mut(|li| {
+            li.timestamp = SIM_START_TIMESTAMP + month * SECONDS_PER_MONTH;
+        });
+
+        for _ in 0..SIM_OPS_PER_MONTH {
+            let op = pick_sim_op(&mut rng);
+            let user = &users[rng.below(SIM_USERS)];
+            let period = sim_period(rng.below((month + 1) as usize) as u64);
+
+            // Random operations are often invalid (duplicates, wrong state, missing wraps).
+            // Failures are expected and ignored; the invariants below are what matter.
+            env.cost_estimate().budget().reset_default();
+            match op {
+                SimOp::Mint => {
+                    let data_hash = random_data_hash(env, &mut rng);
+                    let sig = sign_payload(env, &fixture.signing_key, &contract_id, user, period, &archetype, &data_hash);
+                    let _ = fixture.client.try_mint_wrap(user, &period, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &u64::MAX, &sig);
+                    record_read_bytes(env, &mut max_read_bytes, "mint_wrap");
+                }
+                SimOp::Transfer => {
+                    let to = &users[rng.below(SIM_USERS)];
+                    let _ = fixture.client.try_transfer_wrap(user, to, &period);
+                    record_read_bytes(env, &mut max_read_bytes, "transfer_wrap");
+                }
+                SimOp::Revoke => {
+                    let reason = BytesN::from_array(env, &[0u8; 32]);
+                    let _ = fixture.client.try_revoke_wrap(user, &period, &reason);
+                    record_read_bytes(env, &mut max_read_bytes, "revoke_wrap");
+                }
+                SimOp::Expire => {
+                    let _ = fixture.client.try_expire_wrap(user, &period);
+                    record_read_bytes(env, &mut max_read_bytes, "expire_wrap");
+                }
+                SimOp::Burn => {
+                    let _ = fixture.client.try_burn_wrap(user, &period);
+                    record_read_bytes(env, &mut max_read_bytes, "burn_wrap");
+                }
+            }
+        }
+
+        let inspector = fixture.inspector();
+        for (idx, user) in users.iter().enumerate().step_by(SIM_SAMPLE_STRIDE) {
+            assert_eq!(
+                inspector.get_wrap_count(user),
+                inspector.count_live_wraps(user),
+                "WrapCount drifted from live wraps for user {} after month {}",
+                idx,
+                month + 1
+            );
+            assert!(
+                inspector.latest_period_is_valid(user),
+                "LatestPeriod points at a missing wrap for user {} after month {}",
+                idx,
+                month + 1
+            );
+            assert!(
+                inspector.latest_period_is_max(user),
+                "LatestPeriod is not the newest live period for user {} after month {}",
+                idx,
+                month + 1
+            );
+            assert!(
+                inspector.periods_are_synchronized(user),
+                "UserPeriods and WrapPeriods diverged for user {} after month {}",
+                idx,
+                month + 1
+            );
+        }
+
+        let summed: u32 = users.iter().map(|user| inspector.get_wrap_count(user)).sum();
+        assert_eq!(
+            summed,
+            inspector.get_total_wrap_count(),
+            "TotalWrapCount drifted from the sum of user counts after month {}",
+            month + 1
+        );
+    }
+
+    for (entrypoint, bytes) in &max_read_bytes {
+        std::println!("SIM_MAX_READ_BYTES entrypoint={} max_read_bytes={}", entrypoint, bytes);
+    }
 }

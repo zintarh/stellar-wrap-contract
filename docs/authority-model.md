@@ -12,12 +12,22 @@ privileged function below is listed exactly once, together with *all* of its rou
 
 ## Roles
 
+Privileged entrypoints are gated by a single, narrow role rather than one omnipotent `admin` key.
+Roles are stored per member under `DataKey::RoleMember(Role, Address)` and managed through
+`grant_role`, `revoke_role`, `renounce_role` and `has_role`. Only `Admin` may grant roles; in
+production the role admin is the governor contract.
+
 | Role | Held by | Notes |
 | --- | --- | --- |
-| `admin` | EOA / multisig set at deploy, rotatable | Can act directly on admin-gated functions |
-| `governance` | Governance contract | Executes passed proposals |
-| `timelock` | Timelock contract | Queues and later executes scheduled calls |
-| `relayer` | Bridge relayer set | Authorized to relay bridge messages |
+| `Admin` | EOA / multisig set at deploy, rotatable | Grants and revokes roles; the role admin is the governor in production |
+| `Minter` | Backend signer | Authorized to mint |
+| `Revoker` | Backend signer | Authorized to revoke |
+| `Pauser` | Governor / safety operator | Authorized to pause and unpause |
+| `Upgrader` | Governor | Authorized to upgrade the WASM |
+| `Bridge` | Bridge relayer set | Authorized to relay bridge messages |
+
+`grant_role` and `revoke_role` emit `role_granted` and `role_revoked` events. The last `Admin`
+cannot renounce itself, which prevents bricking the contract.
 
 ## Privileged actions and their routes
 
@@ -92,6 +102,22 @@ privileged function below is listed exactly once, together with *all* of its rou
   by validation.
 - **Fastest path:** **relayer — immediate.**
 - **Differing guarantees:** no other route reaches this action, so its guarantees are uniform.
+
+## Role-to-entrypoint matrix
+
+Each privileged entrypoint requires exactly one role. This table is the source of truth that the
+RBAC tests assert against (each role is proven unable to call another role's entrypoints).
+
+| Entrypoint | Required role |
+| --- | --- |
+| `grant_role` | `Admin` |
+| `revoke_role` | `Admin` |
+| `renounce_role` | the caller's own role (last `Admin` cannot renounce) |
+| `mint` | `Minter` |
+| `revoke` | `Revoker` |
+| `pause` / `unpause` | `Pauser` |
+| `upgrade` | `Upgrader` |
+| `execute` (bridge) | `Bridge` |
 
 ## Cross-route summary
 

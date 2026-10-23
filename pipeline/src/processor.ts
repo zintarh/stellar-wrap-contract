@@ -480,6 +480,18 @@ export function persistStateToDB(
           ledger_seq: ledgerSeq,
           tx_hash: '',
         });
+        db.upsertWrapByPeriod({
+          contract_id: contractId,
+          period,
+          user,
+          archetype: record.archetype,
+          timestamp: record.created_at,
+          data_hash: record.data_hash,
+          fsm_state: record.lifecycle.state,
+          fsm_updated_at: record.lifecycle.updated_at,
+          ledger_seq: ledgerSeq,
+          tx_hash: '',
+        });
       }
     }
 

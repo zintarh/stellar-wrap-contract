@@ -4,9 +4,11 @@ import type {
   ContractStateRow,
   DerivedState,
   LedgerCursorRow,
+  RetentionGap,
   StorageEntry,
   WrapState,
   WrapRecord,
+  WrapRow,
 } from './types';
 
 // Inline only the fields db.ts needs from ReconciliationRun to avoid a circular import.
@@ -26,7 +28,7 @@ interface ReconciliationRunRecord {
  * forward migration is added below. The version is persisted inside the
  * database itself (in the `schema_meta` table) so it travels with the data.
  */
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 /**
  * Thrown when the on-disk database was written by a newer version of the
@@ -164,9 +166,9 @@ export class IndexerDB {
       throw new SchemaVersionError(stored, SCHEMA_VERSION);
     }
 
-    // v1 -> v3: create the baseline tables and reconciliation history.
+    // v1 -> v4: create the baseline tables and reconciliation history.
     // `CREATE TABLE IF NOT EXISTS` makes this safe for existing databases.
-    if (stored < 3) {
+    if (stored < 4) {
       this.createBaselineSchema();
     }
 
@@ -213,6 +215,26 @@ export class IndexerDB {
       ON wrap_records(contract_id, user)`);
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_wraps_period
       ON wrap_records(contract_id, period)`);
+
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS wraps_by_period (
+        contract_id TEXT NOT NULL,
+        period INTEGER NOT NULL,
+        user TEXT NOT NULL,
+        archetype TEXT NOT NULL,
+        timestamp INTEGER NOT NULL,
+        data_hash TEXT NOT NULL,
+        fsm_state INTEGER NOT NULL,
+        fsm_updated_at INTEGER NOT NULL,
+        ledger_seq INTEGER NOT NULL,
+        tx_hash TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY (contract_id, period, user)
+      )
+    `);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_wraps_by_period_contract_period
+      ON wraps_by_period(contract_id, period)`);
 
     this.db.run(`
       CREATE TABLE IF NOT EXISTS user_state (
@@ -286,6 +308,19 @@ export class IndexerDB {
     `);
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_applied_events_contract
       ON applied_events(contract_id, ledger_seq)`);
+
+    // Ledger ranges Soroban-RPC pruned before the indexer could read them.
+    // One row per range; kept until an operator resolves the gap.
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS retention_gaps (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        contract_id TEXT NOT NULL,
+        from_ledger INTEGER NOT NULL,
+        to_ledger INTEGER NOT NULL,
+        detected_at TEXT NOT NULL,
+        UNIQUE (contract_id, from_ledger, to_ledger)
+      )
+    `);
 
     this.db.run(`
       CREATE TABLE IF NOT EXISTS reconciliation_runs (
@@ -518,6 +553,65 @@ export class IndexerDB {
     return row.count;
   }
 
+  upsertWrapByPeriod(record: {
+    contract_id: string;
+    period: number;
+    user: string;
+    archetype: string;
+    timestamp: number;
+    data_hash: string;
+    fsm_state: number;
+    fsm_updated_at: number;
+    ledger_seq: number;
+    tx_hash: string;
+  }): void {
+    this.exec(
+      `INSERT INTO wraps_by_period
+        (contract_id, period, user, archetype, timestamp, data_hash, fsm_state, fsm_updated_at, ledger_seq, tx_hash)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(contract_id, period, user) DO UPDATE SET
+        archetype = excluded.archetype,
+        timestamp = excluded.timestamp,
+        data_hash = excluded.data_hash,
+        fsm_state = excluded.fsm_state,
+        fsm_updated_at = excluded.fsm_updated_at,
+        ledger_seq = excluded.ledger_seq,
+        tx_hash = excluded.tx_hash,
+        updated_at = datetime('now')`,
+      [record.contract_id, record.period, record.user, record.archetype, record.timestamp, record.data_hash, record.fsm_state, record.fsm_updated_at, record.ledger_seq, record.tx_hash],
+    );
+  }
+
+  getWrapsByPeriod(
+    contractId: string,
+    period: number,
+    cursor: string | null = null,
+    limit: number = 25,
+  ): WrapRow[] {
+    let sql = `SELECT * FROM wraps_by_period WHERE contract_id = ? AND period = ?`;
+    const params: unknown[] = [contractId, period];
+    if (cursor) {
+      sql += ` AND user > ?`;
+      params.push(cursor);
+    }
+    sql += ` ORDER BY user ASC LIMIT ?`;
+    params.push(limit);
+    return this.fetchAll(sql, params) as unknown as WrapRow[];
+  }
+
+  getArchetypeDistributionByPeriod(
+    contractId: string,
+    period: number,
+  ): Record<string, unknown>[] {
+    return this.fetchAll(
+      `SELECT archetype, COUNT(*) as count FROM wraps_by_period
+       WHERE contract_id = ? AND period = ?
+       GROUP BY archetype
+       ORDER BY count DESC`,
+      [contractId, period],
+    ) as unknown as Record<string, unknown>[];
+  }
+
   upsertUserState(state: {
     contract_id: string;
     user: string;
@@ -684,6 +778,22 @@ export class IndexerDB {
         updated_at = datetime('now')`,
       [id, contractId, processedLedger, eventLedger],
     );
+  }
+
+  recordRetentionGap(gap: RetentionGap): void {
+    this.exec(
+      `INSERT OR IGNORE INTO retention_gaps (contract_id, from_ledger, to_ledger, detected_at)
+       VALUES (?, ?, ?, ?)`,
+      [gap.contract_id, gap.from_ledger, gap.to_ledger, gap.detected_at],
+    );
+  }
+
+  getRetentionGaps(contractId: string): RetentionGap[] {
+    return this.fetchAll(
+      `SELECT contract_id, from_ledger, to_ledger, detected_at FROM retention_gaps
+       WHERE contract_id = ? ORDER BY from_ledger ASC`,
+      [contractId],
+    ) as unknown as RetentionGap[];
   }
 
   getStats(contractId: string): Record<string, unknown> {

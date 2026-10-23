@@ -93,7 +93,7 @@ pub const MAX_VERIFY_PAYLOAD_BYTES: usize = 32_768; // 32 KiB
 /// InvalidInput)` host error (soroban-sdk `Crypto::ed25519_verify` discards the
 /// result, so the guest never regains control). Verifying here reproduces
 /// acceptance semantics inside the contract's error domain at the cost of
-/// ~45.5 KB bytecode overhead. See `SIGNATURE_VERIFICATION_DECISION.md` for full
+/// ~45.5 KB bytecode overhead. See `docs/adr/0001-in-guest-ed25519.md` for full
 /// measurement and architectural trade-off details.
 ///
 /// # Panics

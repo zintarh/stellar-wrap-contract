@@ -3,16 +3,21 @@ extern crate std;
 
 use soroban_sdk::{contracttype, Address, Bytes, BytesN, String, Symbol, Vec};
 
+/// Minimal reachable lifecycle for a wrap record.
+///
+/// Every variant is reachable from a non-admin product flow:
+/// - `Active`: created by `mint_wrap`, `mint_wrap_batch`, `bridge_wrap_in`,
+///   and restored by `bridge_wrap_out` completion.
+/// - `Bridged`: set by `bridge_wrap_out` while the record is in flight.
+/// - `Expired`: set by `expire_wrap` once the expiration duration elapses.
+///
+/// Revoke and burn are deletions (with events), not states.
 #[contracttype]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum WrapState {
-    Draft = 1,
-    Pending = 2,
-    Active = 3,
-    Archived = 4,
-    Cancelled = 5,
-    Expired = 6,
-    Bridged = 7,
+    Active = 1,
+    Bridged = 2,
+    Expired = 3,
 }
 
 #[contracttype]
@@ -30,21 +35,21 @@ impl WrapLifecycleFSM {
         }
     }
 
+    /// Documented transition table (see `docs/lifecycle.md`):
+    ///
+    /// | from    | to      | trigger          |
+    /// |---------|---------|------------------|
+    /// | Active  | Bridged | bridge_wrap_out  |
+    /// | Bridged | Active  | bridge_wrap_in   |
+    /// | Active  | Expired | expire_wrap      |
+    /// | Bridged | Expired | expire_wrap      |
     pub fn can_transition_to(&self, next: &WrapState) -> bool {
         matches!(
             (&self.state, next),
-            (WrapState::Draft, WrapState::Pending)
-                | (WrapState::Draft, WrapState::Cancelled)
-                | (WrapState::Draft, WrapState::Expired)
-                | (WrapState::Pending, WrapState::Active)
+            (WrapState::Active, WrapState::Bridged)
                 | (WrapState::Bridged, WrapState::Active)
-                | (WrapState::Pending, WrapState::Cancelled)
-                | (WrapState::Pending, WrapState::Expired)
-                | (WrapState::Active, WrapState::Pending)
-                | (WrapState::Active, WrapState::Bridged)
-                | (WrapState::Pending, WrapState::Bridged)
-                | (WrapState::Active, WrapState::Archived)
-                | (WrapState::Active, WrapState::Cancelled)
+                | (WrapState::Active, WrapState::Expired)
+                | (WrapState::Bridged, WrapState::Expired)
         )
     }
 
@@ -86,6 +91,14 @@ pub struct WrapRecord {
     pub description: Option<String>,
     /// Optional image URL attached by the admin.
     pub image_url: Option<String>,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WrapView {
+    pub record: WrapRecord,
+    pub is_expired: bool,
+    pub live_until_ledger: u32,
 }
 
 #[contracttype]
