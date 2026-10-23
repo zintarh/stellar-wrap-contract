@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       STELLAR_NETWORK: testnet
-      WASM_PATH: target/wasm32-unknown-unknown/release/stellar_wrap_contract.wasm
+      WASM_PATH: target/wasm32v1-none/release/stellar_wrap_contract.wasm
       INPUT_CONTRACT_ID: ${{ github.event.inputs.contract_id }}
       INPUT_ADMIN_ADDRESS: ${{ github.event.inputs.admin_address }}
       INPUT_ADMIN_PUBKEY: ${{ github.event.inputs.admin_pubkey }}
@@ -41,7 +41,7 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: wasm32-unknown-unknown
+          targets: wasm32v1-none
 
       - name: Install Stellar CLI
         run: cargo install stellar-cli --locked
@@ -58,7 +58,7 @@ jobs:
           stellar network use "$STELLAR_NETWORK"
 
       - name: Build WASM
-        run: cargo build --release --target wasm32-unknown-unknown
+        run: cargo build --release --target wasm32v1-none
 
       - name: Deploy or upgrade
         id: deploy

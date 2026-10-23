@@ -18,7 +18,7 @@ testutils = ["soroban-sdk/testutils"]
 [dependencies]
 soroban-sdk = "=27.0.3"
 # In-guest Ed25519 verification dependency (see docs/adr/0001-in-guest-ed25519.md).
-# default-features = false is required to prevent pulling in std on no_std targets (wasm32v1-none / wasm32-unknown-unknown).
+# default-features = false is required to prevent pulling in std on the wasm32v1-none no_std target.
 # ed25519-dalek is a direct dependency (not just dev) to force Cargo version
 # unification across the dependency tree. soroban-env-host transitively depends
 # on ed25519-dalek and would otherwise resolve to an incompatible v3.0.

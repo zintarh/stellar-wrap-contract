@@ -47,6 +47,7 @@ Artifact verification is automated by `scripts/verify-release-artifact.sh`, whic
 - [ ] Confirm the intended admin address and admin public key for mainnet initialization.
 - [ ] Confirm the correct mainnet network passphrase, RPC endpoint, and fee configuration.
 - [ ] Confirm the deployment source account has sufficient funding and is the correct account for the production deployment.
+- [ ] Confirm private vulnerability reporting is enabled in repository settings and [SECURITY.md](SECURITY.md) is active.
 - [ ] Back up all relevant private keys or recovery material offline and store them in a secure location.
 - [ ] Verify that the signer used for initialization is available and authorized for the deployment transaction.
 

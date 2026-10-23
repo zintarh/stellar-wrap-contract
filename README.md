@@ -594,6 +594,10 @@ The payload is constructed by concatenating the XDR-encoded fields in the order 
 
 This ensures that a signature for one contract instance cannot be replayed against another deployment with the same admin key.
 
+### Security policy and vulnerability disclosure
+
+For supported versions, vulnerability reporting via GitHub Security Advisories, response SLAs, and in-scope contracts, see [SECURITY.md](SECURITY.md). Please do not open public issues for suspected vulnerabilities.
+
 ## Event schema
 
 Successful wrap mints emit one event:
@@ -1027,7 +1031,7 @@ storage layout must ship as a numbered migration:
    rollbacks as well.
 ## Documentation
 
-Documentation contributions follow the manual Markdown formatting guidance in [CONTRIBUTING.md](CONTRIBUTING.md).
+Documentation contributions follow the manual Markdown formatting guidance in [CONTRIBUTING.md](CONTRIBUTING.md). For security policies and private vulnerability reporting, see [SECURITY.md](SECURITY.md).
 
 - [Canonical signed payload encoding](docs/signing-payload.md) — exact field order, XDR encoding rules, and test vectors required by backend signing services (issue #213)
 - [Admin rotation procedure](docs/admin-rotation.md) — safe procedure for rotating the admin address and signing pubkey, including verification, event monitoring, and rollback plan
