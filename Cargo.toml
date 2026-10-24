@@ -14,12 +14,10 @@ path = "src/lib.rs"
 [features]
 # Enables SorobanArbitrary / testutils codegen required by cargo-fuzz targets.
 testutils = ["soroban-sdk/testutils"]
-# Enables the proxy contract for batching mint_wrap calls atomically.
-proxy = []
 
 [dependencies]
 soroban-sdk = "=27.0.3"
-# In-guest Ed25519 verification dependency (see SIGNATURE_VERIFICATION_DECISION.md).
+# In-guest Ed25519 verification dependency (see docs/adr/0001-in-guest-ed25519.md).
 # default-features = false is required to prevent pulling in std on no_std targets (wasm32v1-none / wasm32-unknown-unknown).
 # ed25519-dalek is a direct dependency (not just dev) to force Cargo version
 # unification across the dependency tree. soroban-env-host transitively depends

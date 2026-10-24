@@ -8,6 +8,28 @@ Soroban contract for storing non-transferable Stellar Wrap records by wallet and
 
 The current contract interface is documented in [CHANGELOG.md](CHANGELOG.md). Backend and frontend consumers should review the migration notes there before updating integrations, especially around the versioned mint-signature payload and the expanded query surface.
 
+## Verifying a release build
+
+Release builds use the pinned `linux/amd64` Rust image and are independently
+built twice in CI. The release notes publish the WASM SHA-256, Rust toolchain,
+and container image digest; GitHub build-provenance attestations are also
+published for the WASM artifact.
+
+To download a release, verify its published checksum, rebuild the exact tag in
+the pinned container, and compare the resulting bytes, run:
+
+```sh
+make verify-release TAG=v1.2.3
+```
+
+This requires Git, Docker, `gh` authenticated to the repository, and
+`sha256sum`. To independently verify the attestation after downloading the
+WASM asset, run:
+
+```sh
+gh attestation verify stellar_wrap_contract.wasm --repo tobiadewola41-eng/stellar-wrap-contract
+```
+
 ## Contract layout
 
 The contract is split into focused modules:
@@ -956,7 +978,7 @@ stellar contract invoke \
 Expected output: `NEXT_VERSION` (or whatever version was passed to `migrate`).
 
 > If `migrate` is called twice with the same version, it panics with
-> `MigrationAlreadyApplied` (code 7) — see [ERRORS.md](./ERRORS.md).
+> `MigrationAlreadyApplied` (code 7) — see [errors.md](./docs/errors.md).
 
 #### Smoke check 4 — Mint a test wrap
 
@@ -1009,11 +1031,7 @@ Documentation contributions follow the manual Markdown formatting guidance in [C
 
 - [Canonical signed payload encoding](docs/signing-payload.md) — exact field order, XDR encoding rules, and test vectors required by backend signing services (issue #213)
 - [Admin rotation procedure](docs/admin-rotation.md) — safe procedure for rotating the admin address and signing pubkey, including verification, event monitoring, and rollback plan
-- [Timelock controller](docs/timelock.md) — architecture and operator runbook for the admin timelock
-- [Off-chain whitelisting via Merkle proofs](docs/whitelist-merkle.md) — leaf encoding, tree layout, and proof verification
-- [Bridge architecture](docs/bridge-architecture.md) — cross-chain bridge workflow and components
-- [Revoke policy](docs/revoke-policy.md) — operational policy for `revoke_wrap`
-- [Using `verify_data`](docs/verify-data.md) — off-chain JSON integrity checks
+- [Fee sponsorship](docs/fee-sponsorship.md) — fee-bump flow for sponsors to pay mint fees and storage rent on behalf of users (issue #1045)
 
 ## Development
 
@@ -1071,7 +1089,7 @@ All Makefile targets are listed below with descriptions and when to use them.
 |---|---|---|
 | `build` | Compile the contract to WASM (release profile, wasm32 target). Alias for `wasm-build`. | Standard build for deployment or testing. |
 | `wasm-build` | Explicit WASM release build (output: `target/wasm32-unknown-unknown/release/*.wasm`). | When you specifically need the WASM artifact. |
-| `check-wasm-size` | Measure compiled WASM size against the 200 KB budget (see `SIGNATURE_VERIFICATION_DECISION.md`). | Before merging to verify the contract fits the size budget. |
+| `check-wasm-size` | Measure compiled WASM size against the 200 KB budget (see `docs/adr/0001-in-guest-ed25519.md`). | Before merging to verify the contract fits the size budget. |
 | `wasm-size` | Alias for `check-wasm-size`. | Same as `check-wasm-size`. |
 | `soroban-build` | Build via the Stellar CLI (`stellar contract build`). | Alternative to `cargo build --target wasm32-unknown-unknown` when using the Stellar CLI. |
 | `wasm-optimize` | Build the optimized WASM artifact using the Stellar CLI optimizer. Writes to `target/wasm32-unknown-unknown/release/stellar_wrap_contract.optimized.wasm`. Requires Stellar CLI. | Before a production deployment to reduce WASM size. |
@@ -1256,7 +1274,7 @@ The Soroban SDK often tracks Rust nightly or a specific stable release. If you s
 Ensure `wasm32-unknown-unknown` is the active target and no host-specific native dependencies leak in. The `Dockerfile` provides a fully isolated environment for reproducible WASM builds.
 ## Mainnet deployment
 
-Before deploying to mainnet, review the release checklist in [MAINNET_RELEASE_CHECKLIST.md](MAINNET_RELEASE_CHECKLIST.md). It covers tests, optimized builds, release artifact hash verification, signer backup, initialization, and rollback guidance.
+Before deploying to mainnet, review the release checklist in [docs/operations/mainnet-release-checklist.md](docs/operations/mainnet-release-checklist.md). It covers tests, optimized builds, release artifact hash verification, signer backup, initialization, and rollback guidance.
 ### Gas Analysis
 
 The contract includes gas analysis tests that measure CPU instructions and memory usage
@@ -1361,3 +1379,6 @@ Notes for indexers:
 
 <!-- handsoff-issue-456 -->
 - #456: [Refactor] Use `env.storage().persistent()` optimally for WrapRecords
+
+<!-- handsoff-issue-971 -->
+- #971: [Architecture] Move the cross-chain bridge into a standalone `wrap-bridge` contract
