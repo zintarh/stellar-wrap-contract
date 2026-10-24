@@ -5,12 +5,16 @@ on:
     paths:
       - 'frontend/**'
       - '.github/workflows/ci.yml'
+      - 'contracts/**'
+      - 'Makefile'
   push:
     branches:
       - main
     paths:
       - 'frontend/**'
       - '.github/workflows/ci.yml'
+      - 'contracts/**'
+      - 'Makefile'
 
 jobs:
   frontend:
@@ -56,3 +60,116 @@ jobs:
 
       - name: Accessibility check
         run: npx --yes @axe-core/cli http://127.0.0.1:3000 --exit
+
+  gas-regression:
+    name: Gas Regression Report
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+        with:
+          path: pr
+
+      - name: Checkout base (main)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo (PR)
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: pr
+
+      - name: Cache cargo (base)
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: base
+
+      - name: Run gas report on PR
+        working-directory: pr
+        run: make test-gas-report > "$RUNNER_TEMP/gas-pr.txt" 2>&1 || (cat "$RUNNER_TEMP/gas-pr.txt"; exit 1)
+
+      - name: Run gas report on main
+        working-directory: base
+        run: make test-gas-report > "$RUNNER_TEMP/gas-base.txt" 2>&1 || (cat "$RUNNER_TEMP/gas-base.txt"; exit 1)
+
+      - name: Build diff table
+        id: diff
+        run: |
+          python3 - "$RUNNER_TEMP/gas-base.txt" "$RUNNER_TEMP/gas-pr.txt" "$RUNNER_TEMP/gas-comment.md" <<'PY'
+          import re, sys
+
+          base_path, pr_path, out_path = sys.argv[1], sys.argv[2], sys.argv[3]
+
+          # Matches lines like: "mint_wrap: 12345" or "mint_wrap 12345" or "mint_wrap ... 12345"
+          entry_re = re.compile(r'^\s*([A-Za-z0-9_]+)\b.*?(\d+)\s*$')
+
+          def parse(path):
+              data = {}
+              with open(path, 'r', encoding='utf-8', errors='replace') as f:
+                  for line in f:
+                      m = entry_re.match(line)
+                      if m:
+                          name, cost = m.group(1), int(m.group(2))
+                          # Keep the max if an entry appears multiple times
+                          if name not in data or cost > data[name]:
+                              data[name] = cost
+              return data
+
+          base = parse(base_path)
+          pr = parse(pr_path)
+
+          names = sorted(set(base) | set(pr))
+          rows = []
+          for name in names:
+              b = base.get(name)
+              p = pr.get(name)
+              if b is None or p is None:
+                  delta = 'n/a'
+                  pct = 'n/a'
+                  flag = ''
+              elif b == 0:
+                  delta = f'{p - b:+d}'
+                  pct = 'n/a'
+                  flag = ''
+              else:
+                  diff = p - b
+                  pct_val = diff / b * 100.0
+                  delta = f'{diff:+d}'
+                  pct = f'{pct_val:+.2f}%'
+                  flag = ' ⚠️' if abs(pct_val) > 5.0 else ''
+              rows.append((name, b, p, delta, pct, flag))
+
+          lines = []
+          lines.append('<!-- gas-regression-report -->')
+          lines.append('## Gas Regression Report')
+          lines.append('')
+          lines.append(f'Comparing `{sys.argv[0] and ""}`PR head against `main` base.')
+          lines.append('')
+          lines.append('| Entrypoint | main | PR | Δ | Δ% | |')
+          lines.append('| --- | ---: | ---: | ---: | ---: | :---: |')
+          for name, b, p, delta, pct, flag in rows:
+              b_s = str(b) if b is not None else 'n/a'
+              p_s = str(p) if p is not None else 'n/a'
+              lines.append(f'| `{name}` | {b_s} | {p_s} | {delta} | {pct} |{flag} |')
+          lines.append('')
+          lines.append('_Changes above ±5% are flagged with ⚠️._')
+
+          with open(out_path, 'w', encoding='utf-8') as f:
+              f.write('\n'.join(lines) + '\n')
+          PY
+          echo "path=$RUNNER_TEMP/gas-comment.md" >> "$GITHUB_OUTPUT"
+
+      - name: Post sticky PR comment
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: gas-regression-report
+          path: ${{ steps.diff.outputs.path }}

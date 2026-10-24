@@ -1,4 +1,4 @@
-.PHONY: build test fuzz fuzz-build fmt fmt-check lint doc clean deploy-testnet wasm-build wasm-optimize soroban-build check-wasm-size wasm-size docker-build docker-build-verify coverage verify-release release-gate help test-contracts test-frontend test-pipeline test-verbose test-gas-report check-test-auth clean-snapshots clean-all
+.PHONY: build test fuzz fuzz-build fmt fmt-check lint doc clean deploy-testnet wasm-build wasm-optimize soroban-build check-wasm-size wasm-size docker-build docker-build-verify coverage verify-release release-gate help test-contracts test-frontend test-pipeline test-verbose test-gas-report gas-report-diff check-test-auth clean-snapshots clean-all
 
 WASM_PATH := target/wasm32-unknown-unknown/release/stellar_wrap_contract.wasm
 OPTIMIZED_WASM_PATH := target/wasm32-unknown-unknown/release/stellar_wrap_contract.optimized.wasm
@@ -57,6 +57,12 @@ coverage:
 ## test-gas-report: Run tests with full gas budget reporting enabled
 test-gas-report:
 	SOROBAN_GAS_REPORT=1 cargo test -- --nocapture --test-threads=1
+
+## gas-report-diff: Compare gas report against a baseline and print a markdown diff table
+##   Usage: make gas-report-diff BASELINE=gas-baseline.txt CURRENT=gas-current.txt
+##   Highlights per-entrypoint deltas above 5%.
+gas-report-diff:
+	./scripts/gas_report_diff.sh "$(BASELINE)" "$(CURRENT)"
 
 ## test-integration-local: Run integration tests against local Stellar network (requires Docker)
 test-integration-local:
