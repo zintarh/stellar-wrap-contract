@@ -124,4 +124,4 @@ Two consequences of this follow directly:
 | `#3` | `Unauthorized` | Caller is not the stored admin |
 | `#7` | `WrapNotFound` | No wrap record exists for `(user, period)` |
 
-See [ERRORS.md](../ERRORS.md) for the full error catalogue.
+See [errors.md](./errors.md) for the full error catalogue.

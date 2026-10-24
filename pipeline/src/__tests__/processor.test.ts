@@ -1,11 +1,13 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   classifyEvent,
   createEmptyState,
   applyEventToState,
   applyStorageEntryToState,
+  persistStateToDB,
 } from '../processor';
 import { DataKeyVariant } from '../types';
+import { IndexerDB } from '../db';
 import type { ContractEvent, StorageEntry } from '../types';
 
 function makeMockEvent(overrides: Partial<ContractEvent> = {}): ContractEvent {
@@ -325,5 +327,105 @@ describe('applyStorageEntryToState', () => {
       durability: 'instance',
     });
     expect(state.slashThreshold).toBe(10);
+  });
+});
+
+describe('persistStateToDB — wraps_by_period integration', () => {
+  let db: IndexerDB;
+
+  beforeEach(async () => {
+    db = await IndexerDB.create();
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  const contractId = 'CCONTRACT';
+
+  it('populates wraps_by_period when persisting mint events', () => {
+    const state = createEmptyState(contractId, 100);
+
+    // Simulate a mint event for GUSER1 in period 202609 with archetype 'arch'
+    applyEventToState(state, {
+      raw: {
+        id: 'evt-1',
+        contract_id: contractId,
+        ledger: 100,
+        ledger_close_at: null,
+        tx_hash: 'tx1',
+        topics: [
+          { type: 'symbol', value: 'mint' },
+          { type: 'address', value: 'GUSER1' },
+          { type: 'u64', value: 202609 },
+        ],
+        data: { type: 'string', value: 'arch' },
+        failed_call: false,
+      } as ContractEvent,
+      event_type: 'mint',
+      parsed: { user: 'GUSER1', period: 202609, archetype: 'arch' },
+    });
+
+    persistStateToDB(db, state, contractId, 100, []);
+
+    const rows = db.getWrapsByPeriod(contractId, 202609);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].user).toBe('GUSER1');
+    expect(rows[0].archetype).toBe('arch');
+    expect(rows[0].period).toBe(202609);
+  });
+
+  it('populates wraps_by_period with archetype distribution across periods', () => {
+    const state = createEmptyState(contractId, 200);
+
+    // Two users wrap in Sep, one in Oct
+    applyEventToState(state, {
+      raw: { id: 'evt-1', contract_id: contractId, ledger: 200, ledger_close_at: null, tx_hash: 'tx1', topics: [{ type: 'symbol', value: 'mint' }, { type: 'address', value: 'GUSER1' }, { type: 'u64', value: 202609 }], data: { type: 'string', value: 'arch' }, failed_call: false } as ContractEvent,
+      event_type: 'mint',
+      parsed: { user: 'GUSER1', period: 202609, archetype: 'arch' },
+    });
+    applyEventToState(state, {
+      raw: { id: 'evt-2', contract_id: contractId, ledger: 200, ledger_close_at: null, tx_hash: 'tx2', topics: [{ type: 'symbol', value: 'mint' }, { type: 'address', value: 'GUSER2' }, { type: 'u64', value: 202609 }], data: { type: 'string', value: 'other' }, failed_call: false } as ContractEvent,
+      event_type: 'mint',
+      parsed: { user: 'GUSER2', period: 202609, archetype: 'other' },
+    });
+    applyEventToState(state, {
+      raw: { id: 'evt-3', contract_id: contractId, ledger: 201, ledger_close_at: null, tx_hash: 'tx3', topics: [{ type: 'symbol', value: 'mint' }, { type: 'address', value: 'GUSER3' }, { type: 'u64', value: 202610 }], data: { type: 'string', value: 'arch' }, failed_call: false } as ContractEvent,
+      event_type: 'mint',
+      parsed: { user: 'GUSER3', period: 202610, archetype: 'arch' },
+    });
+
+    persistStateToDB(db, state, contractId, 201, []);
+
+    const sepDist = db.getArchetypeDistributionByPeriod(contractId, 202609);
+    expect(sepDist).toHaveLength(2);
+    expect(sepDist[0]).toMatchObject({ archetype: 'arch', count: 1 });
+    expect(sepDist[1]).toMatchObject({ archetype: 'other', count: 1 });
+
+    const octDist = db.getArchetypeDistributionByPeriod(contractId, 202610);
+    expect(octDist).toHaveLength(1);
+    expect(octDist[0]).toMatchObject({ archetype: 'arch', count: 1 });
+  });
+
+  it('wraps_by_period is consistent with on-chain events after revoke', () => {
+    const state = createEmptyState(contractId, 300);
+
+    // Mint then revoke
+    applyEventToState(state, {
+      raw: { id: 'evt-1', contract_id: contractId, ledger: 300, ledger_close_at: null, tx_hash: 'tx1', topics: [{ type: 'symbol', value: 'mint' }, { type: 'address', value: 'GUSER1' }, { type: 'u64', value: 202609 }], data: { type: 'string', value: 'arch' }, failed_call: false } as ContractEvent,
+      event_type: 'mint',
+      parsed: { user: 'GUSER1', period: 202609, archetype: 'arch' },
+    });
+    applyEventToState(state, {
+      raw: { id: 'evt-2', contract_id: contractId, ledger: 301, ledger_close_at: null, tx_hash: 'tx2', topics: [{ type: 'symbol', value: 'revoke' }, { type: 'address', value: 'GUSER1' }, { type: 'u64', value: 202609 }], data: { type: 'bytes', value: 'ab'.repeat(32) }, failed_call: false } as ContractEvent,
+      event_type: 'revoke',
+      parsed: { user: 'GUSER1', period: 202609, reason_hash: 'ab'.repeat(32) },
+    });
+
+    persistStateToDB(db, state, contractId, 301, []);
+
+    // After revoke, the wrap should be removed from wraps_by_period
+    const rows = db.getWrapsByPeriod(contractId, 202609);
+    expect(rows).toHaveLength(0);
   });
 });

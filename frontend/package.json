@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
+    "dev": "node init && vite",
+    "build": "node init && tsc -b && vite build",
     "lint": "eslint . --max-warnings=0",
     "test": "vitest run",
     "test:contract": "vitest run src/lib/__tests__/contract-bindings.test.ts",

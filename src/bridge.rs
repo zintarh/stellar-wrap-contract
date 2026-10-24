@@ -254,6 +254,8 @@ pub(crate) fn bridge_wrap_in(
         panic_with_error!(e, ContractError::ChainDisabled);
     }
 
+    crate::mint::validate_data_hash(&e, &data_hash);
+
     let relayer_set = get_bridge_relayers(&e, source_chain)
         .unwrap_or_else(|| panic_with_error!(e, ContractError::BridgeNotInitialized));
 

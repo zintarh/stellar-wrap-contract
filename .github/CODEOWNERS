@@ -1,0 +1,21 @@
+# Code owners for the Stellar Wrap contract.
+#
+# Requiring review from code owners on these paths keeps a second pair of eyes
+# on the cryptography, admin surface and deployment pipeline. Enable
+# "Require review from Code Owners" in the main branch protection rule for this
+# to take effect (maintainer task).
+
+# Default owner for everything else in the repository.
+* @zintarh
+
+# Security-critical contract modules.
+/src/signature.rs @zintarh @Calebux
+/src/admin.rs @zintarh @Calebux
+/src/mint.rs @zintarh @Calebux
+/src/bridge.rs @zintarh @Calebux
+
+# Shared cryptography crate used by the contract.
+/crates/wrap-crypto/ @zintarh @Calebux
+
+# Release pipeline: changes here decide what is built and deployed.
+/.github/workflows/release.yml @zintarh @Calebux

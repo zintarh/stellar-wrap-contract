@@ -1,5 +1,5 @@
 import { renderContractFailure } from "./contractErrors";
-import type { ContractHealth, WrapRecord } from "./types";
+import type { ContractHealth, WrapRecord, WrapView } from "./types";
 
 const HEX_PATTERN = /^(?:0x)?[0-9a-fA-F]+$/;
 
@@ -74,6 +74,29 @@ export function normalizeWrap(value: unknown): WrapRecord | null {
     dataHash: toHex(hashBytes),
     archetype: String(record.archetype),
     period: BigInt(record.period as bigint | number | string),
+  };
+}
+
+export function normalizeWrapView(value: unknown): WrapView | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  const view = value as Record<string, unknown>;
+  const record = normalizeWrap(view.record);
+  if (!record) {
+    throw new Error("The contract returned an empty wrap view.");
+  }
+  if (typeof view.is_expired !== "boolean") {
+    throw new Error("The contract returned an invalid expiration status.");
+  }
+
+  return {
+    record,
+    isExpired: view.is_expired,
+    liveUntilLedger: BigInt(
+      view.live_until_ledger as bigint | number | string,
+    ),
   };
 }
 

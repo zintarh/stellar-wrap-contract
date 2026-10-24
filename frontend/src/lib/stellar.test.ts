@@ -10,6 +10,8 @@ import {
 import { signWithFreighter } from "./freighter";
 import {
   getWrap,
+  getWrapV2,
+  getWrapsV2,
   loadDashboard,
   mintWrap,
   validateConfig,
@@ -97,6 +99,23 @@ const CONTRACT_SPEC_ENTRIES = [
       { name: "period", type: "u64" },
     ],
     outputs: ["WrapRecord"],
+  },
+  {
+    name: "get_wrap_v2",
+    inputs: [
+      { name: "owner", type: "Address" },
+      { name: "period", type: "u64" },
+    ],
+    outputs: ["WrapView"],
+  },
+  {
+    name: "get_wraps_v2",
+    inputs: [
+      { name: "owner", type: "Address" },
+      { name: "start", type: "u32" },
+      { name: "limit", type: "u32" },
+    ],
+    outputs: ["Vec<WrapView>"],
   },
   {
     name: "get_latest_wrap",
@@ -215,6 +234,21 @@ it("binds every frontend call to the deployed contract spec", () => {
     expect(wrap.inputs.map((input) => input.type)).toEqual(["Address", "u64"]);
     expect(wrap.outputs).toEqual(["WrapRecord"]);
 
+    const wrapV2 = record("get_wrap_v2");
+    expect(wrapV2.inputs.map((input) => input.type)).toEqual([
+      "Address",
+      "u64",
+    ]);
+    expect(wrapV2.outputs).toEqual(["WrapView"]);
+
+    const wrapsV2 = record("get_wraps_v2");
+    expect(wrapsV2.inputs.map((input) => input.type)).toEqual([
+      "Address",
+      "u32",
+      "u32",
+    ]);
+    expect(wrapsV2.outputs).toEqual(["Vec<WrapView>"]);
+
     const mint = record("mint_wrap");
     expect(mint.inputs.map((input) => input.type)).toEqual([
       "Address",
@@ -315,6 +349,44 @@ it("binds every frontend call to the deployed contract spec", () => {
       dataHash: "ab".repeat(32),
       period: 202607n,
       createdAt: 1_700_000_000n,
+    });
+
+    it("decodes v2 single and paginated wrap views", async () => {
+      const hash = new Uint8Array(32).fill(0xab);
+      mocks.server.simulateTransaction.mockImplementation(
+        async (transaction: Transaction) => {
+          const view = {
+            record: {
+              archetype: "builder",
+              data_hash: hash,
+              period: 202607n,
+              created_at: 1_700_000_000n,
+            },
+            is_expired: false,
+            live_until_ledger: 6_307_201,
+          };
+          return contractMethod(transaction) === "get_wrap_v2"
+            ? simulationSuccess(nativeToScVal(view))
+            : simulationSuccess(nativeToScVal([view]));
+        },
+      );
+
+      const expected = {
+        record: {
+          archetype: "builder",
+          dataHash: "ab".repeat(32),
+          period: 202607n,
+          createdAt: 1_700_000_000n,
+        },
+        isExpired: false,
+        liveUntilLedger: 6_307_201n,
+      };
+      await expect(getWrapV2(CONFIG, ADDRESS, 202607n)).resolves.toEqual(
+        expected,
+      );
+      await expect(getWrapsV2(CONFIG, ADDRESS, 0, 10)).resolves.toEqual([
+        expected,
+      ]);
     });
 
     const transaction = mocks.server.simulateTransaction.mock

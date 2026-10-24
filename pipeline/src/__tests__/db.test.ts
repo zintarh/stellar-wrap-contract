@@ -299,4 +299,199 @@ describe('IndexerDB', () => {
 
     await expect(IndexerDB.create({ _rawDb: rawDb })).rejects.toThrow(/newer/i);
   });
+
+  // ── wraps_by_period ──────────────────────────────────────────
+
+  it('upserts wraps_by_period records', () => {
+    db.upsertWrapByPeriod({
+      contract_id: contractId,
+      period: 202609,
+      user: 'GUSER1',
+      archetype: 'arch',
+      timestamp: 1000,
+      data_hash: 'ab'.repeat(32),
+      fsm_state: 3,
+      fsm_updated_at: 1000,
+      ledger_seq: 100,
+      tx_hash: 'tx1',
+    });
+
+    const rows = db.getWrapsByPeriod(contractId, 202609);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].user).toBe('GUSER1');
+    expect(rows[0].archetype).toBe('arch');
+    expect(rows[0].period).toBe(202609);
+  });
+
+  it('upserting the same wrap_by_period updates the record', () => {
+    db.upsertWrapByPeriod({
+      contract_id: contractId,
+      period: 202609,
+      user: 'GUSER1',
+      archetype: 'arch-v1',
+      timestamp: 1000,
+      data_hash: 'ab'.repeat(32),
+      fsm_state: 3,
+      fsm_updated_at: 1000,
+      ledger_seq: 100,
+      tx_hash: 'tx1',
+    });
+
+    db.upsertWrapByPeriod({
+      contract_id: contractId,
+      period: 202609,
+      user: 'GUSER1',
+      archetype: 'arch-v2',
+      timestamp: 2000,
+      data_hash: 'cd'.repeat(32),
+      fsm_state: 4,
+      fsm_updated_at: 2000,
+      ledger_seq: 200,
+      tx_hash: 'tx2',
+    });
+
+    const rows = db.getWrapsByPeriod(contractId, 202609);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].archetype).toBe('arch-v2');
+    expect(rows[0].fsm_state).toBe(4);
+  });
+
+  it('getWrapsByPeriod returns paginated results', () => {
+    db.upsertWrapByPeriod({
+      contract_id: contractId,
+      period: 202609,
+      user: 'GUSER_B',
+      archetype: 'arch',
+      timestamp: 1000,
+      data_hash: 'ab'.repeat(32),
+      fsm_state: 3,
+      fsm_updated_at: 1000,
+      ledger_seq: 100,
+      tx_hash: 'tx1',
+    });
+    db.upsertWrapByPeriod({
+      contract_id: contractId,
+      period: 202609,
+      user: 'GUSER_A',
+      archetype: 'arch',
+      timestamp: 1000,
+      data_hash: 'ab'.repeat(32),
+      fsm_state: 3,
+      fsm_updated_at: 1000,
+      ledger_seq: 100,
+      tx_hash: 'tx2',
+    });
+    db.upsertWrapByPeriod({
+      contract_id: contractId,
+      period: 202609,
+      user: 'GUSER_C',
+      archetype: 'other',
+      timestamp: 1000,
+      data_hash: 'ab'.repeat(32),
+      fsm_state: 3,
+      fsm_updated_at: 1000,
+      ledger_seq: 100,
+      tx_hash: 'tx3',
+    });
+
+    // Without cursor: returns first page
+    const page1 = db.getWrapsByPeriod(contractId, 202609, null, 2);
+    expect(page1).toHaveLength(2);
+    expect(page1[0].user).toBe('GUSER_A');
+    expect(page1[1].user).toBe('GUSER_B');
+
+    // With cursor: returns results after the cursor
+    const page2 = db.getWrapsByPeriod(contractId, 202609, 'GUSER_A', 2);
+    expect(page2).toHaveLength(2);
+    expect(page2[0].user).toBe('GUSER_B');
+    expect(page2[1].user).toBe('GUSER_C');
+
+    // Cursor past all results: empty
+    const page3 = db.getWrapsByPeriod(contractId, 202609, 'GUSER_C', 2);
+    expect(page3).toHaveLength(0);
+  });
+
+  it('getWrapsByPeriod filters by period', () => {
+    db.upsertWrapByPeriod({
+      contract_id: contractId,
+      period: 202609,
+      user: 'GUSER1',
+      archetype: 'arch',
+      timestamp: 1000,
+      data_hash: 'ab'.repeat(32),
+      fsm_state: 3,
+      fsm_updated_at: 1000,
+      ledger_seq: 100,
+      tx_hash: 'tx1',
+    });
+    db.upsertWrapByPeriod({
+      contract_id: contractId,
+      period: 202610,
+      user: 'GUSER1',
+      archetype: 'arch',
+      timestamp: 2000,
+      data_hash: 'ab'.repeat(32),
+      fsm_state: 3,
+      fsm_updated_at: 2000,
+      ledger_seq: 200,
+      tx_hash: 'tx2',
+    });
+
+    const sep = db.getWrapsByPeriod(contractId, 202609);
+    expect(sep).toHaveLength(1);
+    expect(sep[0].period).toBe(202609);
+
+    const oct = db.getWrapsByPeriod(contractId, 202610);
+    expect(oct).toHaveLength(1);
+    expect(oct[0].period).toBe(202610);
+  });
+
+  it('getArchetypeDistributionByPeriod returns counts per archetype', () => {
+    db.upsertWrapByPeriod({
+      contract_id: contractId,
+      period: 202609,
+      user: 'GUSER1',
+      archetype: 'arch',
+      timestamp: 1000,
+      data_hash: 'ab'.repeat(32),
+      fsm_state: 3,
+      fsm_updated_at: 1000,
+      ledger_seq: 100,
+      tx_hash: 'tx1',
+    });
+    db.upsertWrapByPeriod({
+      contract_id: contractId,
+      period: 202609,
+      user: 'GUSER2',
+      archetype: 'arch',
+      timestamp: 1000,
+      data_hash: 'ab'.repeat(32),
+      fsm_state: 3,
+      fsm_updated_at: 1000,
+      ledger_seq: 100,
+      tx_hash: 'tx2',
+    });
+    db.upsertWrapByPeriod({
+      contract_id: contractId,
+      period: 202609,
+      user: 'GUSER3',
+      archetype: 'other',
+      timestamp: 1000,
+      data_hash: 'ab'.repeat(32),
+      fsm_state: 3,
+      fsm_updated_at: 1000,
+      ledger_seq: 100,
+      tx_hash: 'tx3',
+    });
+
+    const dist = db.getArchetypeDistributionByPeriod(contractId, 202609);
+    expect(dist).toHaveLength(2);
+    expect(dist[0]).toMatchObject({ archetype: 'arch', count: 2 });
+    expect(dist[1]).toMatchObject({ archetype: 'other', count: 1 });
+  });
+
+  it('getArchetypeDistributionByPeriod returns empty for unknown period', () => {
+    const dist = db.getArchetypeDistributionByPeriod(contractId, 999999);
+    expect(dist).toHaveLength(0);
+  });
 });

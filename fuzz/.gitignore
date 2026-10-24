@@ -1,4 +1,5 @@
 target
-corpus
+corpus/*
+!corpus/fuzz_bridge_wrap_in/
 artifacts
 coverage

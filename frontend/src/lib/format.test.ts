@@ -1,6 +1,7 @@
 import {
   normalizeHealth,
   normalizeWrap,
+  normalizeWrapView,
   parseHexBytes,
   toHex,
   validatePeriod,
@@ -71,6 +72,30 @@ describe("contract result normalization", () => {
 
   it("preserves an absent optional record", () => {
     expect(normalizeWrap(null)).toBeNull();
+  });
+
+  it("normalizes a v2 wrap view", () => {
+    expect(
+      normalizeWrapView({
+        record: {
+          created_at: 1_700_000_000n,
+          data_hash: new Uint8Array(32),
+          archetype: "builder",
+          period: 202607n,
+        },
+        is_expired: true,
+        live_until_ledger: 6_307_201,
+      }),
+    ).toEqual({
+      record: {
+        createdAt: 1_700_000_000n,
+        dataHash: "00".repeat(32),
+        archetype: "builder",
+        period: 202607n,
+      },
+      isExpired: true,
+      liveUntilLedger: 6_307_201n,
+    });
   });
 
   it.each(["not bytes", new Uint8Array(31), new Uint16Array(16)])(
