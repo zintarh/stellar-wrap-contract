@@ -10,7 +10,7 @@ on:
         required: false
         type: string
       admin_address:
-        description: Admin address used when initializing a fresh deployment. Defaults to deployer public key.
+        description: Final admin address. The deployer transfers authority to this address after initialization.
         required: false
         type: string
       admin_pubkey:
@@ -29,14 +29,19 @@ jobs:
     env:
       STELLAR_NETWORK: testnet
       WASM_PATH: target/wasm32-unknown-unknown/release/stellar_wrap_contract.wasm
-      INPUT_CONTRACT_ID: ${{ github.event.inputs.contract_id }}
-      INPUT_ADMIN_ADDRESS: ${{ github.event.inputs.admin_address }}
-      INPUT_ADMIN_PUBKEY: ${{ github.event.inputs.admin_pubkey }}
-      INPUT_INITIALIZE: ${{ github.event.inputs.initialize }}
-      CONFIGURED_CONTRACT_ID: ${{ secrets.STELLAR_TESTNET_CONTRACT_ID }}
-      CONFIGURED_ADMIN_PUBKEY: ${{ secrets.STELLAR_ADMIN_PUBKEY }}
+      INPUT_CONTRACT_ID: ${{ github.event.inputs.contract_id || secrets.STELLAR_TESTNET_CONTRACT_ID }}
+      INPUT_ADMIN_ADDRESS: ${{ github.event.inputs.admin_address || secrets.STELLAR_TESTNET_ADMIN_ADDRESS }}
+      INPUT_ADMIN_PUBKEY: ${{ github.event.inputs.admin_pubkey || secrets.STELLAR_ADMIN_PUBKEY }}
+      INPUT_INITIALIZE: ${{ github.event.inputs.initialize == 'false' && 'false' || 'true' }}
+      STELLAR_ADMIN_IDENTITY: ${{ secrets.STELLAR_TESTNET_ADMIN_SECRET != '' && 'admin' || 'deployer' }}
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: scripts/package-lock.json
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -49,69 +54,32 @@ jobs:
       - name: Configure deployer
         env:
           STELLAR_DEPLOYER_SECRET: ${{ secrets.STELLAR_DEPLOYER_SECRET }}
+          STELLAR_ADMIN_SECRET: ${{ secrets.STELLAR_TESTNET_ADMIN_SECRET }}
         run: |
           if [ -z "$STELLAR_DEPLOYER_SECRET" ]; then
             echo "STELLAR_DEPLOYER_SECRET is required" >&2
             exit 1
           fi
           stellar keys add deployer --secret-key "$STELLAR_DEPLOYER_SECRET"
+          if [ -n "$STELLAR_ADMIN_SECRET" ]; then
+            stellar keys add admin --secret-key "$STELLAR_ADMIN_SECRET"
+          fi
           stellar network use "$STELLAR_NETWORK"
 
-      - name: Build WASM
-        run: cargo build --release --target wasm32-unknown-unknown
+      - name: Install deployment dependencies
+        run: npm ci --prefix scripts
 
-      - name: Deploy or upgrade
+      - name: Build and deploy
         id: deploy
-        run: |
-          set -euo pipefail
+        env:
+          STELLAR_DEPLOYER_IDENTITY: deployer
+        run: make deploy-testnet
 
-          CONTRACT_ID="${INPUT_CONTRACT_ID:-$CONFIGURED_CONTRACT_ID}"
-          ADMIN_ADDRESS="${INPUT_ADMIN_ADDRESS:-$(stellar keys address deployer)}"
-          ADMIN_PUBKEY="${INPUT_ADMIN_PUBKEY:-$CONFIGURED_ADMIN_PUBKEY}"
-          SHOULD_INITIALIZE="${INPUT_INITIALIZE:-true}"
-
-          if [ -n "$CONTRACT_ID" ]; then
-            WASM_HASH="$(stellar contract install --wasm "$WASM_PATH" --source deployer --network "$STELLAR_NETWORK")"
-            stellar contract invoke \
-              --id "$CONTRACT_ID" \
-              --source deployer \
-              --network "$STELLAR_NETWORK" \
-              -- upgrade \
-              --wasm_hash "$WASM_HASH"
-            ACTION="upgraded"
-          else
-            CONTRACT_ID="$(stellar contract deploy --wasm "$WASM_PATH" --source deployer --network "$STELLAR_NETWORK")"
-            ACTION="deployed"
-
-            if [ "$SHOULD_INITIALIZE" = "true" ]; then
-              if [ -z "$ADMIN_PUBKEY" ]; then
-                echo "STELLAR_ADMIN_PUBKEY or admin_pubkey input is required for fresh deployments" >&2
-                exit 1
-              fi
-              stellar contract invoke \
-                --id "$CONTRACT_ID" \
-                --source deployer \
-                --network "$STELLAR_NETWORK" \
-                -- initialize \
-                --admin "$ADMIN_ADDRESS" \
-                --admin_pubkey "$ADMIN_PUBKEY"
-            fi
-          fi
-
-          ADMIN="$(stellar contract invoke --id "$CONTRACT_ID" --source deployer --network "$STELLAR_NETWORK" -- get_admin)"
-
-          echo "$CONTRACT_ID" > contract-id.txt
-          {
-            echo "contract_id=$CONTRACT_ID"
-            echo "admin=$ADMIN"
-            echo "action=$ACTION"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Upload contract ID artifact
+      - name: Upload deployment manifest for pipeline
         uses: actions/upload-artifact@v4
         with:
-          name: stellar-testnet-contract-id
-          path: contract-id.txt
+          name: stellar-testnet-deployment-manifest
+          path: deployments/manifest.json
 
       - name: Deployment summary
         run: |
@@ -121,4 +89,5 @@ jobs:
             echo "- Action: ${{ steps.deploy.outputs.action }}"
             echo "- Contract ID: \`${{ steps.deploy.outputs.contract_id }}\`"
             echo "- Admin: \`${{ steps.deploy.outputs.admin }}\`"
+            echo "- Manifest: \`deployments/manifest.json\`"
           } >> "$GITHUB_STEP_SUMMARY"

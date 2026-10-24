@@ -108,24 +108,12 @@ doc:
 
 # ── Deploy ───────────────────────────────────────────────────────────────────
 
-## deploy-testnet: Build and deploy the contract to Stellar testnet.
-##   Requires: stellar CLI, STELLAR_DEPLOYER_SECRET env var set.
+## deploy-testnet: Build and deploy the contract to Stellar testnet and write deployments/manifest.json.
+##   Requires: stellar CLI, configured deployer identity, and npm dependencies in scripts/.
 ##   Usage: make deploy-testnet
-##   Optional: CONTRACT_ID=<id> to upgrade an existing contract instead of deploying fresh.
+##   Optional: INPUT_CONTRACT_ID=<id> to upgrade, INPUT_ADMIN_ADDRESS=<address> for final admin.
 deploy-testnet: wasm-build
-	@if [ -n "$(CONTRACT_ID)" ]; then \
-		echo "Upgrading existing contract $(CONTRACT_ID)…"; \
-		stellar contract upload \
-			--wasm target/wasm32-unknown-unknown/release/stellar_wrap_contract.wasm \
-			--network testnet \
-			--source "$(STELLAR_DEPLOYER_SECRET)"; \
-	else \
-		echo "Deploying new contract to testnet…"; \
-		stellar contract deploy \
-			--wasm target/wasm32-unknown-unknown/release/stellar_wrap_contract.wasm \
-			--network testnet \
-			--source "$(STELLAR_DEPLOYER_SECRET)"; \
-	fi
+	npm --prefix scripts run deploy
 
 # ── Release ──────────────────────────────────────────────────────────────────
 

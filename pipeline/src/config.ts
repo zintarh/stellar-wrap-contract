@@ -1,4 +1,5 @@
 import * as dotenv from 'dotenv';
+import { readFileSync } from 'fs';
 import * as path from 'path';
 import { StrKey } from '@stellar/stellar-sdk';
 import { z } from 'zod';
