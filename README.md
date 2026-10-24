@@ -45,6 +45,8 @@ The contract is split into focused modules:
 
 For detailed bridge architecture and cross-chain workflow, see [docs/bridge-architecture.md](docs/bridge-architecture.md).
 
+For wallet and explorer display, see the [integrator guide](docs/integrators.md) for listing wraps, rendering cards, and verifying off-chain data.
+
 ## Data model
 
 ### `WrapRecord`
@@ -198,11 +200,13 @@ TypeScript signer example.
 | Entrypoint |
 | --- |
 | `get_wrap(user, period)` |
+| `get_wrap_v2(user, period)` |
 | `get_mint_timestamp(user, period)` |
 | `get_last_updated(user)` |
 | `total_wrap_count()` |
 | `get_latest_wrap(user)` |
 | `get_wraps(user, start, limit)` |
+| `get_wraps_v2(user, start, limit)` |
 | `get_all_wraps_for_user(user)` |
 | `has_wrap(user, period)` |
 | `version()` |
