@@ -6,6 +6,12 @@ use soroban_sdk::contracterror;
 /// interface (`transfer`/`transfer_from` take `i128`). Because `i128` is
 /// signed, every entry point that accepts an amount must explicitly reject
 /// non-positive values instead of relying on a panic or a silent no-op.
+
+///
+/// Amounts are accepted as `i128` to stay compatible with the SEP-41 token
+/// interface (`transfer`/`transfer_from` take `i128`). Because `i128` is
+/// signed, every entry point that accepts an amount must explicitly reject
+/// non-positive values instead of relying on a panic or a silent no-op.
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]

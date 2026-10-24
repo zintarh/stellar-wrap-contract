@@ -28,6 +28,12 @@ extern crate std;
 
 use soroban_sdk::{contract, contractimpl, Address, Bytes, BytesN, Env, String, Symbol, Vec};
 
+// Embedded in the WASM `contractmetav0` section. `GIT_SHA` and `BUILD_PROFILE`
+// are injected by build.rs.
+soroban_sdk::contractmeta!(key = "source_repo", val = "github:zintarh/stellar-wrap-contract");
+soroban_sdk::contractmeta!(key = "commit", val = env!("GIT_SHA"));
+soroban_sdk::contractmeta!(key = "build_profile", val = env!("BUILD_PROFILE"));
+
 mod admin;
 mod alias;
 mod bridge;
@@ -38,6 +44,7 @@ mod errors;
 mod error_messages;
 mod events;
 mod governance;
+pub mod guard;
 mod merkle;
 mod mint;
 mod optout;
@@ -56,12 +63,14 @@ mod ttl;
 mod wrap_record_helpers;
 
 pub use errors::ContractError;
+pub use guard::{ensure, require_some};
 pub use mint::{validate_period, CURRENT_PAYLOAD_VERSION, MAX_PERIOD_YEAR, MIN_PERIOD_YEAR};
 pub use oracle::DataHashOracle;
 pub use storage_types::{
     AdminProposal, BatchWrapItem, ContractHealth, DataKey, InboundBridgeRecord, InvariantReport,
     OutboundBridgeRequest, ProposalStatus, StakeConfig, StakeRecord, TimelockAction,
     TimelockOperation, TransferFeeConfig, WrapLifecycleFSM, WrapRecord, WrapState, WrapSummary,
+    WrapView,
 };
 pub use token::TokenInterface;
 
@@ -290,6 +299,11 @@ impl StellarWrapContract {
         queries::get_wrap(e, user, period)
     }
 
+    /// Returns a wrap record with ledger-derived expiration and lifetime data.
+    pub fn get_wrap_v2(e: Env, user: Address, period: u64) -> Option<WrapView> {
+        queries::get_wrap_v2(e, user, period)
+    }
+
     /// Returns the mint timestamp for a known user-period.
     /// The timestamp reflects ledger time, not wall-clock time.
     /// Returns `None` if no mint has occurred for the given user-period.
@@ -370,6 +384,16 @@ impl StellarWrapContract {
         limit: u32,
     ) -> soroban_sdk::Vec<WrapRecord> {
         queries::get_wraps(e, user, start, limit)
+    }
+
+    /// Returns paginated wrap views with ledger-derived expiration and lifetime data.
+    pub fn get_wraps_v2(
+        e: Env,
+        user: Address,
+        start: u32,
+        limit: u32,
+    ) -> soroban_sdk::Vec<WrapView> {
+        queries::get_wraps_v2(e, user, start, limit)
     }
 
     /// Read-only check to verify the internal consistency of a user's wrap state.
@@ -1022,6 +1046,8 @@ mod stake_test;
 #[cfg(test)]
 mod storage_invariants_test;
 #[cfg(test)]
+mod storage_cost_test;
+#[cfg(test)]
 mod test;
 #[cfg(test)]
 mod test_utils;
@@ -1035,6 +1061,8 @@ mod timelock_test;
 mod transfer_test;
 #[cfg(test)]
 mod ttl_test;
+#[cfg(test)]
+mod ttl_events_test;
 #[cfg(test)]
 mod signature_expiry_test;
 

@@ -457,4 +457,4 @@ different message, and the contract's in-guest Ed25519 verification
 | `#6` | `InvalidPeriod` | `period` is outside `202401`–`210012` |
 | `#57` | `SignatureExpired` | v2 payloads only. The current ledger timestamp is strictly greater than `valid_until`; request a fresh signature from the backend with a later deadline. |
 
-See [ERRORS.md](../ERRORS.md) for the full error catalogue.
+See [errors.md](./errors.md) for the full error catalogue.

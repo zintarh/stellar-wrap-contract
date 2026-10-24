@@ -193,7 +193,7 @@ here so a reader finds them in context:
   authorization is enforced per call. This decision is enforced by the
   `proxy_pattern_decision` test module, which fails if a batching proxy entry
   point is introduced without updating the record.
-- [`docs/SIGNATURE_VERIFICATION_DECISION.md`](./SIGNATURE_VERIFICATION_DECISION.md)
+- [`docs/adr/0001-in-guest-ed25519.md`](./adr/0001-in-guest-ed25519.md)
   — the signature verification decision record. Inbound fulfillment as
   implemented checks a threshold of Ed25519 signatures from the chain's
   relayer set. The trust assumptions of that check are in

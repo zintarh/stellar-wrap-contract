@@ -12,10 +12,41 @@
 
 use soroban_sdk::{Address, Bytes, BytesN, Env, String, Symbol, Vec};
 
-use crate::{ContractHealth, DataKey, InvariantReport, TransferFeeConfig, WrapRecord, WrapSummary};
+use crate::{
+    mint, ContractHealth, DataKey, InvariantReport, TransferFeeConfig, WrapRecord, WrapState,
+    WrapSummary, WrapView,
+};
 
 pub(crate) fn get_wrap(e: Env, user: Address, period: u64) -> Option<WrapRecord> {
     e.storage().persistent().get(&DataKey::Wrap(user, period))
+}
+
+pub(crate) fn get_wrap_v2(e: Env, user: Address, period: u64) -> Option<WrapView> {
+    let record = e
+        .storage()
+        .persistent()
+        .get(&DataKey::Wrap(user, period))?;
+    Some(wrap_view(&e, record))
+}
+
+fn wrap_view(e: &Env, record: WrapRecord) -> WrapView {
+    let now = e.ledger().timestamp();
+    let is_expired = match record.lifecycle.state {
+        WrapState::Expired => true,
+        WrapState::Draft | WrapState::Pending | WrapState::Active => {
+            now > record
+                .lifecycle
+                .updated_at
+                .saturating_add(mint::get_expiration_duration(e))
+        }
+        WrapState::Archived | WrapState::Cancelled | WrapState::Bridged => false,
+    };
+
+    WrapView {
+        record,
+        is_expired,
+        live_until_ledger: e.ledger().sequence().saturating_add(crate::ttl::TTL_ONE_YEAR),
+    }
 }
 
 pub(crate) fn get_mint_timestamp(e: Env, user: Address, period: u64) -> Option<u64> {
@@ -141,6 +172,20 @@ pub(crate) fn get_wraps(
         }
     }
 
+    results
+}
+
+pub(crate) fn get_wraps_v2(
+    e: Env,
+    user: Address,
+    start: u32,
+    limit: u32,
+) -> soroban_sdk::Vec<WrapView> {
+    let records = get_wraps(e.clone(), user, start, limit);
+    let mut results = soroban_sdk::Vec::new(&e);
+    for record in records {
+        results.push_back(wrap_view(&e, record));
+    }
     results
 }
 

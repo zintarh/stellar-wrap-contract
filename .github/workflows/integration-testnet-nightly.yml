@@ -1,0 +1,56 @@
+name: Nightly Testnet Integration
+
+on:
+  schedule:
+    # Run at 2 AM UTC every day
+    - cron: '0 2 * * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  integration-testnet:
+    name: Testnet Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Install Stellar CLI
+        run: |
+          cargo install --locked stellar-cli --features opt || echo "stellar-cli already installed"
+          stellar --version
+
+      - name: Run Testnet Integration Tests
+        run: |
+          bash tests/integration_testnet.sh
+        env:
+          STELLAR_DEPLOYER_SECRET: ${{ secrets.STELLAR_DEPLOYER_SECRET }}
+          STELLAR_ADMIN_PUBKEY: ${{ secrets.STELLAR_ADMIN_PUBKEY }}
+          STELLAR_MINT_SIGNATURE: ${{ secrets.STELLAR_MINT_SIGNATURE }}
+          STELLAR_NETWORK: testnet
+          SKIP_MINT: "0"
+
+      - name: Notify on Failure
+        if: failure()
+        run: |
+          echo "Testnet integration tests failed. Check the logs for details."
+          echo "This may indicate issues with testnet connectivity or contract behavior."

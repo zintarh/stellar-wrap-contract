@@ -1,4 +1,4 @@
-FROM rust:1.94-slim
+FROM --platform=linux/amd64 rust:1.94.1-slim-bookworm@sha256:f845b308e3104231c98dba2dab952ebd54e35cd6ab8ef4a230ecb38e2315f20c
 
 # Pin the WASM optimizer version so optimizer output is deterministic.
 ARG WASM_OPT_VERSION=0.116.1
@@ -29,6 +29,8 @@ COPY . .
 RUN set -eux; \
     cargo build --release --target wasm32-unknown-unknown; \
     wasm-opt -Oz \
-      target/wasm32-unknown-unknown/release/*.wasm \
-      -o target/wasm32-unknown-unknown/release/optimized.wasm; \
-    sha256sum target/wasm32-unknown-unknown/release/optimized.wasm
+      target/wasm32-unknown-unknown/release/stellar_wrap_contract.wasm \
+      -o target/wasm32-unknown-unknown/release/stellar_wrap_contract.wasm; \
+    sha256sum target/wasm32-unknown-unknown/release/stellar_wrap_contract.wasm
+
+ENTRYPOINT ["sh", "-c", "cp /contract/target/wasm32-unknown-unknown/release/stellar_wrap_contract.wasm /out/stellar_wrap_contract.wasm"]
