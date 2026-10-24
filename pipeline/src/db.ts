@@ -323,6 +323,16 @@ export class IndexerDB {
     `);
 
     this.db.run(`
+      CREATE TABLE IF NOT EXISTS archetype_counts (
+        contract_id TEXT NOT NULL,
+        period INTEGER NOT NULL,
+        archetype TEXT NOT NULL,
+        count INTEGER NOT NULL,
+        PRIMARY KEY (contract_id, period, archetype)
+      )
+    `);
+
+    this.db.run(`
       CREATE TABLE IF NOT EXISTS reconciliation_runs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         contract_id TEXT NOT NULL,
@@ -457,9 +467,7 @@ export class IndexerDB {
    */
   assertCursorNotAhead(contractId: string, chainLedger: number): void {
     const cursor = this.getLedgerCursor(contractId);
-    if (cursor && cursor.last_processed_ledger > chainLedger) {
-      throw new Error(
-        `Persisted cursor for ${contractId} is at ledger ${cursor.last_processed_ledger}, ` +
+    if (cursor && cursor.l ${contractId} is at ledger ${cursor.last_processed_ledger}, ` +
           `ahead of the chain's current ledger ${chainLedger}. Refusing to proceed; ` +
           `the database may be from a different network or the chain was reset.`,
       );
@@ -684,6 +692,7 @@ export class IndexerDB {
   getDerivedState(contractId: string): DerivedState | null {
     const contract = this.getContractState(contractId);
     if (!contract) return null;
+    archetypeCounts: this.getArchetypeCounts(contractId),
 
     const state: DerivedState = {
       contract_id: contractId,

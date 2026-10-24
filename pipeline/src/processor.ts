@@ -210,6 +210,7 @@ export function createEmptyState(contractId: string, ledgerSeq = 0): DerivedStat
     slashThreshold: 3,
     name: null,
     symbol: null,
+    archetypeCounts: new Map(),
   };
 }
 
@@ -277,6 +278,24 @@ export function applyEventToState(state: DerivedState, event: TypedEvent): void 
   }
 }
 
+function adjustArchetypeCount(
+  state: DerivedState,
+  period: number,
+  archetype: string,
+  delta: number,
+): void {
+  if (!archetype) return;
+  let byArch = state.archetypeCounts.get(period);
+  if (!byArch) {
+    byArch = new Map();
+    state.archetypeCounts.set(period, byArch);
+  }
+  const next = (byArch.get(archetype) ?? 0) + delta;
+  if (next > 0) byArch.set(archetype, next);
+  else byArch.delete(archetype);
+  if (byArch.size === 0) state.archetypeCounts.delete(period);
+}
+
 function applyMintEvent(state: DerivedState, event: TypedEvent): void {
   const user = String(event.parsed.user ?? '');
   const period = Number(event.parsed.period ?? 0);
@@ -300,8 +319,11 @@ function applyMintEvent(state: DerivedState, event: TypedEvent): void {
   // Idempotent at the key level: only count a wrap the first time this
   // (user, period) key is observed. Re-applying the same mint must not
   // inflate the derived counts.
-  const isNew = !userWraps.has(period);
-  userWraps.set(period, record);
+  const previous = userWraps.get(period);
+const isNew = !previous;
+if (previous) adjustArchetypeCount(state, period, previous.archetype, -1);
+userWraps.set(period, record);
+adjustArchetypeCount(state, period, archetype, 1);
 
   if (isNew) {
     const currentCount = state.userCounts.get(user) ?? 0;
@@ -329,7 +351,9 @@ function applyRevokeEvent(state: DerivedState, event: TypedEvent): void {
   const period = Number(event.parsed.period ?? 0);
 
   const userWraps = state.wraps.get(user);
-  if (!userWraps?.delete(period)) return;
+  const removed = userWraps?.get(period);
+if (!userWraps || !userWraps.delete(period)) return;
+if (removed) adjustArchetypeCount(state, period, removed.archetype, -1);
   if (userWraps.size === 0) {
     state.wraps.delete(user);
   }
@@ -400,7 +424,10 @@ export function applyStorageEntryToState(state: DerivedState, entry: StorageEntr
         userWraps = new Map();
         state.wraps.set(user, userWraps);
       }
+      const prev = userWraps.get(entry.key.period);
+      if (prev) adjustArchetypeCount(state, entry.key.period, prev.archetype, -1);
       userWraps.set(entry.key.period, entry.value.value);
+      adjustArchetypeCount(state, entry.key.period, entry.value.value.archetype, 1);
       break;
     }
     case DataKeyVariant.WrapCount:
@@ -465,6 +492,7 @@ export function persistStateToDB(
       slash_threshold: state.slashThreshold,
       ledger_seq: ledgerSeq,
     });
+    db.replaceArchetypeCounts(contractId, state.archetypeCounts);
 
     for (const [user, periodMap] of state.wraps) {
       for (const [period, record] of periodMap) {

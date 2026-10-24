@@ -1,4 +1,9 @@
+it-checkout--b-feat/archetype-counts-1059
+import { createApiServer } from './api';
+import { loadConfig } from './config';
+
 import { loadConfig, ConfigValidationError } from './config';
+ main
 import { IndexerDB } from './db';
 import { SorobanFetcher } from './fetcher';
 import { processEventBatch, createEmptyState, persistStateToDB } from './processor';
@@ -241,6 +246,10 @@ async function main(): Promise<void> {
         }
       },
     });
+    const port = Number(process.env.API_PORT ?? 3000);
+createApiServer(db, config.contract_id).listen(port, () => {
+  console.log(`API listening on :${port}`);
+});
     console.log('Backfill complete.');
 
     // Run reconciliation after backfill
