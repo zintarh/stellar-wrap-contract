@@ -1,10 +1,21 @@
 import { loadConfig, ConfigValidationError } from './config';
+import { ADR_LOG } from './adr';
 import { IndexerDB } from './db';
 import { SorobanFetcher } from './fetcher';
 import { processEventBatch, createEmptyState, persistStateToDB } from './processor';
 import { backfillEvents, detectRetentionGap } from './backfill';
 import { reconcile } from './reconciler';
 import type { DerivedState } from './types';
+
+/**
+ * ADR log for the v2 architecture rewrite.
+ *
+ * Major decisions (in-guest Ed25519 signature verification, the proxy
+ * pattern, contract split, RBAC, UserIndex, FSM reduction, transfer
+ * decision) are recorded as ADRs under `docs/adr/`. This constant keeps the
+ * canonical list discoverable from the pipeline entrypoint.
+ */
+export { ADR_LOG };
 
 /**
  * Per-counter tolerance thresholds for reconciliation.
@@ -22,6 +33,14 @@ const RECONCILE_TOLERANCE: Record<string, number> = {
  * the chain head. Drift here is reported as lag, not as a failure.
  */
 const LAG_TOLERANT_COUNTERS = new Set<string>(['total_unwraps', 'total_transfers']);
+
+/**
+ * Print the ADR log reference so operators know where the "why" behind the
+ * v2 architecture lives. See `docs/adr/` for the full decision records.
+ */
+function logAdrReference(): void {
+  console.log(`ADR log: ${ADR_LOG.directory} (${ADR_LOG.entries.length} entries)`);
+}
 
 interface CounterDrift {
   counter: string;
@@ -159,6 +178,7 @@ async function main(): Promise<void> {
   console.log(`Contract: ${config.contract_id}`);
   console.log(`RPC URL:  ${config.rpc_url}`);
   console.log(`DB Path:  ${config.db_path}`);
+  logAdrReference();
   if (config.network_passphrase) {
     console.log(`Network:  ${config.network_passphrase}`);
   }

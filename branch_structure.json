@@ -1,0 +1,18 @@
+{
+  "default_branch": "main",
+  "branches": [
+    "fix/issue-1051-add-an-adr-log-and-record-the-major-v2-decisions",
+    "main",
+    "origin"
+  ],
+  "parent": {
+    "fix/issue-1051-add-an-adr-log-and-record-the-major-v2-decisions": "main",
+    "main": null,
+    "origin": "main"
+  },
+  "order": [
+    "main",
+    "fix/issue-1051-add-an-adr-log-and-record-the-major-v2-decisions",
+    "origin"
+  ]
+}
