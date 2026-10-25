@@ -1,6 +1,5 @@
 import {
   Account,
-  Contract,
   nativeToScVal,
   rpc,
   scValToNative,
@@ -52,12 +51,14 @@ vi.mock("@stellar/stellar-sdk", async (importOriginal) => {
   return {
     ...actual,
     Contract: class MockContract {
+      private contractId: string;
       constructor(contractId: string) {
         mocks.contractSpec(contractId);
+        this.contractId = contractId;
       }
       call(method: string, ...args: xdr.ScVal[]) {
         return actual.Contract.prototype.call.call(
-          Object.create(actual.Contract.prototype),
+          new actual.Contract(this.contractId),
           method,
           ...args,
         );
@@ -204,7 +205,7 @@ describe("contract RPC adapter", () => {
 
 it("binds every frontend call to the deployed contract spec", () => {
     const spec = contractSpec();
-    const expected = new Map(
+    const expected = new Map<string, (typeof CONTRACT_SPEC_ENTRIES)[number]>(
       CONTRACT_SPEC_ENTRIES.map((entry) => [entry.name, entry]),
     );
 
@@ -259,7 +260,7 @@ it("binds every frontend call to the deployed contract spec", () => {
     ]);
     expect(mint.outputs).toEqual(["void"]);
 
-    const specNames = new Set(spec.funcs().map((func) => func.name()));
+    const specNames = new Set<string>(spec.funcs().map((func) => func.name()));
     for (const name of invoked) {
       expect(specNames.has(name)).toBe(true);
     }
@@ -351,49 +352,49 @@ it("binds every frontend call to the deployed contract spec", () => {
       createdAt: 1_700_000_000n,
     });
 
-    it("decodes v2 single and paginated wrap views", async () => {
-      const hash = new Uint8Array(32).fill(0xab);
-      mocks.server.simulateTransaction.mockImplementation(
-        async (transaction: Transaction) => {
-          const view = {
-            record: {
-              archetype: "builder",
-              data_hash: hash,
-              period: 202607n,
-              created_at: 1_700_000_000n,
-            },
-            is_expired: false,
-            live_until_ledger: 6_307_201,
-          };
-          return contractMethod(transaction) === "get_wrap_v2"
-            ? simulationSuccess(nativeToScVal(view))
-            : simulationSuccess(nativeToScVal([view]));
-        },
-      );
-
-      const expected = {
-        record: {
-          archetype: "builder",
-          dataHash: "ab".repeat(32),
-          period: 202607n,
-          createdAt: 1_700_000_000n,
-        },
-        isExpired: false,
-        liveUntilLedger: 6_307_201n,
-      };
-      await expect(getWrapV2(CONFIG, ADDRESS, 202607n)).resolves.toEqual(
-        expected,
-      );
-      await expect(getWrapsV2(CONFIG, ADDRESS, 0, 10)).resolves.toEqual([
-        expected,
-      ]);
-    });
-
     const transaction = mocks.server.simulateTransaction.mock
       .calls[0][0] as Transaction;
     const invocation = contractInvocation(transaction);
     expect(invocation.functionName().toString()).toBe("get_wrap");
     expect(scValToNative(invocation.args()[1])).toBe(202607n);
+  });
+
+  it("decodes v2 single and paginated wrap views", async () => {
+    const hash = new Uint8Array(32).fill(0xab);
+    mocks.server.simulateTransaction.mockImplementation(
+      async (transaction: Transaction) => {
+        const view = {
+          record: {
+            archetype: "builder",
+            data_hash: hash,
+            period: 202607n,
+            created_at: 1_700_000_000n,
+          },
+          is_expired: false,
+          live_until_ledger: 6_307_201,
+        };
+        return contractMethod(transaction) === "get_wrap_v2"
+          ? simulationSuccess(nativeToScVal(view))
+          : simulationSuccess(nativeToScVal([view]));
+      },
+    );
+
+    const expected = {
+      record: {
+        archetype: "builder",
+        dataHash: "ab".repeat(32),
+        period: 202607n,
+        createdAt: 1_700_000_000n,
+      },
+      isExpired: false,
+      liveUntilLedger: 6_307_201n,
+    };
+    await expect(getWrapV2(CONFIG, ADDRESS, 202607n)).resolves.toEqual(
+      expected,
+    );
+    await expect(getWrapsV2(CONFIG, ADDRESS, 0, 10)).resolves.toEqual([
+      expected,
+    ]);
   });
 
   it("encodes mint arguments, signs the assembled XDR, and confirms submission", async () => {
