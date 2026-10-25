@@ -109,6 +109,35 @@ pub struct MigrationState {
     pub users_done: u32,
 }
 
+/// The all-zero Ed25519 public key. No private key corresponds to it, so any
+/// signature check against it can never succeed.
+pub(crate) const ZERO_PUBKEY: [u8; 32] = [0u8; 32];
+
+/// Returns `true` when `key` is a usable Ed25519 signing public key.
+///
+/// Rejected keys:
+/// - the all-zero key, which has no corresponding private key and would make
+///   every `mint_wrap` signature check unsatisfiable.
+/// - the Ed25519 identity point (encoded `01 00 .. 00`), a small-order point
+///   whose signatures are trivially forgeable.
+///
+/// Every other 32-byte value is accepted. Full on-curve validation is left to
+/// the Ed25519 verifier at signature time, since decompressing the point is
+/// not available to this module.
+pub(crate) fn is_valid_admin_pubkey(key: &BytesN<32>) -> bool {
+    let bytes = key.to_array();
+    if bytes == ZERO_PUBKEY {
+        return false;
+    }
+    // Ed25519 identity point: y = 1, little-endian.
+    let mut identity = [0u8; 32];
+    identity[0] = 1;
+    if bytes == identity {
+        return false;
+    }
+    true
+}
+
 /// Reads the stored admin or panics with `NotInitialized`.
 pub(crate) fn read_admin(e: &Env) -> Address {
     e.storage()
@@ -197,17 +226,17 @@ pub(crate) fn renounce_role(e: Env, role: Role, account: Address) {
 /// # Panics
 /// - [`ContractError::AlreadyInitialized`] if the contract was already initialized.
 /// - [`ContractError::InvalidAdminPubKey`] if `admin_pubkey` is the all-zero
-///   key. An all-zero Ed25519 public key has no known corresponding private
-///   key, so accepting it would silently brick every future `mint_wrap` call
-///   (no valid signature could ever be produced) while leaving the contract in
-///   an "initialized" state. Rejecting it at initialization time prevents this
-///   misconfiguration rather than discovering it after deployment.
+///   key or the Ed25519 identity point (see [`is_valid_admin_pubkey`]). Such
+///   keys can never produce a valid signature, which would silently brick every
+///   future `mint_wrap` call while leaving the contract "initialized". Rejecting
+///   them at initialization time prevents this misconfiguration rather than
+///   discovering it after deployment.
 #[allow(deprecated)] // TODO(#718): migrate to #[contractevent]
 pub(crate) fn initialize(e: Env, admin: Address, admin_pubkey: BytesN<32>) {
     if e.storage().instance().has(&DataKey::Admin) {
         panic_with_error!(e, ContractError::AlreadyInitialized);
     }
-    if admin_pubkey == BytesN::from_array(&e, &[0u8; 32]) {
+    if !is_valid_admin_pubkey(&admin_pubkey) {
         panic_with_error!(e, ContractError::InvalidAdminPubKey);
     }
     e.storage().instance().set(&DataKey::Admin, &admin);
@@ -299,15 +328,4 @@ pub(crate) fn migrate_users(e: Env, users: Vec<Address>) {
     );
 }
 
-/// Immediate admin replacement.
-///
-/// Rejected once the timelock controller is enabled — the admin must then use
-/// `schedule(TimelockAction::SetAdmin(..))` followed by `execute`.
-#[allow(deprecated)] // TODO(#718): migrate to #[contractevent]
-pub(crate) fn update_admin(e: Env, new_admin: Address) {
-    crate::timelock::require_direct_call_allowed(&e);
-    let admin = read_admin(&e);
-    admin.require_auth();
-    e.storage().instance().set(&DataKey::Admin, &new_admin);
-    crate::events::publish_event(&e, crate::events::Event::AdminUpdated(new_admin));
-}
+/// Immediate

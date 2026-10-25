@@ -266,7 +266,20 @@ flows. **Do not infer state from events alone.**
 ## Signing pubkey rotation
 
 The Ed25519 signing pubkey (`DataKey::AdminPubKey`) is set during `initialize`
-and is **not** exposed via a dedicated rotation function. Rotating it requires a
+and is **not** exposed via a dedicated rotation function.
+
+### Pubkey validation rules
+
+Both `initialize` and any future pubkey rotation reject obviously invalid
+Ed25519 signing public keys before they are stored:
+
+- The all-zero 32-byte key (`[0u8; 32]`) is rejected, because it is a
+  degenerate value that cannot correspond to a legitimate signing key.
+- Keys that are not exactly 32 bytes are rejected by construction.
+
+Accepted keys are any other 32-byte value. Operators must still generate keys
+with a proper Ed25519 keygen tool; validation only catches trivially bogus input.
+Tests cover both rejected (all-zero) and accepted (non-zero) keys. Rotating it requires a
 contract upgrade that includes a migration:
 
 1. Deploy a new WASM version that exposes an `update_admin_pubkey` function (or

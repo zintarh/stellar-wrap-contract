@@ -16,6 +16,32 @@ fn setup(env: &Env) -> (StellarWrapContractClient<'_>, Address) {
 }
 
 #[test]
+#[should_panic]
+fn test_initialize_rejects_all_zero_admin_pubkey() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register(StellarWrapContract, ());
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let zero_pubkey = BytesN::from_array(&env, &[0u8; 32]);
+    client.initialize(&admin, &zero_pubkey);
+}
+
+#[test]
+fn test_initialize_accepts_non_zero_admin_pubkey() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register(StellarWrapContract, ());
+    let client = StellarWrapContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let mut bytes = [0u8; 32];
+    bytes[31] = 1;
+    let pubkey = BytesN::from_array(&env, &bytes);
+    client.initialize(&admin, &pubkey);
+    assert_eq!(client.schema_version(), 1);
+}
+
+#[test]
 fn test_redundant_pause_does_not_emit_an_event() {
     let env = Env::default();
     env.mock_all_auths();

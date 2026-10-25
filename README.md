@@ -43,6 +43,14 @@ The contract is split into focused modules:
 - `src/storage_types.rs`: storage keys and persisted record types
 - `src/test_utils.rs`: shared test-only helpers (e.g. payload signing)
 
+## Initialization and admin public key validation
+
+`initialize(admin, admin_pubkey)` rejects an obviously invalid `admin_pubkey` before storing it. The following 32-byte values are rejected:
+
+- all-zero bytes (`[0u8; 32]`), which is not a valid Ed25519 public key
+
+Any other 32-byte value is accepted. Test coverage for accepted and rejected keys lives alongside the admin initialization tests in `src/admin.rs`.
+
 For detailed bridge architecture and cross-chain workflow, see [docs/bridge-architecture.md](docs/bridge-architecture.md).
 
 ## Data model

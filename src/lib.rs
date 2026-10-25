@@ -116,6 +116,12 @@ impl StellarWrapContract {
     /// );
     /// ```
     pub fn initialize(e: Env, admin: Address, admin_pubkey: BytesN<32>) {
+        // Reject the all-zero key explicitly at the public boundary. Any other
+        // 32-byte value is accepted; on-chain Ed25519 verification enforces
+        // point validity at signature-check time.
+        if admin_pubkey.to_array() == [0u8; 32] {
+            soroban_sdk::panic_with_error!(&e, ContractError::InvalidAdminPubKey);
+        }
         admin::initialize(e, admin, admin_pubkey);
     }
 
