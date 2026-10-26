@@ -22,6 +22,9 @@ mutants.out/
 
 # node_modules
 pipeline/node_modules/
+wrap-crypto/node_modules/
+wrap-crypto/dist/
+wrap-crypto/emit/target/
 
 # Front-end artifacts and local public configuration
 /frontend/node_modules/

@@ -39,6 +39,12 @@ test-frontend:
 test-pipeline:
 	cd pipeline && npm test
 
+## test-wrap-crypto: Emit Rust vectors (diff) + TypeScript differential tests
+test-wrap-crypto:
+	cargo run --manifest-path wrap-crypto/emit/Cargo.toml
+	git diff --exit-code -- wrap-crypto/vectors.json
+	cd wrap-crypto && npm test
+
 ## test-verbose: Run all tests with stdout output (useful for gas analysis)
 test-verbose:
 	cargo test -- --nocapture --test-threads=1
