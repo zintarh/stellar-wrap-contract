@@ -217,6 +217,17 @@ const startLedgerSchema = z
   .transform(Number);
 
 /**
+ * How many users the per-user reconciler samples per run (issue #1006).
+ * `0` disables the per-user comparison entirely.
+ */
+const reconcileSampleUsersSchema = z
+  .string()
+  .trim()
+  .regex(/^(0|[1-9]\d*)$/, 'must be a non-negative integer (0 or greater)')
+  .refine((value) => Number.isSafeInteger(Number(value)), 'must be a safe integer')
+  .transform(Number);
+
+/**
  * The lowest severity that is forwarded to the alert webhook.
  */
 const alertSeveritySchema = z.enum(['info', 'warning', 'critical'], {
@@ -250,6 +261,7 @@ const envSchema = z.object({
   POLL_INTERVAL_MS: pollIntervalSchema,
   EVENT_PAGE_SIZE: eventPageSizeSchema,
   START_LEDGER: startLedgerSchema,
+  RECONCILE_SAMPLE_USERS: reconcileSampleUsersSchema,
   ALERT_WEBHOOK_URL: httpUrlSchema,
   ALERT_MIN_SEVERITY: alertSeveritySchema,
   EXPECTED_ADMIN: expectedAdminSchema,
@@ -269,6 +281,7 @@ const DEFAULTS: Readonly<Record<keyof z.input<typeof envSchema>, string>> = {
   POLL_INTERVAL_MS: '5000',
   EVENT_PAGE_SIZE: '100',
   START_LEDGER: '1',
+  RECONCILE_SAMPLE_USERS: '50',
   ALERT_WEBHOOK_URL: '',
   ALERT_MIN_SEVERITY: 'warning',
   EXPECTED_ADMIN: '',
@@ -351,9 +364,17 @@ export function parseConfig(env: EnvSource, argv: string[] = []): IndexerConfig 
     db_path: parsed.DB_PATH,
     poll_interval_ms: parsed.POLL_INTERVAL_MS,
     event_page_size: parsed.EVENT_PAGE_SIZE,
+    // START_LEDGER is a first-run default only: once a cursor has been
+    // persisted, the indexer resumes from it and ignores this value.
     start_ledger: parsed.START_LEDGER,
     backfill: argv.includes('--backfill'),
     reconcile_only: argv.includes('--reconcile-only'),
+    // --repair: after reconciliation reports per-user drift, re-fetch the
+    // mismatched wraps on-chain and write the corrections back to the index.
+    repair: argv.includes('--repair'),
+    // Per-user reconciliation sampling (issue #1006): users compared per run.
+    // 0 disables the per-user comparison entirely.
+    reconcile_sample_users: parsed.RECONCILE_SAMPLE_USERS,
     alert_webhook_url: parsed.ALERT_WEBHOOK_URL,
     alert_min_severity: parsed.ALERT_MIN_SEVERITY,
     expected_admin: parsed.EXPECTED_ADMIN,
