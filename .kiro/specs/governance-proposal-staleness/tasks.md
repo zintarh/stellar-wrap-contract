@@ -116,5 +116,5 @@
   - Run the full test suite (`cargo test` in the workspace root)
   - Confirm zero failures and zero unexpected passes
   - Verify `ContractError::VARIANT_COUNT` is `57` and `ALL_VARIANTS` has exactly 57 entries
-  - Verify `StaleProposal` error code 57 is documented: update `ERRORS.md` to add an entry for `StaleProposal = 57` with a description of when it is returned
+  - Verify `StaleProposal` error code 57 is documented: update `docs/errors.md` to add an entry for `StaleProposal = 57` with a description of when it is returned
   - Ask the user if any questions arise before closing the fix
