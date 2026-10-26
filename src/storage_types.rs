@@ -255,4 +255,147 @@ pub enum DataKey {
     /// Falls back to a hardcoded default when unset — see `queries::name`.
     Name,
     /// Stores the token symbol, if overridden by an admin.
-    /// Falls back to a hardcoded default when unset — 
+    /// Falls back to a hardcoded default when unset — see `queries::symbol`.
+    Symbol,
+    /// Emergency pause state flag.
+    Paused,
+    /// Configurable expiration duration (in seconds) for unverified wraps.
+    ExpirationDuration,
+    /// User-controlled opt-out flag. Present means the user has opted out of
+    /// future mints; absent means minting is allowed.
+    OptOut(Address),
+    /// Stores the last ledger timestamp at which the user's registry state
+    /// changed via a successful mint or revoke (persistent, monotonic).
+    LastUpdated(Address),
+    /// Temporary mint reentrancy / double-call guard (temporary tier).
+    MintGuard(Address),
+    /// Period that has been minted for a specific user, to prevent double minting.
+    MintedPeriod(Address, u32),
+    // New instance storage keys for accounting / fee system:
+    /// Estimated persistent storage bytes used by this contract (instance-level)
+    StorageBytes,
+    /// Params for the algorithmic fee function (instance-level)
+    FeeParams,
+    /// Merkle root committing to the off-chain whitelist (instance-level).
+    WhitelistRoot,
+    /// Mandatory delay, in seconds, between scheduling and executing a
+    /// privileged action once the timelock is enabled (instance-level).
+    TimelockDelay,
+    /// A scheduled privileged action, keyed by its deterministic operation id.
+    TimelockOp(BytesN<32>),
+    /// Ids of every currently scheduled timelock operation (persistent, capped
+    /// at `timelock::MAX_PENDING_OPERATIONS`). Stored in persistent storage so
+    /// that reading it does not inflate the instance footprint on every
+    /// unrelated contract invocation.
+    TimelockOps,
+    // Token Bridge storage keys:
+    /// Sole authorized relayer address for bridge refunds (legacy single-relayer).
+    BridgeRelayer,
+    /// Authorized relayer set (pubkeys) and threshold for a given source chain.
+    BridgeRelayerSet(u32),
+    /// Status (enabled/disabled) of a supported target/source chain ID.
+    BridgeChainStatus(u32),
+    /// Current outbound bridge request sequence counter.
+    OutboundBridgeNonce,
+    /// Outbound cross-chain wrap request keyed by outbound nonce.
+    OutboundBridgeRequest(u64),
+    /// Inbound cross-chain wrap nonce processing status keyed by (source_chain, source_nonce).
+    InboundBridgeProcessed(u32, u64),
+    /// Inbound cross-chain wrap record keyed by (source_chain, source_nonce).
+    InboundBridgeRecord(u32, u64),
+    // DAO Governance Admin Proposal keys:
+    /// Total number of governance proposals created (u64)
+    AdminProposalCount,
+    /// Individual governance admin proposal record keyed by proposal ID
+    AdminProposal(u64),
+    /// Vote record for a voter on a proposal: (proposal_id, voter)
+    AdminProposalVote(u64, Address),
+    /// Tracks the contract version number, incremented on each `upgrade`.
+    ContractVersion,
+    /// Schema version of the contract data layout.
+    SchemaVersion,
+    // Staking storage keys:
+    /// Individual stake record keyed by user (persistent).
+    Stake(Address),
+    /// Admin-configured staking parameters (instance-level).
+    StakeConfig,
+    /// Total amount staked across all users (instance-level).
+    TotalStaked,
+}
+
+#[contracttype]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum ProposalStatus {
+    Active = 1,
+    Executed = 2,
+    Defeated = 3,
+    Cancelled = 4,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdminProposal {
+    pub id: u64,
+    pub proposer: Address,
+    pub proposed_admin: Address,
+    pub votes_for: u64,
+    pub votes_against: u64,
+    pub start_time: u64,
+    pub end_time: u64,
+    pub status: ProposalStatus,
+}
+
+/// Admin-configured staking parameters.
+#[contracttype]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct StakeConfig {
+    /// Minimum amount a user must stake to earn fee priority.
+    pub min_stake: i128,
+    /// Seconds that must elapse between `unstake` and `withdraw_stake`.
+    pub cooldown_seconds: u64,
+    /// Basis points of discount earned per multiple of `min_stake`.
+    pub priority_multiplier_bps: u32,
+    /// Maximum discount (in basis points) a user can reach.
+    pub max_priority_bps: u32,
+}
+
+/// A user's staking record.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StakeRecord {
+    /// Total amount currently staked.
+    pub amount: i128,
+    /// Ledger timestamp of the initial stake.
+    pub staked_at: u64,
+    /// Ledger timestamp when `unstake` was called, or 0 if not unstaking.
+    pub unstaking_at: u64,
+}
+
+/// A report on the consistency of a user's storage state.
+#[cfg(any(test, feature = "testutils"))]
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InvariantReport {
+    pub wrap_count_match_user_periods: bool,
+    pub wrap_count_match_wrap_periods: bool,
+    pub latest_period_matches_max: bool,
+    pub all_user_periods_live: bool,
+    pub balance_matches_wrap_count: bool,
+    pub wrap_count: u32,
+    pub user_periods_len: u32,
+    pub wrap_periods_len: u32,
+    pub latest_period: Option<u64>,
+    pub max_user_period: Option<u64>,
+    pub live_wraps_found: u32,
+    pub balance: u32,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WrapSummary {
+    pub total_wraps: u32,
+    pub periods: Vec<u64>,
+    pub archetypes: Vec<Symbol>,
+    pub first_period: u64,
+    pub latest_period: u64,
+}

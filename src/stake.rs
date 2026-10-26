@@ -80,6 +80,7 @@ fn write_total_staked(e: &Env, amount: i128) {
 ///
 /// This is the single source of truth for the invariant and is called after
 /// every mutating stake operation as well as exposed as an operator entrypoint.
+#[cfg(any(test, feature = "testutils"))]
 pub(crate) fn assert_total_staked_invariant(e: &Env) {
     let recorded = read_total_staked(e);
     let summed = sum_live_stakes(e);
@@ -89,6 +90,7 @@ pub(crate) fn assert_total_staked_invariant(e: &Env) {
 }
 
 /// Sum the `amount` of every live stake record. Used by the invariant check.
+#[cfg(any(test, feature = "testutils"))]
 fn sum_live_stakes(e: &Env) -> i128 {
     let mut total: i128 = 0;
     for key in e.storage().persistent().keys() {
@@ -172,6 +174,7 @@ pub(crate) fn stake(e: Env, user: Address, amount: i128) {
         );
     }
 
+    #[cfg(any(test, feature = "testutils"))]
     assert_total_staked_invariant(&e);
 }
 
@@ -205,6 +208,7 @@ pub(crate) fn unstake(e: Env, user: Address) {
     e.events()
         .publish((symbol_short!("unstake"), user), record.amount);
 
+    #[cfg(any(test, feature = "testutils"))]
     assert_total_staked_invariant(&e);
 }
 
@@ -250,6 +254,7 @@ pub(crate) fn withdraw_stake(e: Env, user: Address) {
     e.events()
         .publish((symbol_short!("withdraw"), user), withdrawn);
 
+    #[cfg(any(test, feature = "testutils"))]
     assert_total_staked_invariant(&e);
 }
 
@@ -298,6 +303,7 @@ pub(crate) fn get_stake_priority(e: &Env, user: Address) -> u32 {
 /// Panics with [`ContractError::StakeAccountingMismatch`] if the aggregate has
 /// drifted from the sum of live stake records. Consistent with the
 /// storage-invariant self-check introduced in issue #728.
+#[cfg(any(test, feature = "testutils"))]
 pub(crate) fn check_total_staked_invariant(e: &Env) {
     assert_total_staked_invariant(e);
 }
