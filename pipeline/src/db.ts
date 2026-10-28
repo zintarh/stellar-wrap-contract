@@ -39,7 +39,7 @@ export class SchemaVersionError extends Error {
   constructor(public readonly found: number, public readonly supported: number) {
     super(
       `Database schema version ${found} is newer than the supported version ${supported}. ` +
-        `Refusing to start to avoid corrupt reads. Upgrade the indexer or restore a compatible database.`,
+      `Refusing to start to avoid corrupt reads. Upgrade the indexer or restore a compatible database.`,
     );
     this.name = 'SchemaVersionError';
   }
@@ -460,8 +460,8 @@ export class IndexerDB {
     if (cursor && cursor.last_processed_ledger > chainLedger) {
       throw new Error(
         `Persisted cursor for ${contractId} is at ledger ${cursor.last_processed_ledger}, ` +
-          `ahead of the chain's current ledger ${chainLedger}. Refusing to proceed; ` +
-          `the database may be from a different network or the chain was reset.`,
+        `ahead of the chain's current ledger ${chainLedger}. Refusing to proceed; ` +
+        `the database may be from a different network or the chain was reset.`,
       );
     }
   }
@@ -477,13 +477,14 @@ export class IndexerDB {
     topics_json: string;
     data_json: string;
     failed_call: boolean;
-  }): void {
+  }): boolean {
     this.exec(
       `INSERT OR IGNORE INTO contract_events
         (id, contract_id, event_type, ledger_seq, tx_hash, topics_json, data_json, failed_call)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [event.id, event.contract_id, event.event_type, event.ledger_seq, event.tx_hash, event.topics_json, event.data_json, event.failed_call ? 1 : 0],
     );
+    return this.db.getRowsModified() > 0;
   }
 
   getEventsByLedgerRange(

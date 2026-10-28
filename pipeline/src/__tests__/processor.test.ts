@@ -5,6 +5,7 @@ import {
   applyEventToState,
   applyStorageEntryToState,
   persistStateToDB,
+  processEventBatch,
 } from '../processor';
 import { DataKeyVariant } from '../types';
 import { IndexerDB } from '../db';
@@ -168,6 +169,75 @@ describe('createEmptyState', () => {
     expect(state.admin).toBeNull();
     expect(state.wraps.size).toBe(0);
     expect(state.userCounts.size).toBe(0);
+  });
+});
+
+describe('processEventBatch idempotency', () => {
+  it('does not reapply events from overlapping pages', async () => {
+    const db = await IndexerDB.create();
+    try {
+      const contractId = 'CCONTRACT';
+      const firstEvent = makeMockEvent({
+        id: 'rpc-event-1',
+        contract_id: contractId,
+        topics: [
+          { type: 'symbol', value: 'mint' },
+          { type: 'address', value: 'GUSER1' },
+          { type: 'u64', value: 202501 },
+        ],
+        data: { type: 'string', value: 'arch' },
+      });
+      const overlappingEvent = makeMockEvent({
+        id: 'rpc-event-2',
+        contract_id: contractId,
+        topics: [
+          { type: 'symbol', value: 'mint' },
+          { type: 'address', value: 'GUSER1' },
+          { type: 'u64', value: 202502 },
+        ],
+        data: { type: 'string', value: 'arch' },
+      });
+      const finalEvent = makeMockEvent({
+        id: 'rpc-event-3',
+        contract_id: contractId,
+        topics: [
+          { type: 'symbol', value: 'mint' },
+          { type: 'address', value: 'GUSER1' },
+          { type: 'u64', value: 202503 },
+        ],
+        data: { type: 'string', value: 'arch' },
+      });
+
+      let state = createEmptyState(contractId);
+      const firstPage = processEventBatch(db, state, [firstEvent, overlappingEvent]);
+      state = firstPage.state;
+      expect(firstPage.processed).toBe(2);
+
+      const overlappingPage = processEventBatch(db, state, [overlappingEvent, finalEvent]);
+      state = overlappingPage.state;
+      expect(overlappingPage.processed).toBe(1);
+
+      const beforeReplay = JSON.stringify({
+        totalWrapCount: state.totalWrapCount,
+        userCount: state.userCounts.get('GUSER1'),
+        periods: state.userPeriods.get('GUSER1'),
+      });
+      const replay = processEventBatch(db, state, [overlappingEvent, finalEvent]);
+      state = replay.state;
+
+      expect(replay.processed).toBe(0);
+      expect(JSON.stringify({
+        totalWrapCount: state.totalWrapCount,
+        userCount: state.userCounts.get('GUSER1'),
+        periods: state.userPeriods.get('GUSER1'),
+      })).toBe(beforeReplay);
+      expect(state.totalWrapCount).toBe(3);
+      expect(state.userCounts.get('GUSER1')).toBe(3);
+      expect(db.getWrapCount(contractId)).toBe(3);
+      expect(db.getEventsByLedgerRange(contractId, 0, 999)).toHaveLength(3);
+    } finally {
+      db.close();
+    }
   });
 });
 
@@ -366,7 +436,7 @@ describe('persistStateToDB — wraps_by_period integration', () => {
       parsed: { user: 'GUSER1', period: 202609, archetype: 'arch' },
     });
 
-    persistStateToDB(db, state, contractId, 100, []);
+    persistStateToDB(db, state, contractId, 100);
 
     const rows = db.getWrapsByPeriod(contractId, 202609);
     expect(rows).toHaveLength(1);
@@ -395,7 +465,7 @@ describe('persistStateToDB — wraps_by_period integration', () => {
       parsed: { user: 'GUSER3', period: 202610, archetype: 'arch' },
     });
 
-    persistStateToDB(db, state, contractId, 201, []);
+    persistStateToDB(db, state, contractId, 201);
 
     const sepDist = db.getArchetypeDistributionByPeriod(contractId, 202609);
     expect(sepDist).toHaveLength(2);
@@ -422,7 +492,7 @@ describe('persistStateToDB — wraps_by_period integration', () => {
       parsed: { user: 'GUSER1', period: 202609, reason_hash: 'ab'.repeat(32) },
     });
 
-    persistStateToDB(db, state, contractId, 301, []);
+    persistStateToDB(db, state, contractId, 301);
 
     // After revoke, the wrap should be removed from wraps_by_period
     const rows = db.getWrapsByPeriod(contractId, 202609);

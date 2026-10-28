@@ -133,14 +133,14 @@ async function resolveStartLedger(
   if (cursor.last_processed_ledger > chainHead) {
     throw new Error(
       `Persisted cursor (ledger ${cursor.last_processed_ledger}) is ahead of the ` +
-        `chain head (ledger ${chainHead}). Refusing to start; the database may ` +
-        `belong to a different network or the chain may have been reset.`,
+      `chain head (ledger ${chainHead}). Refusing to start; the database may ` +
+      `belong to a different network or the chain may have been reset.`,
     );
   }
 
   console.log(
     `Resuming from persisted cursor at ledger ${cursor.last_processed_ledger} ` +
-      `(chain head ${chainHead})`,
+    `(chain head ${chainHead})`,
   );
   return cursor.last_processed_ledger + 1;
 }
@@ -321,15 +321,12 @@ async function main(): Promise<void> {
       continue;
     }
 
-    const result = processEventBatch(state, batch.events);
-    state = result.state;
-
     const batchLedger = batch.events.reduce(
       (max, event) => Math.max(max, event.ledger),
       lastProcessedLedger,
     );
-
-    persistStateToDB(db, state, config.contract_id, batchLedger, batch.events);
+    const result = processEventBatch(db, state, batch.events, batchLedger);
+    state = result.state;
     lastProcessedLedger = batchLedger;
     startLedger = batchLedger + 1;
 

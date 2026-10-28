@@ -172,18 +172,9 @@ function classifySlashThresholdEvent(event: ContractEvent): TypedEvent {
 
 // ─── Event identity (idempotency key) ──────────────────────────────────
 
-/**
- * Derive a stable identity for an event so that replaying the same event
- * (after a restart, a backfill, or a retry) can be detected and applied at
- * most once. The identity is built from the ledger/transaction coordinates
- * plus the event index within the transaction, which uniquely identifies an
- * event on-chain regardless of how many times it is fetched.
- */
+/** Use the RPC paging token as the event identity across retries and pages. */
 export function eventId(event: ContractEvent): string {
-  const ledger = (event as any).ledger ?? (event as any).ledger_seq ?? 0;
-  const tx = (event as any).tx_hash ?? (event as any).transaction_hash ?? '';
-  const idx = (event as any).event_index ?? (event as any).index ?? 0;
-  return `${ledger}:${tx}:${idx}`;
+  return event.id;
 }
 
 // ─── State derivation from events ──────────────────────────────────────
@@ -429,103 +420,90 @@ export function persistStateToDB(
   state: DerivedState,
   contractId = state.contract_id,
   ledgerSeq = state.ledger_seq,
-  events: ContractEvent[] = [],
 ): void {
-  const persist = () => {
-    for (const event of events) {
-      if (event.failed_call) continue;
-      const typed = classifyEvent(event);
-      if (!db.markEventApplied({
-        id: event.id,
-        contract_id: event.contract_id,
-        event_type: typed.event_type,
-        ledger_seq: event.ledger,
-      })) continue;
-      db.insertEvent({
-        id: event.id,
-        contract_id: event.contract_id,
-        event_type: typed.event_type,
-        ledger_seq: event.ledger,
-        tx_hash: event.tx_hash,
-        topics_json: JSON.stringify(event.topics),
-        data_json: JSON.stringify(event.data),
-        failed_call: event.failed_call,
-      });
-    }
-    db.upsertContractState({
-      contract_id: contractId,
-      admin: state.admin,
-      admin_pubkey: state.adminPubKey,
-      pending_admin: state.pendingAdmin,
-      migration_version: state.migrationVersion,
-      is_paused: state.paused,
-      total_wrap_count: state.totalWrapCount,
-      total_revoked: state.totalRevoked,
-      storage_bytes: state.storageBytes,
-      slash_threshold: state.slashThreshold,
-      ledger_seq: ledgerSeq,
-    });
+  db.commitLedger(contractId, ledgerSeq, ledgerSeq, () =>
+    persistDerivedState(db, state, contractId, ledgerSeq),
+  );
+}
 
-    for (const [user, periodMap] of state.wraps) {
-      for (const [period, record] of periodMap) {
-        db.upsertWrap({
-          contract_id: contractId,
-          user,
-          period,
-          timestamp: record.created_at,
-          data_hash: record.data_hash,
-          archetype: record.archetype,
-          fsm_state: record.lifecycle.state,
-          fsm_updated_at: record.lifecycle.updated_at,
-          ledger_seq: ledgerSeq,
-          tx_hash: '',
-        });
-        db.upsertWrapByPeriod({
-          contract_id: contractId,
-          period,
-          user,
-          archetype: record.archetype,
-          timestamp: record.created_at,
-          data_hash: record.data_hash,
-          fsm_state: record.lifecycle.state,
-          fsm_updated_at: record.lifecycle.updated_at,
-          ledger_seq: ledgerSeq,
-          tx_hash: '',
-        });
-      }
-    }
+function persistDerivedState(
+  db: IndexerDB,
+  state: DerivedState,
+  contractId: string,
+  ledgerSeq: number,
+): void {
+  db.upsertContractState({
+    contract_id: contractId,
+    admin: state.admin,
+    admin_pubkey: state.adminPubKey,
+    pending_admin: state.pendingAdmin,
+    migration_version: state.migrationVersion,
+    is_paused: state.paused,
+    total_wrap_count: state.totalWrapCount,
+    total_revoked: state.totalRevoked,
+    storage_bytes: state.storageBytes,
+    slash_threshold: state.slashThreshold,
+    ledger_seq: ledgerSeq,
+  });
 
-    const users = new Set([
-      ...state.wraps.keys(),
-      ...state.userCounts.keys(),
-      ...state.userLatestPeriods.keys(),
-      ...state.userPeriods.keys(),
-      ...state.userAliasHashes.keys(),
-      ...state.userSlashCounts.keys(),
-      ...state.userSlashed.keys(),
-    ]);
-    for (const user of users) {
-      db.upsertUserState({
+  for (const [user, periodMap] of state.wraps) {
+    for (const [period, record] of periodMap) {
+      db.upsertWrap({
         contract_id: contractId,
         user,
-        wrap_count: state.userCounts.get(user) ?? 0,
-        latest_period: state.userLatestPeriods.get(user) ?? null,
-        alias_hash: state.userAliasHashes.get(user) ?? null,
-        slash_count: state.userSlashCounts.get(user) ?? 0,
-        is_slashed: state.userSlashed.get(user) ?? false,
-        periods: state.userPeriods.get(user) ?? [],
+        period,
+        timestamp: record.created_at,
+        data_hash: record.data_hash,
+        archetype: record.archetype,
+        fsm_state: record.lifecycle.state,
+        fsm_updated_at: record.lifecycle.updated_at,
         ledger_seq: ledgerSeq,
+        tx_hash: '',
+      });
+      db.upsertWrapByPeriod({
+        contract_id: contractId,
+        period,
+        user,
+        archetype: record.archetype,
+        timestamp: record.created_at,
+        data_hash: record.data_hash,
+        fsm_state: record.lifecycle.state,
+        fsm_updated_at: record.lifecycle.updated_at,
+        ledger_seq: ledgerSeq,
+        tx_hash: '',
       });
     }
-  };
+  }
 
-  db.commitLedger(contractId, ledgerSeq, ledgerSeq, persist);
+  const users = new Set([
+    ...state.wraps.keys(),
+    ...state.userCounts.keys(),
+    ...state.userLatestPeriods.keys(),
+    ...state.userPeriods.keys(),
+    ...state.userAliasHashes.keys(),
+    ...state.userSlashCounts.keys(),
+    ...state.userSlashed.keys(),
+  ]);
+  for (const user of users) {
+    db.upsertUserState({
+      contract_id: contractId,
+      user,
+      wrap_count: state.userCounts.get(user) ?? 0,
+      latest_period: state.userLatestPeriods.get(user) ?? null,
+      alias_hash: state.userAliasHashes.get(user) ?? null,
+      slash_count: state.userSlashCounts.get(user) ?? 0,
+      is_slashed: state.userSlashed.get(user) ?? false,
+      periods: state.userPeriods.get(user) ?? [],
+      ledger_seq: ledgerSeq,
+    });
+  }
 }
 
 export function processEventBatch(
   stateOrDb: DerivedState | IndexerDB,
   eventsOrState: ContractEvent[] | DerivedState,
   maybeEvents?: ContractEvent[],
+  commitLedgerSeq?: number,
 ): { state: DerivedState; processed: number } {
   let db: IndexerDB | undefined;
   let state: DerivedState;
@@ -542,22 +520,79 @@ export function processEventBatch(
     events = maybeEvents!;
   }
 
+  const workingState = db ? cloneDerivedState(state) : state;
   let processed = 0;
+  const applyEvents = () => {
+    for (const event of events) {
+      if (event.failed_call) continue;
+      const typed = classifyEvent(event);
+      if (db && !db.insertEvent({
+        id: eventId(event),
+        contract_id: event.contract_id,
+        event_type: typed.event_type,
+        ledger_seq: event.ledger,
+        tx_hash: event.tx_hash,
+        topics_json: JSON.stringify(event.topics),
+        data_json: JSON.stringify(event.data),
+        failed_call: event.failed_call,
+      })) continue;
+      applyEventToState(workingState, typed);
+      processed++;
+    }
 
-  for (const event of events) {
-    if (event.failed_call) continue;
-    const typed = classifyEvent(event);
-    applyEventToState(state, typed);
-    processed++;
-  }
-
-  state.ledger_seq = events.length > 0
-    ? events[events.length - 1].ledger
-    : state.ledger_seq;
+    if (events.length > 0) {
+      workingState.ledger_seq = events.reduce(
+        (latest, event) => Math.max(latest, event.ledger),
+        workingState.ledger_seq,
+      );
+    }
+    if (db && processed > 0) {
+      persistDerivedState(
+        db,
+        workingState,
+        workingState.contract_id,
+        commitLedgerSeq ?? workingState.ledger_seq,
+      );
+    }
+  };
 
   if (db) {
-    persistStateToDB(db, state, state.contract_id, state.ledger_seq, events);
+    const lastEventLedger = events.reduce(
+      (latest, event) => Math.max(latest, event.ledger),
+      workingState.ledger_seq,
+    );
+    db.commitLedger(
+      workingState.contract_id,
+      commitLedgerSeq ?? lastEventLedger,
+      lastEventLedger,
+      applyEvents,
+    );
+  } else {
+    applyEvents();
   }
 
-  return { state, processed };
+  return { state: workingState, processed };
+}
+
+function cloneDerivedState(state: DerivedState): DerivedState {
+  return {
+    ...state,
+    wraps: new Map(
+      [...state.wraps].map(([user, wraps]) => [
+        user,
+        new Map(
+          [...wraps].map(([period, record]) => [
+            period,
+            { ...record, lifecycle: { ...record.lifecycle } },
+          ]),
+        ),
+      ]),
+    ),
+    userCounts: new Map(state.userCounts),
+    userLatestPeriods: new Map(state.userLatestPeriods),
+    userPeriods: new Map([...state.userPeriods].map(([user, periods]) => [user, [...periods]])),
+    userAliasHashes: new Map(state.userAliasHashes),
+    userSlashCounts: new Map(state.userSlashCounts),
+    userSlashed: new Map(state.userSlashed),
+  };
 }

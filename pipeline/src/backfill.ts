@@ -1,7 +1,7 @@
 import { SorobanFetcher } from './fetcher';
 import { isTransientRpcError } from './retry';
 import { IndexerDB } from './db';
-import { processEventBatch, createEmptyState, persistStateToDB } from './processor';
+import { processEventBatch, createEmptyState } from './processor';
 import { alertsFromRetentionGaps } from './reconciler';
 import type { DerivedState, RetentionGap } from './types';
 
@@ -71,9 +71,8 @@ export async function backfillEvents(opts: BackfillOptions): Promise<{
       const { events, latestLedger } = await fetcher.fetchEvents(currentLedger);
 
       if (events.length > 0) {
-        const result = processEventBatch(state, events);
+        const result = processEventBatch(db, state, events, latestLedger);
         state = result.state;
-        persistStateToDB(db, state, contractId, latestLedger, events);
         totalProcessed += result.processed;
       }
 
