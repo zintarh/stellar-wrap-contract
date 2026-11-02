@@ -113,6 +113,31 @@ jobs:
           name: stellar-testnet-contract-id
           path: contract-id.txt
 
+      - name: Post-deployment smoke checks
+        id: smoke_check
+        run: |
+          set -euo pipefail
+          
+          CONTRACT_ID="${{ steps.deploy.outputs.contract_id }}"
+          
+          echo "Running post-deployment smoke checks on contract: $CONTRACT_ID"
+          
+          # Query contract state
+          HEALTH=$(stellar contract invoke --id "$CONTRACT_ID" --source deployer --network "$STELLAR_NETWORK" -- health || echo "ERROR")
+          VERSION=$(stellar contract invoke --id "$CONTRACT_ID" --source deployer --network "$STELLAR_NETWORK" -- version || echo "ERROR")
+          ADMIN_PUBKEY=$(stellar contract invoke --id "$CONTRACT_ID" --source deployer --network "$STELLAR_NETWORK" -- get_admin_pubkey || echo "ERROR")
+          IS_PAUSED=$(stellar contract invoke --id "$CONTRACT_ID" --source deployer --network "$STELLAR_NETWORK" -- is_paused || echo "ERROR")
+          
+          # Save results to outputs
+          {
+            echo "health=$HEALTH"
+            echo "version=$VERSION"
+            echo "admin_pubkey=$ADMIN_PUBKEY"
+            echo "is_paused=$IS_PAUSED"
+          } >> "$GITHUB_OUTPUT"
+          
+          echo "✅ Smoke checks completed"
+
       - name: Deployment summary
         run: |
           {
@@ -121,4 +146,11 @@ jobs:
             echo "- Action: ${{ steps.deploy.outputs.action }}"
             echo "- Contract ID: \`${{ steps.deploy.outputs.contract_id }}\`"
             echo "- Admin: \`${{ steps.deploy.outputs.admin }}\`"
+            echo ""
+            echo "### Post-deployment smoke checks"
+            echo ""
+            echo "- Health: \`${{ steps.smoke_check.outputs.health }}\`"
+            echo "- Version: \`${{ steps.smoke_check.outputs.version }}\`"
+            echo "- Admin Pubkey: \`${{ steps.smoke_check.outputs.admin_pubkey }}\`"
+            echo "- Is Paused: \`${{ steps.smoke_check.outputs.is_paused }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
