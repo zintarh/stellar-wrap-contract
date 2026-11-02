@@ -1,12 +1,13 @@
-use soroban_sdk::{panic_with_error, symbol_short, Address, BytesN, Env, Symbol};
+use soroban_sdk::{symbol_short, Address, BytesN, Env, Symbol};
 
 use crate::{
     events::{MintEventData, MintEventType},
+    guard,
     optout,
     signature::verify_mint_signature,
     storage_accounting,
     storage_types::{WrapLifecycleFSM, WrapState},
-    ttl::TTL_ONE_YEAR,
+    constants::TTL_ONE_YEAR,
     ContractError, DataKey, WrapRecord,
 };
 
@@ -20,22 +21,36 @@ pub fn validate_period(e: &Env, period: u64) {
     let year = period / 100;
     let month = period % 100;
 
-    if !(MIN_PERIOD_YEAR..=MAX_PERIOD_YEAR).contains(&year) || !(1..=12).contains(&month) {
-        panic_with_error!(e, ContractError::InvalidPeriod);
+    guard::ensure(
+        e,
+        (MIN_PERIOD_YEAR..=MAX_PERIOD_YEAR).contains(&year) && (1..=12).contains(&month),
+        ContractError::InvalidPeriod,
+    );
+}
+
+/// Rejects an all-zero `data_hash`. A zero hash usually means the signer read
+/// from an uninitialised buffer, and storing it would permanently record a
+/// meaningless wrap.
+pub fn validate_data_hash(e: &Env, data_hash: &BytesN<32>) {
+    if *data_hash == BytesN::from_array(e, &[0u8; 32]) {
+        panic_with_error!(e, ContractError::InvalidDataHash);
     }
 }
 
 fn validate_payload_version(e: &Env, version: u32) {
-    if version != CURRENT_PAYLOAD_VERSION {
-        panic_with_error!(e, ContractError::InvalidSignature);
-    }
+    guard::ensure(
+        e,
+        version == CURRENT_PAYLOAD_VERSION,
+        ContractError::InvalidSignature,
+    );
 }
 
 fn get_admin_pubkey(e: &Env) -> BytesN<32> {
-    e.storage()
-        .instance()
-        .get(&DataKey::AdminPubKey)
-        .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized))
+    guard::require_some(
+        e,
+        e.storage().instance().get(&DataKey::AdminPubKey),
+        ContractError::NotInitialized,
+    )
 }
 
 /// Records the ledger timestamp at which the user's registry state last
@@ -112,9 +127,11 @@ pub(crate) fn insert_wrap_record(e: &Env, user: &Address, period: u64, record: &
     optout::require_not_opted_out(e, user);
 
     let wrap_key = DataKey::Wrap(user.clone(), period);
-    if e.storage().persistent().has(&wrap_key) {
-        panic_with_error!(e, ContractError::WrapAlreadyExists);
-    }
+    guard::ensure(
+        e,
+        !e.storage().persistent().has(&wrap_key),
+        ContractError::WrapAlreadyExists,
+    );
 
     e.storage().persistent().set(&wrap_key, record);
     e.storage()
@@ -127,9 +144,11 @@ pub(crate) fn insert_wrap_record(e: &Env, user: &Address, period: u64, record: &
     // Update wrap count and account for count entry if first insert
     let count_key = DataKey::WrapCount(user.clone());
     let current_count: u32 = e.storage().persistent().get(&count_key).unwrap_or(0);
-    let next_count = current_count
-        .checked_add(1)
-        .unwrap_or_else(|| panic_with_error!(e, ContractError::ArithmeticOverflow));
+    let next_count = guard::require_some(
+        e,
+        current_count.checked_add(1),
+        ContractError::ArithmeticOverflow,
+    );
     e.storage().persistent().set(&count_key, &next_count);
     e.storage()
         .persistent()
@@ -137,9 +156,11 @@ pub(crate) fn insert_wrap_record(e: &Env, user: &Address, period: u64, record: &
 
     let total_key = DataKey::TotalWrapCount;
     let current_total: u32 = e.storage().persistent().get(&total_key).unwrap_or(0);
-    let next_total = current_total
-        .checked_add(1)
-        .unwrap_or_else(|| panic_with_error!(e, ContractError::ArithmeticOverflow));
+    let next_total = guard::require_some(
+        e,
+        current_total.checked_add(1),
+        ContractError::ArithmeticOverflow,
+    );
     e.storage().persistent().set(&total_key, &next_total);
     e.storage()
         .persistent()
@@ -179,9 +200,11 @@ pub(crate) fn insert_wrap_record(e: &Env, user: &Address, period: u64, record: &
     // already has wraps but is missing this index is a legacy user that must be
     // backfilled via `backfill_wrap_periods` before further mints are allowed.
     let wrap_periods_key = DataKey::WrapPeriods(user.clone());
-    if !e.storage().persistent().has(&wrap_periods_key) && current_count > 0 {
-        panic_with_error!(e, ContractError::StorageInvariantViolation);
-    }
+    guard::ensure(
+        e,
+        current_count == 0 || e.storage().persistent().has(&wrap_periods_key),
+        ContractError::StorageInvariantViolation,
+    );
     let mut wrap_periods: soroban_sdk::Vec<u64> = e
         .storage()
         .persistent()
@@ -216,26 +239,30 @@ pub(crate) fn mint_wrap(
 
     validate_period(&e, period);
     validate_payload_version(&e, payload_version);
+    validate_data_hash(&e, &data_hash);
 
-    if e.ledger().timestamp() > valid_until {
-        panic_with_error!(e, ContractError::SignatureExpired);
-    }
+    guard::ensure(
+        &e,
+        e.ledger().timestamp() <= valid_until,
+        ContractError::SignatureExpired,
+    );
 
     let admin_pubkey = get_admin_pubkey(&e);
-    if let Err(err) = verify_mint_signature(
+    guard::require_ok(
         &e,
-        &admin_pubkey,
-        &e.current_contract_address(),
-        &user,
-        period,
-        &archetype,
-        &data_hash,
-        payload_version,
-        valid_until,
-        &signature,
-    ) {
-        panic_with_error!(e, err);
-    }
+        verify_mint_signature(
+            &e,
+            &admin_pubkey,
+            &e.current_contract_address(),
+            &user,
+            period,
+            &archetype,
+            &data_hash,
+            payload_version,
+            valid_until,
+            &signature,
+        ),
+    );
 
     let now = e.ledger().timestamp();
     let record = WrapRecord {
@@ -262,12 +289,8 @@ pub(crate) fn mint_wrap_batch(
     aggregated_signature: Option<BytesN<64>>,
 ) {
     crate::admin::require_not_paused(&e);
-    if items.is_empty() {
-        panic_with_error!(&e, ContractError::BatchEmpty);
-    }
-    if items.len() > MAX_BATCH_SIZE {
-        panic_with_error!(&e, ContractError::BatchTooLarge);
-    }
+    guard::ensure(&e, !items.is_empty(), ContractError::BatchEmpty);
+    guard::ensure(&e, items.len() <= MAX_BATCH_SIZE, ContractError::BatchTooLarge);
 
     // Check for duplicate (user, period) pairs within the batch before any storage writes.
     {
@@ -275,12 +298,18 @@ pub(crate) fn mint_wrap_batch(
         for item in items.iter() {
             let pair = (item.user.clone(), item.period);
             for seen in seen_pairs.iter() {
-                if seen.0 == pair.0 && seen.1 == pair.1 {
-                    panic_with_error!(&e, ContractError::DuplicateBatchEntry);
-                }
+                guard::ensure(
+                    &e,
+                    !(seen.0 == pair.0 && seen.1 == pair.1),
+                    ContractError::DuplicateBatchEntry,
+                );
             }
             seen_pairs.push_back(pair);
         }
+    }
+
+    for item in items.iter() {
+        validate_data_hash(&e, &item.data_hash);
     }
 
     let admin_pubkey = get_admin_pubkey(&e);
@@ -300,45 +329,43 @@ pub(crate) fn mint_wrap_batch(
         for item in items.iter() {
             validate_period(&e, item.period);
             validate_payload_version(&e, item.payload_version);
-            if now > item.valid_until {
-                panic_with_error!(&e, ContractError::SignatureExpired);
-            }
+            guard::ensure(&e, now <= item.valid_until, ContractError::SignatureExpired);
         }
         let payload_version = items.get(0).unwrap().payload_version;
-        if let Err(err) = crate::signature::verify_batch_aggregated_signature(
+        guard::require_ok(
             &e,
-            &admin_pubkey,
-            &contract_id,
-            &items,
-            payload_version,
-            &agg_sig,
-        ) {
-            panic_with_error!(e, err);
-        }
+            crate::signature::verify_batch_aggregated_signature(
+                &e,
+                &admin_pubkey,
+                &contract_id,
+                &items,
+                payload_version,
+                &agg_sig,
+            ),
+        );
     } else {
         // Individual signatures inside batch items
         let now = e.ledger().timestamp();
         for item in items.iter() {
             validate_period(&e, item.period);
             validate_payload_version(&e, item.payload_version);
-            if now > item.valid_until {
-                panic_with_error!(&e, ContractError::SignatureExpired);
-            }
+            guard::ensure(&e, now <= item.valid_until, ContractError::SignatureExpired);
 
-            if let Err(err) = verify_mint_signature(
+            guard::require_ok(
                 &e,
-                &admin_pubkey,
-                &contract_id,
-                &item.user,
-                item.period,
-                &item.archetype,
-                &item.data_hash,
-                item.payload_version,
-                item.valid_until,
-                &item.signature,
-            ) {
-                panic_with_error!(e, err);
-            }
+                verify_mint_signature(
+                    &e,
+                    &admin_pubkey,
+                    &contract_id,
+                    &item.user,
+                    item.period,
+                    &item.archetype,
+                    &item.data_hash,
+                    item.payload_version,
+                    item.valid_until,
+                    &item.signature,
+                ),
+            );
         }
     }
 
@@ -374,20 +401,24 @@ pub(crate) fn transition_wrap_state(e: Env, user: Address, period: u64, next_sta
     user.require_auth();
 
     let wrap_key = DataKey::Wrap(user.clone(), period);
-    let mut record: WrapRecord = e
-        .storage()
-        .persistent()
-        .get(&wrap_key)
-        .unwrap_or_else(|| panic_with_error!(e, ContractError::WrapNotFound));
+    let mut record: WrapRecord = guard::require_some(
+        &e,
+        e.storage().persistent().get(&wrap_key),
+        ContractError::WrapNotFound,
+    );
 
-    if record.lifecycle.state == WrapState::Bridged {
-        panic_with_error!(e, ContractError::InvalidStateTransition);
-    }
+    guard::ensure(
+        &e,
+        record.lifecycle.state != WrapState::Bridged,
+        ContractError::InvalidStateTransition,
+    );
 
     let now = e.ledger().timestamp();
-    if !record.lifecycle.transition_to(next_state, now) {
-        panic_with_error!(e, ContractError::InvalidStateTransition);
-    }
+    guard::ensure(
+        &e,
+        record.lifecycle.transition_to(next_state, now),
+        ContractError::InvalidStateTransition,
+    );
 
     e.storage().persistent().set(&wrap_key, &record);
     e.storage()
@@ -416,9 +447,7 @@ pub(crate) fn get_expiration_duration(e: &Env) -> u64 {
 /// can be expired by anyone via [`expire_wrap`].
 pub(crate) fn set_expiration_duration(e: &Env, duration: u64) {
     crate::admin::read_admin(e).require_auth();
-    if duration == 0 {
-        panic_with_error!(e, ContractError::InvalidExpirationDuration);
-    }
+    guard::ensure(e, duration != 0, ContractError::InvalidExpirationDuration);
     e.storage()
         .instance()
         .set(&DataKey::ExpirationDuration, &duration);
@@ -440,23 +469,23 @@ pub(crate) fn expire_wrap(e: Env, user: Address, period: u64) {
     crate::admin::require_not_paused(&e);
 
     let wrap_key = DataKey::Wrap(user.clone(), period);
-    let mut record: WrapRecord = e
-        .storage()
-        .persistent()
-        .get(&wrap_key)
-        .unwrap_or_else(|| panic_with_error!(e, ContractError::WrapNotFound));
+    let mut record: WrapRecord = guard::require_some(
+        &e,
+        e.storage().persistent().get(&wrap_key),
+        ContractError::WrapNotFound,
+    );
 
     let now = e.ledger().timestamp();
     let duration = get_expiration_duration(&e);
     let expires_at = record.lifecycle.updated_at.saturating_add(duration);
 
-    if now <= expires_at {
-        panic_with_error!(e, ContractError::WrapNotExpired);
-    }
+    guard::ensure(&e, now > expires_at, ContractError::WrapNotExpired);
 
-    if !record.lifecycle.transition_to(WrapState::Expired, now) {
-        panic_with_error!(e, ContractError::InvalidStateTransition);
-    }
+    guard::ensure(
+        &e,
+        record.lifecycle.transition_to(WrapState::Expired, now),
+        ContractError::InvalidStateTransition,
+    );
 
     e.storage().persistent().set(&wrap_key, &record);
     e.storage()

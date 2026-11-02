@@ -253,4 +253,4 @@ Off-chain (at verification time)
 `verify_data` itself never panics or returns an error code — it always returns
 a `bool`. The only way to get a contract error is if the enclosing transaction
 fails for an unrelated reason (e.g. contract not initialised before any query
-that requires it). See [ERRORS.md](../ERRORS.md) for the full error catalogue.
+that requires it). See [errors.md](./errors.md) for the full error catalogue.
