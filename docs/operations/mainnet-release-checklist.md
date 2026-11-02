@@ -1,6 +1,6 @@
 # Mainnet Release Checklist
 
-Use this checklist before deploying the Stellar Wrap Contract to mainnet. The mechanical steps are automated; this checklist covers only what needs a person. It complements the release workflow in [.github/workflows/release.yml](.github/workflows/release.yml) and the usage notes in [README.md](README.md).
+Use this checklist before deploying the Stellar Wrap Contract to mainnet. The mechanical steps are automated; this checklist covers only what needs a person. It complements the release workflow in [.github/workflows/release.yml](../../.github/workflows/release.yml) and the usage notes in [README.md](../../README.md).
 
 ## 0. Overall security status
 

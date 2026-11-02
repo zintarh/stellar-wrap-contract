@@ -2,7 +2,8 @@ import { SorobanFetcher } from './fetcher';
 import { isTransientRpcError } from './retry';
 import { IndexerDB } from './db';
 import { processEventBatch, createEmptyState, persistStateToDB } from './processor';
-import type { DerivedState } from './types';
+import { alertsFromRetentionGaps } from './reconciler';
+import type { DerivedState, RetentionGap } from './types';
 
 export interface BackfillOptions {
   fetcher: SorobanFetcher;
@@ -11,6 +12,37 @@ export interface BackfillOptions {
   startLedger: number;
   endLedger?: number;
   onProgress?: (processed: number, currentLedger: number) => void;
+}
+
+/**
+ * Check whether `startLedger` has already been pruned by Soroban-RPC. Events in
+ * a pruned range can never be fetched again, so the gap is recorded (and
+ * alerted) and the caller must resume from the returned `resumeLedger`, the
+ * oldest ledger RPC still retains. Without this the fetch fails or skips the
+ * range with no record that it happened.
+ */
+export async function detectRetentionGap(
+  fetcher: SorobanFetcher,
+  db: IndexerDB,
+  contractId: string,
+  startLedger: number,
+): Promise<{ resumeLedger: number; gap: RetentionGap | null }> {
+  const oldestLedger = await fetcher.getOldestLedger();
+  if (oldestLedger === 0 || startLedger >= oldestLedger) {
+    return { resumeLedger: startLedger, gap: null };
+  }
+
+  const gap: RetentionGap = {
+    contract_id: contractId,
+    from_ledger: startLedger,
+    to_ledger: oldestLedger - 1,
+    detected_at: new Date().toISOString(),
+  };
+  db.recordRetentionGap(gap);
+  for (const alert of alertsFromRetentionGaps([gap])) {
+    console.error(`ALERT [${alert.condition}] ${alert.message}`);
+  }
+  return { resumeLedger: oldestLedger, gap };
 }
 
 /**
@@ -26,8 +58,9 @@ export async function backfillEvents(opts: BackfillOptions): Promise<{
 }> {
   const { fetcher, db, contractId, startLedger, onProgress } = opts;
   const endLedger = opts.endLedger ?? (await fetcher.getLatestLedger());
+  const retention = await detectRetentionGap(fetcher, db, contractId, startLedger);
 
-  let currentLedger = startLedger;
+  let currentLedger = retention.resumeLedger;
   let totalProcessed = 0;
   let state = createEmptyState(contractId, startLedger);
 

@@ -6,7 +6,9 @@ extern crate std;
 
 use ed25519_dalek::{Signer, SigningKey};
 use proptest::prelude::*;
-use soroban_sdk::{testutils::Address as _, Address, BytesN, Env, String, Symbol};
+use soroban_sdk::{
+    testutils::Address as _, Address, BytesN, Env, String, Symbol, TryIntoVal,
+};
 
 use super::*;
 use crate::{merkle, mint::CURRENT_PAYLOAD_VERSION, signature::construct_mint_payload};
@@ -49,6 +51,166 @@ fn setup_env() -> (
     client.initialize(&admin, &admin_pubkey);
 
     (env, client, contract_id, signing_key, pubkey_bytes)
+}
+
+fn setup_mint_comparison_env() -> (
+    Env,
+    StellarWrapContractClient<'static>,
+    Address,
+    StellarWrapContractClient<'static>,
+    Address,
+    SigningKey,
+) {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let signing_key = SigningKey::from_bytes(&TEST_SIGNING_KEY_BYTES);
+    let admin_pubkey = BytesN::from_array(&env, &signing_key.verifying_key().to_bytes());
+    let admin = Address::generate(&env);
+
+    let batch_contract_id = env.register(StellarWrapContract, ());
+    let sequential_contract_id = env.register(StellarWrapContract, ());
+    let batch_client = StellarWrapContractClient::new(&env, &batch_contract_id);
+    let sequential_client = StellarWrapContractClient::new(&env, &sequential_contract_id);
+
+    batch_client.initialize(&admin, &admin_pubkey);
+    sequential_client.initialize(&admin, &admin_pubkey);
+
+    (
+        env,
+        batch_client,
+        batch_contract_id,
+        sequential_client,
+        sequential_contract_id,
+        signing_key,
+    )
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct UserMintStorageSnapshot {
+    wrap_count: Option<u32>,
+    latest_period: Option<u64>,
+    user_periods: Option<soroban_sdk::Vec<u64>>,
+    wrap_periods: Option<soroban_sdk::Vec<u64>>,
+    last_updated: Option<u64>,
+    opted_out: Option<bool>,
+    mint_guard_persistent: bool,
+    mint_guard_temporary: bool,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct MintStorageSnapshot {
+    admin: Option<Address>,
+    admin_pubkey: Option<BytesN<32>>,
+    schema_version: Option<u32>,
+    storage_bytes: Option<u64>,
+    total_wrap_count: Option<u32>,
+    users: std::vec::Vec<UserMintStorageSnapshot>,
+    wraps: std::vec::Vec<Option<WrapRecord>>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct MintEventPayload {
+    user: Address,
+    period: u64,
+    archetype: Symbol,
+}
+
+fn mint_storage_snapshot(
+    env: &Env,
+    contract_id: &Address,
+    users: &[Address],
+    pairs: &[(usize, u64)],
+) -> MintStorageSnapshot {
+    env.as_contract(contract_id, || {
+        let user_snapshots = users
+            .iter()
+            .map(|user| {
+                let guard_key = DataKey::MintGuard(user.clone());
+                UserMintStorageSnapshot {
+                    wrap_count: env.storage().persistent().get(&DataKey::WrapCount(user.clone())),
+                    latest_period: env
+                        .storage()
+                        .persistent()
+                        .get(&DataKey::LatestPeriod(user.clone())),
+                    user_periods: env
+                        .storage()
+                        .persistent()
+                        .get(&DataKey::UserPeriods(user.clone())),
+                    wrap_periods: env
+                        .storage()
+                        .persistent()
+                        .get(&DataKey::WrapPeriods(user.clone())),
+                    last_updated: env
+                        .storage()
+                        .persistent()
+                        .get(&DataKey::LastUpdated(user.clone())),
+                    opted_out: env
+                        .storage()
+                        .persistent()
+                        .get(&DataKey::OptOut(user.clone())),
+                    mint_guard_persistent: env.storage().persistent().has(&guard_key),
+                    mint_guard_temporary: env.storage().temporary().has(&guard_key),
+                }
+            })
+            .collect();
+        let wraps = pairs
+            .iter()
+            .map(|(user_index, period)| {
+                env.storage().persistent().get(&DataKey::Wrap(
+                    users[*user_index].clone(),
+                    *period,
+                ))
+            })
+            .collect();
+
+        MintStorageSnapshot {
+            admin: env.storage().instance().get(&DataKey::Admin),
+            admin_pubkey: env.storage().instance().get(&DataKey::AdminPubKey),
+            schema_version: env.storage().instance().get(&DataKey::SchemaVersion),
+            storage_bytes: env.storage().instance().get(&DataKey::StorageBytes),
+            total_wrap_count: env.storage().persistent().get(&DataKey::TotalWrapCount),
+            users: user_snapshots,
+            wraps,
+        }
+    })
+}
+
+fn decode_batch_mint_events(env: &Env) -> std::vec::Vec<MintEventPayload> {
+    crate::test_utils::decode_events(env)
+        .into_iter()
+        .map(|(_, data)| {
+            let event: crate::events::MintEventData = data
+                .try_into_val(env)
+                .expect("batch mint event should decode as MintEventData");
+            match event {
+                crate::events::MintEventData::Mint(user, period, archetype) => MintEventPayload {
+                    user,
+                    period,
+                    archetype,
+                },
+            }
+        })
+        .collect()
+}
+
+fn decode_single_mint_events(env: &Env) -> std::vec::Vec<MintEventPayload> {
+    crate::test_utils::decode_events(env)
+        .into_iter()
+        .map(|(_, data)| {
+            let event: crate::events::Event = data
+                .try_into_val(env)
+                .expect("single mint event should decode as Event");
+            match event {
+                crate::events::Event::Mint(user, period, archetype) => MintEventPayload {
+                    user,
+                    period,
+                    archetype,
+                },
+                _ => panic!("single mint emitted a non-mint event"),
+            }
+        })
+        .collect()
 }
 
 // ── Helper: build a valid non-zero data hash ─────────────────────────────────
@@ -179,6 +341,161 @@ proptest! {
         prop_assert_eq!(record.data_hash, data_hash);
         prop_assert_eq!(record.archetype, archetype);
         prop_assert_eq!(record.period, period);
+    }
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig {
+        cases: 256,
+        .. ProptestConfig::default()
+    })]
+    #[test]
+    fn prop_mint_wrap_batch_matches_sequential_mints(
+        pairs in proptest::collection::btree_set((0usize..4, arb_period()), 1..=4),
+        archetypes in proptest::collection::vec(arb_archetype(), 1..=4),
+        raw_hashes in proptest::collection::vec(arb_data_hash(), 1..=4),
+        failure_case in 0usize..3,
+    ) {
+        let (env, batch_client, batch_contract_id, sequential_client, sequential_contract_id, signing_key) =
+            setup_mint_comparison_env();
+        let users: std::vec::Vec<Address> =
+            (0..4).map(|_| Address::generate(&env)).collect();
+        let pairs: std::vec::Vec<(usize, u64)> = pairs.into_iter().collect();
+        let mut batch_items = soroban_sdk::Vec::new(&env);
+        let mut sequential_items = std::vec::Vec::new();
+
+        for (index, (user_index, period)) in pairs.iter().enumerate() {
+            let user = users[*user_index].clone();
+            let archetype = Symbol::new(&env, archetypes[index % archetypes.len()]);
+            let data_hash = make_data_hash(&env, raw_hashes[index % raw_hashes.len()]);
+            let batch_signature = sign_mint(
+                &env,
+                &signing_key,
+                &batch_contract_id,
+                &user,
+                *period,
+                &archetype,
+                &data_hash,
+                CURRENT_PAYLOAD_VERSION,
+            );
+            let sequential_signature = sign_mint(
+                &env,
+                &signing_key,
+                &sequential_contract_id,
+                &user,
+                *period,
+                &archetype,
+                &data_hash,
+                CURRENT_PAYLOAD_VERSION,
+            );
+
+            batch_items.push_back(BatchWrapItem {
+                user: user.clone(),
+                period: *period,
+                archetype: archetype.clone(),
+                data_hash: data_hash.clone(),
+                payload_version: CURRENT_PAYLOAD_VERSION,
+                valid_until: u64::MAX,
+                signature: batch_signature,
+            });
+            sequential_items.push(BatchWrapItem {
+                user,
+                period: *period,
+                archetype,
+                data_hash,
+                payload_version: CURRENT_PAYLOAD_VERSION,
+                valid_until: u64::MAX,
+                signature: sequential_signature,
+            });
+        }
+
+        match failure_case {
+            1 => {
+                let user = users[pairs[0].0].clone();
+                batch_client.opt_out(&user);
+                sequential_client.opt_out(&user);
+            }
+            2 => {
+                let item = batch_items.get(0).unwrap();
+                let sequential_item = &sequential_items[0];
+                batch_client.mint_wrap(
+                    &item.user,
+                    &item.period,
+                    &item.archetype,
+                    &item.data_hash,
+                    &item.payload_version,
+                    &item.valid_until,
+                    &item.signature,
+                );
+                sequential_client.mint_wrap(
+                    &sequential_item.user,
+                    &sequential_item.period,
+                    &sequential_item.archetype,
+                    &sequential_item.data_hash,
+                    &sequential_item.payload_version,
+                    &sequential_item.valid_until,
+                    &sequential_item.signature,
+                );
+            }
+            _ => {}
+        }
+
+        let batch_result = batch_client.try_mint_wrap_batch(&batch_items, &None);
+        let batch_events = decode_batch_mint_events(&env);
+        let mut sequential_events = std::vec::Vec::new();
+        let mut sequential_error_code = None;
+        let mut sequential_mint_count = 0usize;
+
+        for item in &sequential_items {
+            match sequential_client.try_mint_wrap(
+                &item.user,
+                &item.period,
+                &item.archetype,
+                &item.data_hash,
+                &item.payload_version,
+                &item.valid_until,
+                &item.signature,
+            ) {
+                Ok(()) => {
+                    sequential_events.extend(decode_single_mint_events(&env));
+                    sequential_mint_count += 1;
+                }
+                Err(error) => {
+                    sequential_error_code = error.contract_error();
+                    prop_assert!(
+                        crate::test_utils::decode_events(&env).is_empty(),
+                        "failed sequential mint must not emit events"
+                    );
+                    break;
+                }
+            }
+        }
+
+        if failure_case == 0 {
+            prop_assert!(batch_result.is_ok(), "batch mint should succeed");
+            prop_assert_eq!(sequential_mint_count, sequential_items.len());
+            prop_assert_eq!(batch_events, sequential_events);
+        } else {
+            let expected_error_code = if failure_case == 1 {
+                ContractError::UserOptedOut as u32
+            } else {
+                ContractError::WrapAlreadyExists as u32
+            };
+            let batch_error_code = batch_result
+                .err()
+                .and_then(|error| error.contract_error());
+
+            prop_assert_eq!(batch_error_code, Some(expected_error_code));
+            prop_assert_eq!(sequential_error_code, Some(expected_error_code));
+            prop_assert!(batch_events.is_empty(), "failed batch mint must not emit events");
+            prop_assert_eq!(sequential_mint_count, 0);
+        }
+
+        let batch_storage =
+            mint_storage_snapshot(&env, &batch_contract_id, &users, &pairs);
+        let sequential_storage =
+            mint_storage_snapshot(&env, &sequential_contract_id, &users, &pairs);
+        prop_assert_eq!(batch_storage, sequential_storage);
     }
 }
 
