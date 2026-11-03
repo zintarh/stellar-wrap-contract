@@ -1,0 +1,93 @@
+name: Local Integration Tests
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'docker-compose.yml'
+      - '.github/workflows/integration-local.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'docker-compose.yml'
+      - '.github/workflows/integration-local.yml'
+
+jobs:
+  integration-local:
+    name: Local Network Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Install Stellar CLI
+        run: |
+          cargo install --locked stellar-cli --features opt || echo "stellar-cli already installed"
+          stellar --version
+
+      - name: Start Docker Compose
+        run: |
+          docker-compose up -d
+          echo "Waiting for Stellar network to be ready..."
+          for i in {1..60}; do
+            if curl -s http://localhost:8000/rpc -X POST \
+               -H "Content-Type: application/json" \
+               -d '{"jsonrpc":"2.0","id":1,"method":"getHealth"}' | grep -q "healthy"; then
+              echo "Stellar network is ready"
+              break
+            fi
+            if [ $i -eq 60 ]; then
+              echo "ERROR: RPC server failed to start"
+              docker-compose logs
+              exit 1
+            fi
+            sleep 1
+          done
+
+      - name: Run Local Integration Tests
+        run: |
+          bash tests/integration_local.sh
+        env:
+          # Keep local network running for debugging if tests fail
+          KEEP_LOCAL: ${{ failure() && '1' || '0' }}
+
+      - name: Show Docker logs on failure
+        if: failure()
+        run: |
+          echo "=== Docker Compose Logs ==="
+          docker-compose logs
+          echo "=== Container Status ==="
+          docker ps -a
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker-compose down -v || true
