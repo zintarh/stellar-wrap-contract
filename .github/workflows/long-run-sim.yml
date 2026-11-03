@@ -1,0 +1,39 @@
+name: Long-run Simulation
+
+on:
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  simulation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run 1,000-user, 24-month simulation
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --lib long_run_simulation -- --ignored --nocapture 2>&1 | tee simulation-report.txt
+
+      - name: Summarize maximum resource usage
+        if: always()
+        run: |
+          {
+            echo "### Long-run simulation: maximum read bytes per entrypoint"
+            echo '```'
+            grep '^SIM_MAX_READ_BYTES' simulation-report.txt || echo "no resource data captured"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload simulation report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: simulation-report
+          path: simulation-report.txt

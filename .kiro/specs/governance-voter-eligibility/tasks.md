@@ -79,7 +79,7 @@
   - Run `cargo test` — all governance tests must pass
   - _Requirements: 3.1_
 
-- [ ] 5. Document `VoterNotEligible = 58` in `ERRORS.md`
+- [ ] 5. Document `VoterNotEligible = 58` in `docs/errors.md`
   - Append an entry for error code 58 explaining when it is returned and how to resolve it
   - _Requirements: 2.6_
 
