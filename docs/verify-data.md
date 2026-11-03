@@ -1,8 +1,9 @@
 # Using `verify_data` for Off-Chain JSON Integrity Checks
 
 `verify_data` lets you confirm that raw data bytes match the SHA-256 hash
-committed to the chain at mint time. This guide explains exactly how to prepare
-the input, what can go wrong, and shows matching and non-matching examples.
+committed to the chain at mint time. This guide defines the **canonical wrap
+JSON** rules so the frontend, signer, and any third-party verifier hash the
+same bytes.
 
 ---
 
@@ -12,7 +13,8 @@ When a wrap is minted the caller supplies a `data_hash: BytesN<32>`, which is
 the SHA-256 digest of the raw data bytes they want to commit. The contract
 stores that hash inside the `WrapRecord`.
 
-`verify_data` accepts the original raw bytes and recomputes the hash on-chain:
+`verify_data` accepts the original raw bytes and recomputes the hash on-chain
+(see `src/queries.rs`):
 
 ```
 stored_hash = WrapRecord.data_hash          (set at mint time)
@@ -24,36 +26,107 @@ It returns `true` only when the bytes you supply hash to exactly the value
 stored in the record. If no wrap exists for the given `(user, period)` it
 returns `false` without error.
 
+The contract does **not** parse JSON. Canonicalization is entirely off-chain.
+
+---
+
+## Canonical wrap JSON (RFC 8785)
+
+All parties MUST produce `data_hash` as:
+
+```
+data_hash = SHA-256( UTF-8( JCS(wrap_object) ) )
+```
+
+where `JCS` is the JSON Canonicalization Scheme
+([RFC 8785](https://www.rfc-editor.org/rfc/rfc8785)).
+
+RFC 8785 removes ambiguity around:
+
+- object key order (keys are sorted)
+- insignificant whitespace
+- number formatting (ECMAScript `NumberToString`)
+
+Pretty-printed JSON, reordered keys, or alternate number spellings (`100.0`
+vs `100`) MUST NOT be hashed directly — canonicalize first.
+
+### Schema version inside the JSON
+
+Every wrap JSON document MUST include a `schema_version` field. The current
+value is `1`, defined by [`schema/wrap-data.schema.json`](../schema/wrap-data.schema.json).
+
+This is **not** the on-chain storage `schema_version()` query. It versions the
+off-chain wrap payload shape so verifiers know which field rules apply.
+
+Example (logical object; key order here is illustrative only):
+
+```json
+{
+  "schema_version": 1,
+  "score": 100,
+  "level": "gold"
+}
+```
+
+RFC 8785 canonical form of that object (what you actually hash):
+
+```text
+{"level":"gold","schema_version":1,"score":100}
+```
+
+Unknown `schema_version` values MUST be rejected by off-chain verifiers.
+
+### Reference implementation and vectors
+
+| Artifact | Path |
+|----------|------|
+| JSON Schema | [`schema/wrap-data.schema.json`](../schema/wrap-data.schema.json) |
+| Shared vectors | [`schema/vectors.json`](../schema/vectors.json) |
+| TypeScript helpers (`canonicalize` + `sha256`) | [`scripts/wrap-data.ts`](../scripts/wrap-data.ts) |
+| Rust tests (same digests) | [`src/data_hash_vectors_test.rs`](../src/data_hash_vectors_test.rs) |
+
+Verify the shared vectors from the TypeScript side:
+
+```bash
+cd scripts && npm install && npm run wrap-data:vectors
+```
+
+Rust:
+
+```bash
+cargo test --lib data_hash_vectors
+```
+
+Acceptance: every vector’s `jcs` and `sha256` match between TS and Rust.
+
 ---
 
 ## Preparing the input bytes
 
-Pass the **exact byte sequence** that was hashed before minting — no
-transformation, no re-encoding.
+1. Build a wrap object that includes `schema_version` (and any app fields).
+2. Canonicalize with RFC 8785 → UTF-8 bytes (no trailing newline).
+3. Compute `sha256(bytes)` → `data_hash` for `mint_wrap`.
+4. Pass the **same** canonical bytes to `verify_data`.
 
-For JSON payloads this typically means:
-
-1. Serialise your object to a UTF-8 JSON string.
-2. Take the raw UTF-8 bytes.
-3. Compute `sha256(bytes)` to get `data_hash` for `mint_wrap`.
-4. Pass the same raw bytes to `verify_data` when you want to verify.
-
-> **⚠ Whitespace and field ordering are significant.**
+> **⚠ Non-canonical bytes will fail.**
 >
-> SHA-256 is a byte-for-byte hash. Any difference between the bytes used at
-> mint time and the bytes passed to `verify_data` will produce a different
-> digest and the call will return `false`. Common pitfalls:
+> SHA-256 is a byte-for-byte hash. Common pitfalls if you skip JCS:
 >
 > - `{"score":100}` and `{ "score": 100 }` are different byte sequences.
 > - `{"a":1,"b":2}` and `{"b":2,"a":1}` are different byte sequences.
 > - A trailing newline (`\n`) changes the hash.
 > - A BOM (byte-order mark) at the start of a file changes the hash.
->
-> Canonical serialisation — a deterministic, whitespace-free format where keys
-> are always in the same order — is strongly recommended so that any system
-> can reproduce the same bytes independently. JSON Canonicalization Scheme
-> ([RFC 8785](https://www.rfc-editor.org/rfc/rfc8785)) is one well-specified
-> option.
+
+TypeScript (reference):
+
+```ts
+import { dataHashOf, canonicalizeWrapData } from "./wrap-data";
+
+const wrap = { schema_version: 1, score: 100, level: "gold" };
+const jcs = canonicalizeWrapData(wrap);
+// → '{"level":"gold","schema_version":1,"score":100}'
+const dataHash = dataHashOf(wrap); // 32-byte Buffer
+```
 
 ---
 
@@ -69,13 +142,14 @@ soroban contract invoke \
   --data <DATA_HEX>
 ```
 
-`<DATA_HEX>` is the hex-encoded raw bytes of your original data (no `0x`
-prefix required by the Soroban CLI).
+`<DATA_HEX>` is the hex-encoded **canonical** UTF-8 bytes (no `0x` prefix
+required by the Soroban CLI).
 
-**Example — hash the file and verify in one step:**
+**Example — hash canonical JSON and verify:**
 
 ```bash
-DATA='{"score":100,"level":"gold"}'
+# Canonical bytes (RFC 8785). Do not pretty-print.
+DATA='{"level":"gold","schema_version":1,"score":100}'
 DATA_HEX=$(printf '%s' "$DATA" | xxd -p | tr -d '\n')
 
 soroban contract invoke \
@@ -92,11 +166,14 @@ soroban contract invoke \
 
 ## Matching example
 
-Mint with a specific JSON payload, then verify the same bytes:
+Mint with canonical wrap JSON, then verify the same bytes:
 
 ```rust
 // --- mint ---
-let data_json = Bytes::from_slice(&env, b"{\"score\":100,\"level\":\"gold\"}");
+let data_json = Bytes::from_slice(
+    &env,
+    b"{\"level\":\"gold\",\"schema_version\":1,\"score\":100}",
+);
 let data_hash_raw = env.crypto().sha256(&data_json);
 let data_hash = BytesN::from_array(&env, &data_hash_raw.to_array());
 
@@ -116,26 +193,26 @@ assert!(client.verify_data(&user, &period, &data_json));
 ### Tampered field value
 
 ```rust
-// Minted with {"score":100}
-let original = Bytes::from_slice(&env, b"{\"score\":100}");
+// Minted with {"schema_version":1,"score":100}
+let original = Bytes::from_slice(&env, b"{\"schema_version\":1,\"score\":100}");
 let data_hash = BytesN::from_array(&env, &env.crypto().sha256(&original).to_array());
 client.mint_wrap(&user, &period, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &signature);
 
-// Verifying with {"score":999} returns false — value differs
-let tampered = Bytes::from_slice(&env, b"{\"score\":999}");
+// Verifying with {"schema_version":1,"score":999} returns false — value differs
+let tampered = Bytes::from_slice(&env, b"{\"schema_version\":1,\"score\":999}");
 assert!(!client.verify_data(&user, &period, &tampered));
 ```
 
-### Whitespace difference
+### Whitespace / non-canonical JSON
 
 ```rust
-// Minted with compact JSON (no spaces)
-let compact = Bytes::from_slice(&env, b"{\"score\":100}");
+// Minted with RFC 8785 compact form
+let compact = Bytes::from_slice(&env, b"{\"schema_version\":1,\"score\":100}");
 let data_hash = BytesN::from_array(&env, &env.crypto().sha256(&compact).to_array());
 client.mint_wrap(&user, &period, &archetype, &data_hash, &CURRENT_PAYLOAD_VERSION, &signature);
 
 // Verifying with pretty-printed JSON returns false — byte sequences differ
-let pretty = Bytes::from_slice(&env, b"{ \"score\": 100 }");
+let pretty = Bytes::from_slice(&env, b"{ \"schema_version\": 1, \"score\": 100 }");
 assert!(!client.verify_data(&user, &period, &pretty));
 ```
 
@@ -233,15 +310,16 @@ assert!(result.is_err());
 ```
 Off-chain (at mint time)
 ─────────────────────────────────────────────────
-1. Produce canonical JSON bytes  →  raw_bytes
-2. sha256(raw_bytes)             →  data_hash
-3. Call mint_wrap(..., data_hash, ...)
-4. Store raw_bytes alongside the period
+1. Build wrap object with schema_version
+2. JCS (RFC 8785) → canonical UTF-8 bytes
+3. sha256(bytes)                  →  data_hash
+4. Call mint_wrap(..., data_hash, ...)
+5. Store the canonical bytes (or regenerable object) for the period
 
 Off-chain (at verification time)
 ─────────────────────────────────────────────────
-1. Retrieve raw_bytes for the period
-2. Call verify_data(user, period, raw_bytes)
+1. Recover the same object / canonical bytes
+2. Call verify_data(user, period, canonical_bytes)
 3. true  → on-chain hash matches; data is authentic
    false → data has been altered, or no wrap exists
 ```

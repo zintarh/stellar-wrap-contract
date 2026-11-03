@@ -1,0 +1,74 @@
+{
+  "schema": "wrap-data.schema.json",
+  "algorithm": "RFC8785+SHA-256",
+  "vectors": [
+    {
+      "name": "minimal_score_level",
+      "input": {
+        "schema_version": 1,
+        "score": 100,
+        "level": "gold"
+      },
+      "jcs": "{\"level\":\"gold\",\"schema_version\":1,\"score\":100}",
+      "sha256": "f7095608e4ee28315d1c25da9303d66cc17071daf3c9224b18c1630c1618522c"
+    },
+    {
+      "name": "key_order_independent",
+      "input": {
+        "level": "gold",
+        "schema_version": 1,
+        "score": 100
+      },
+      "jcs": "{\"level\":\"gold\",\"schema_version\":1,\"score\":100}",
+      "sha256": "f7095608e4ee28315d1c25da9303d66cc17071daf3c9224b18c1630c1618522c"
+    },
+    {
+      "name": "score_only",
+      "input": {
+        "schema_version": 1,
+        "score": 100
+      },
+      "jcs": "{\"schema_version\":1,\"score\":100}",
+      "sha256": "1d1afffe4ab0b71a43bf6670a2cd6e498d797accd5553ad004a18379d6ae3ddd"
+    },
+    {
+      "name": "nested_profile",
+      "input": {
+        "schema_version": 1,
+        "profile": {
+          "name": "Alice",
+          "age": 30
+        },
+        "scores": [
+          100,
+          95,
+          87
+        ],
+        "metadata": {
+          "created": "2024-01-15",
+          "verified": true
+        }
+      },
+      "jcs": "{\"metadata\":{\"created\":\"2024-01-15\",\"verified\":true},\"profile\":{\"age\":30,\"name\":\"Alice\"},\"schema_version\":1,\"scores\":[100,95,87]}",
+      "sha256": "1b37ea2245158fa7f356007aba9fd1fbdb8985cf285bc9bbc9420bab1834f20a"
+    },
+    {
+      "name": "number_normalization",
+      "input": {
+        "schema_version": 1,
+        "score": 100
+      },
+      "jcs": "{\"schema_version\":1,\"score\":100}",
+      "sha256": "1d1afffe4ab0b71a43bf6670a2cd6e498d797accd5553ad004a18379d6ae3ddd"
+    },
+    {
+      "name": "unicode_string",
+      "input": {
+        "schema_version": 1,
+        "level": "café"
+      },
+      "jcs": "{\"level\":\"café\",\"schema_version\":1}",
+      "sha256": "4ee10cd4227e9b25a396f8d6bdedd4789c7fbddd9e7b8fc0d3c5da014cd1c746"
+    }
+  ]
+}
