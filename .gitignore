@@ -30,6 +30,14 @@ pipeline/node_modules/
 /frontend/.env.local
 /frontend/*.tsbuildinfo
 
+# Pipeline local configuration (may contain deployment-specific secrets)
+/pipeline/.env
+/pipeline/indexer.db
+
+# Pipeline build and coverage artifacts
+/pipeline/dist/
+/pipeline/coverage/
+
 # Scratch / temporary files (see issues #714 and #888)
 temp_*.rs
 *.patch
