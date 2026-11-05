@@ -4,14 +4,14 @@
   "version": "1.0.0",
   "description": "Soroban-RPC indexer pipeline for Stellar Wrap contract historical storage data",
   "scripts": {
-    "start": "ts-node src/index.ts",
+    "start": "node init && ts-node src/index.ts",
     "backfill": "ts-node src/index.ts --backfill",
     "reconcile": "ts-node src/index.ts --reconcile-only",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "build": "tsc"
+    "build": "node init && tsc"
   },
   "dependencies": {
     "@stellar/stellar-sdk": "^13.0.0",
