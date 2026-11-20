@@ -127,6 +127,7 @@ The following table documents which state-mutating entrypoints honor the pause (
 | --- | --- |
 | `initialize(admin, admin_pubkey)` | deployer (callable once) |
 | `update_admin(new_admin)` | admin |
+| `update_admin_with_memo(new_admin, memo_hash)` | admin |
 | `propose_admin(new_admin)` | admin |
 | `accept_admin()` | proposed admin |
 | `cancel_proposed_admin()` | admin |
@@ -155,6 +156,7 @@ The following table documents which state-mutating entrypoints honor the pause (
 
 - `initialize(e: Env, admin: Address, admin_pubkey: BytesN<32>)`
 - `update_admin(e: Env, new_admin: Address)`
+- `update_admin_with_memo(e: Env, new_admin: Address, memo_hash: BytesN<32>)`
 - `mint_wrap(e: Env, user: Address, period: u64, archetype: Symbol, data_hash: BytesN<32>, payload_version: u32, signature: BytesN<64>)`
 - `mint_wrap_batch(e: Env, items: Vec<BatchWrapItem>, aggregated_signature: Option<BytesN<64>>)`
 - `revoke_wrap(e: Env, user: Address, period: u64, reason_hash: BytesN<32>)`
@@ -1316,6 +1318,7 @@ shapes. `<..>` marks a value that varies per call.
 | `initialize` | `v1 / admin / init` | `Event::AdminInit(admin)` |
 | `pause, unpause` | `v1 / admin / pause` | `Event::AdminPause(paused)` |
 | `update_admin` | `v1 / admin / updated` | `(current_admin, new_admin)` |
+| `update_admin_with_memo` | `v1 / admin / memo` | `(new_admin, memo_hash)` |
 | `set_transfer_fee` | `fee` | `(token, recipient, amount)` |
 | `clear_transfer_fee` | `fee_clr` | `()` |
 | `upgrade` | `upgrade / <version>` | `wasm_hash: BytesN<32>` |

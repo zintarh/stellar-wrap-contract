@@ -93,6 +93,7 @@ design and are not represented by a `TimelockAction` variant.
 | --- | --- | --- |
 | `initialize` | No | Deployment bootstrap is single-use and must be signed by the configured admin account. |
 | `update_admin` | Yes | Ownership changes need an observable delay. |
+| `update_admin_with_memo` | Yes | Same ownership change as `update_admin`; the memo must not bypass the delay. |
 | `propose_admin` / `accept_admin` | Yes | Two-step handover must not bypass the delay. |
 | `cancel_proposed_admin` | No | Clearing a stale handover does not grant access or change ownership. |
 | `upgrade` | Yes | WASM changes need an observable delay. |

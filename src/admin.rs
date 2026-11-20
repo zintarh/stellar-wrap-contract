@@ -61,9 +61,7 @@
 
 use soroban_sdk::{contracttype, panic_with_error, symbol_short, Address, BytesN, Env, Vec};
 
-use crate::{
-    ttl::TTL_TEMP, ContractError, DataKey, TransferFeeConfig, WrapRecord,
-};
+use crate::{ttl::TTL_TEMP, ContractError, DataKey, TransferFeeConfig, WrapRecord};
 
 /// Minimum duration for an admin proposal, in seconds (1 hour).
 pub(crate) const MIN_PROPOSAL_DURATION: u64 = 60 * 60;
@@ -299,6 +297,18 @@ pub(crate) fn migrate_users(e: Env, users: Vec<Address>) {
     );
 }
 
+/// Applies an immediate admin handover after authorizing the current admin.
+///
+/// A direct rotation supersedes any in-flight two-step proposal, so the
+/// pending slot is cleared. Returns the previous admin for the audit event.
+fn rotate_admin(e: &Env, new_admin: Address) -> Address {
+    let admin = read_admin(e);
+    admin.require_auth();
+    e.storage().instance().set(&DataKey::Admin, &new_admin);
+    e.storage().instance().remove(&DataKey::PendingAdmin);
+    admin
+}
+
 /// Immediate admin replacement.
 ///
 /// Rejected once the timelock controller is enabled — the admin must then use
@@ -306,8 +316,26 @@ pub(crate) fn migrate_users(e: Env, users: Vec<Address>) {
 #[allow(deprecated)] // TODO(#718): migrate to #[contractevent]
 pub(crate) fn update_admin(e: Env, new_admin: Address) {
     crate::timelock::require_direct_call_allowed(&e);
-    let admin = read_admin(&e);
-    admin.require_auth();
-    e.storage().instance().set(&DataKey::Admin, &new_admin);
-    crate::events::publish_event(&e, crate::events::Event::AdminUpdated(new_admin));
+    let previous = rotate_admin(&e, new_admin.clone());
+    crate::events::publish_event(&e, crate::events::Event::AdminUpdated(previous, new_admin));
+}
+
+/// Immediate admin replacement that also records an opaque memo hash.
+///
+/// Rotates the admin exactly like [`update_admin`] and emits the same
+/// `admin / updated` event, followed by a separate `admin / memo` event
+/// carrying `(new_admin, memo_hash)`. The memo is not stored and is not
+/// interpreted on-chain: it exists so off-chain operators can attach public,
+/// non-sensitive context (for example a hash of a change ticket) to the
+/// rotation audit trail. Rejected once the timelock is enabled, like
+/// [`update_admin`].
+#[allow(deprecated)] // TODO(#718): migrate to #[contractevent]
+pub(crate) fn update_admin_with_memo(e: Env, new_admin: Address, memo_hash: BytesN<32>) {
+    crate::timelock::require_direct_call_allowed(&e);
+    let previous = rotate_admin(&e, new_admin.clone());
+    crate::events::publish_event(
+        &e,
+        crate::events::Event::AdminUpdated(previous, new_admin.clone()),
+    );
+    crate::events::publish_event(&e, crate::events::Event::AdminMemo(new_admin, memo_hash));
 }

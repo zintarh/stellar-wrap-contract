@@ -261,6 +261,51 @@ flows. **Do not infer state from events alone.**
 
 `accept_admin` does not currently emit an event; use `get_admin` to confirm.
 
+### Optional rotation memo (`update_admin_with_memo`)
+
+`update_admin` keeps its original signature. To attach operational context to a
+rotation, call `update_admin_with_memo(new_admin, memo_hash)` instead. It
+performs the same handover (same authorization, same timelock rejection, and it
+clears any pending two-step proposal) and emits two events in the same
+transaction:
+
+- the usual `admin / updated` event with `(old_admin, new_admin)`, and
+- a `v1 / admin / memo` event with `(new_admin, memo_hash)`.
+
+The 32-byte memo hash is **not stored** and is not validated or interpreted
+on-chain. It is emitted only so off-chain tooling can correlate a rotation with
+its published change record. Events are public and permanent, so the memo must
+never carry or leak sensitive information.
+
+Recommended memo content — hash a short, public change reference:
+
+1. Choose a public reference that already exists in your change-management or
+   incident system, for example `SWC-2026-042` (a rotation ticket) or
+   `INC-2026-011` (an incident ID).
+2. Domain-separate it before hashing so the same string hashed elsewhere cannot
+   be confused with a rotation memo, e.g.
+   `SHA-256("stellar-wrap:admin-rotation:v1:" || reference)`.
+3. Store the pre-image and the resulting hash with the ticket so auditors can
+   reproduce it, and publish the hash on-chain via
+   `update_admin_with_memo(new_admin, memo_hash)`.
+4. Hand over the admin key using the normal procedure (prefer `propose_admin` +
+   `accept_admin`; the memo is only available on the direct `update_admin`
+   path).
+
+Do **not** put any of the following in the memo, directly or as a hash of a
+low-entropy value that can be brute-forced:
+
+- private keys, seed phrases, signed transactions, or API tokens;
+- personal data (names, emails, phone numbers, addresses) or customer data;
+- internal hostnames, IP addresses, credentials, or other security-sensitive
+  infrastructure details;
+- an unhashed free-text note — the contract expects 32 bytes, so hash the public
+  reference instead of encoding prose.
+
+A timelocked `TimelockAction::SetAdmin` execution cannot carry a memo; schedule
+and execute the rotation without one, and record the public reference in the
+monitoring notes for that transaction.
+
 ---
 
 ## Signing pubkey rotation
