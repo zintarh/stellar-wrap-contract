@@ -123,6 +123,34 @@ impl StellarWrapContract {
         admin::update_admin(e, new_admin);
     }
 
+    /// Replaces the admin and attaches an opaque 32-byte memo hash to the
+    /// rotation audit trail.
+    ///
+    /// Behaves exactly like [`Self::update_admin`]: the current admin must
+    /// authorize the call, a direct call is rejected while the timelock is
+    /// enabled, and any pending two-step proposal is cleared. It additionally
+    /// emits a `("v1", "admin", "memo")` event carrying
+    /// `(new_admin, memo_hash)` immediately after the usual `admin / updated`
+    /// event.
+    ///
+    /// The memo is **never stored** and is not interpreted on-chain. Use it for
+    /// public, non-sensitive context such as a hash of a change ticket, an
+    /// incident number, or a rotation-runbook step. Do not hash or embed
+    /// secrets, private keys, personal data, or anything that must stay
+    /// confidential — events are public and permanent. The recommended memo
+    /// content is documented in `docs/admin-rotation.md`.
+    ///
+    /// A timelocked `TimelockAction::SetAdmin` execution cannot carry a memo;
+    /// the memo is only available on the direct path.
+    ///
+    /// # Panics
+    /// - [`ContractError::NotInitialized`] if no admin is configured.
+    /// - [`ContractError::Unauthorized`] if the caller is not the current admin.
+    /// - [`ContractError::TimelockRequired`] if the timelock is enabled.
+    pub fn update_admin_with_memo(e: Env, new_admin: Address, memo_hash: BytesN<32>) {
+        admin::update_admin_with_memo(e, new_admin, memo_hash);
+    }
+
     /// Configures the token-denominated fee charged by `transfer_wrap`.
     ///
     /// Only the current admin may update the configuration. An amount of zero

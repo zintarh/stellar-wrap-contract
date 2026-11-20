@@ -66,6 +66,11 @@ const EVENT_SHAPES: &[EventShape] = &[
         data: "(current_admin, new_admin)",
     },
     EventShape {
+        emitter: "update_admin_with_memo",
+        topics: "v1 / admin / memo",
+        data: "(new_admin, memo_hash)",
+    },
+    EventShape {
         emitter: "set_transfer_fee",
         topics: "fee",
         data: "(token, recipient, amount)",
@@ -412,6 +417,51 @@ fn test_update_admin_publishes_previous_and_new_admin() {
     let (previous, next): (Address, Address) = data.try_into_val(&env).unwrap();
     assert_eq!(previous, admin);
     assert_eq!(next, new_admin);
+}
+
+#[test]
+fn test_update_admin_with_memo_publishes_rotation_and_memo() {
+    let env = Env::default();
+    let (contract_id, client, _, admin) = setup(&env, 91);
+    let new_admin = Address::generate(&env);
+    let memo_hash = BytesN::from_array(&env, &[7u8; 32]);
+
+    client.update_admin_with_memo(&new_admin, &memo_hash);
+
+    // The rotation itself is unchanged and is always reported by the standard
+    // `admin / updated` event.
+    assert_eq!(client.get_admin().unwrap(), new_admin);
+
+    let events = decode_events(&env);
+    assert!(
+        events.len() >= 2,
+        "expected the rotation and memo events, found {}",
+        events.len()
+    );
+
+    let (topics, data) = events[events.len() - 2].clone();
+    assert_topics(&env, &topics, &["v1", "admin", "updated"]);
+    let (previous, next): (Address, Address) = data.try_into_val(&env).unwrap();
+    assert_eq!(previous, admin);
+    assert_eq!(next, new_admin);
+
+    let (topics, data) = events[events.len() - 1].clone();
+    assert_topics(&env, &topics, &["v1", "admin", "memo"]);
+    let (emitted_admin, emitted_memo): (Address, BytesN<32>) = data.try_into_val(&env).unwrap();
+    assert_eq!(emitted_admin, new_admin);
+    assert_eq!(emitted_memo, memo_hash);
+}
+
+#[test]
+fn test_update_admin_does_not_emit_a_memo_event() {
+    let env = Env::default();
+    let (_, client, _, _) = setup(&env, 92);
+    let new_admin = Address::generate(&env);
+
+    client.update_admin(&new_admin);
+
+    let (topics, _) = last_event(&env);
+    assert_topics(&env, &topics, &["v1", "admin", "updated"]);
 }
 
 #[test]

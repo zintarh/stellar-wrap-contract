@@ -117,6 +117,14 @@ fn test_timelock_lockout_direct_paths() {
         ContractError::TimelockRequired
     );
 
+    // The memo variant must not bypass the timelock either.
+    let memo_hash = BytesN::from_array(&env, &[3u8; 32]);
+    let res = client.try_update_admin_with_memo(&new_admin, &memo_hash);
+    assert_eq!(
+        ContractError::try_from(res.unwrap_err().unwrap()).unwrap(),
+        ContractError::TimelockRequired
+    );
+
     // Test propose_admin fails
     let res = client.try_propose_admin(&new_admin);
     assert_eq!(

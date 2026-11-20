@@ -19,6 +19,9 @@ pub enum Event {
     // Admin
     AdminInit(Address),
     AdminUpdated(Address, Address),
+    /// Opaque off-chain context attached to an admin rotation:
+    /// `(new_admin, memo_hash)`. The hash is not interpreted on-chain.
+    AdminMemo(Address, BytesN<32>),
     AdminPause(bool),
     AdminFeeUpdated(Address, Address, i128),
     AdminFeeCleared,
@@ -91,6 +94,9 @@ pub fn publish_event(e: &Env, event: Event) {
             (v1, symbol_short!("admin"), symbol_short!("updated")),
             event,
         ),
+        Event::AdminMemo(..) => e
+            .events()
+            .publish((v1, symbol_short!("admin"), symbol_short!("memo")), event),
         Event::AdminPause(..) => e
             .events()
             .publish((v1, symbol_short!("admin"), symbol_short!("pause")), event),
