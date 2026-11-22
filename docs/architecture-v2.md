@@ -64,3 +64,35 @@ Rather than move this logic into a separate `contracts/wrap-fees` contract, we
 - The removal is recorded in `CHANGELOG.md`.
 - Tests for staking and fee computation are removed with the modules; the
   remaining registry tests cover mint, transfer and metadata behaviour.
+
+## Decision: remove `verify_with_oracle` from the registry
+
+**Status:** Accepted (closes #647, tracked by #1019)
+
+### Context
+
+`verify_with_oracle(oracle, data_hash)` accepted an arbitrary oracle address
+from the caller and forwarded a cross-contract call to it. The function was
+read-only and did not depend on any registry state, so any client could call
+the oracle directly. A registry entrypoint that forwards calls to
+caller-chosen contracts adds attack surface and nothing else.
+
+### Decision
+
+- The `verify_with_oracle` entrypoint is removed from the registry.
+- `src/oracle.rs` (the `DataHashOracle` client, `OracleError` and the
+  instruction-budget helper) is deleted along with its module declaration and
+  its test module.
+- The registry invokes **no caller-supplied contract address**. The only
+  remaining cross-contract calls are token transfers to the token contract
+  configured by the admin.
+
+### Consequences
+
+- Clients that need an oracle verdict call the oracle contract directly; the
+  registry no longer proxies it.
+- If an oracle check is wanted at mint time, the oracle address must be
+  admin-configured and invoked inside `mint_wrap`, never taken from a call
+  argument.
+- `verify_data` remains the on-chain hash check (see `docs/verify-data.md`).
+- The removal is recorded in `CHANGELOG.md`.

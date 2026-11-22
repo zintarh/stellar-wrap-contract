@@ -294,17 +294,20 @@ Events emitted:
 ### 8a. Cross-Contract Call Surface (Reentrancy Analysis)
 
 **Status:** ✅ ANALYSED  
-**Location:** `src/oracle.rs` (oracle client), `src/token.rs` (token interface), `src/lib.rs` (stake / unstake / withdraw_stake)
+**Location:** `src/token.rs` (token interface), `src/lib.rs` (stake / unstake / withdraw_stake)
 
 **Implementation Details:**
 Every call site that transfers control to another contract is enumerated below. For each, state is written before the external call and no invariant is observable in a broken intermediate state.
 
 | # | Call site | External call | State written before call | Invariant safe mid-call |
 |---|-----------|---------------|---------------------------|-------------------------|
-| 1 | `oracle.rs` `OracleClient::get_price` | Oracle contract `get_price` | None (read-only view) | Yes — no local state mutated |
-| 2 | `token.rs` `TokenClient::transfer` (stake) | Token contract `transfer` | Stake record + total staked written first | Yes — guard held, balances consistent |
-| 3 | `token.rs` `TokenClient::transfer` (unstake) | Token contract `transfer` | Stake record zeroed + total staked decremented first | Yes — guard held, no double-spend window |
-| 4 | `token.rs` `TokenClient::transfer` (withdraw_stake) | Token contract `transfer` | Pending withdrawal cleared before transfer | Yes — guard held, re-entry sees cleared state |
+| 1 | `token.rs` `TokenClient::transfer` (stake) | Token contract `transfer` | Stake record + total staked written first | Yes — guard held, balances consistent |
+| 2 | `token.rs` `TokenClient::transfer` (unstake) | Token contract `transfer` | Stake record zeroed + total staked decremented first | Yes — guard held, no double-spend window |
+| 3 | `token.rs` `TokenClient::transfer` (withdraw_stake) | Token contract `transfer` | Pending withdrawal cleared before transfer | Yes — guard held, re-entry sees cleared state |
+
+The former oracle call site (`verify_with_oracle`, `src/oracle.rs`) has been
+removed (#1019): the registry no longer invokes any caller-supplied contract
+address.
 
 **Reentrancy guard coverage:**
 - `stake`, `unstake`, and `withdraw_stake` all acquire the `MintGuard` (temporary storage) before any token callback and release it only after the external call returns.
@@ -312,7 +315,7 @@ Every call site that transfers control to another contract is enumerated below. 
 - All balance mutations are committed to storage *before* the token `transfer` invocation, so a re-entering callback observes the post-write (consistent) state, never a broken intermediate.
 
 **Acceptance Criteria:**
-- [x] Every external call site enumerated (oracle, token, stake module)
+- [x] Every external call site enumerated (token, stake module)
 - [x] State written before external call at each site
 - [x] No invariant observable in a broken intermediate state
 - [x] `stake`, `unstake`, `withdraw_stake` guarded against token callback reentrancy
@@ -322,7 +325,6 @@ Every call site that transfers control to another contract is enumerated below. 
 - `test_reentrant_token_on_stake_blocked` ✅
 - `test_reentrant_token_on_unstake_blocked` ✅
 - `test_reentrant_token_on_withdraw_stake_blocked` ✅
-- `test_oracle_view_call_does_not_mutate_state` ✅
 
 **Related Issues:** #886
 
