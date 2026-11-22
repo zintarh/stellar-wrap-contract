@@ -42,7 +42,6 @@
 //! | `stake`          | token `transfer` (in)    | stake record + totals     |
 //! | `unstake`        | token `transfer` (out)   | stake record + totals     |
 //! | `withdraw_stake` | token `transfer` (out)   | stake record + totals     |
-//! | oracle client    | oracle `get_price`       | none (read-only, no state)|
 //!
 //! No invariant is observable in a broken intermediate state: the token transfer
 //! is the final step of each mutating entry point, and any re-entrant call sees

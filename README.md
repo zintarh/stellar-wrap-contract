@@ -218,7 +218,6 @@ been initialized or if no wrap exists for the given user and period.
 | Entrypoint |
 | --- |
 | `verify_data(user, period, data)` |
-| `verify_with_oracle(oracle, data_hash)` |
 
 ### Alias & opt-out
 
@@ -490,24 +489,19 @@ mint path**. They are listed so the README does not overstate behaviour:
   stake, but mints do not apply it, so staking affects priority numbers only,
   not the fees a user actually pays.
 
-## Oracle hash verification
+## Oracle hash verification (removed in v2)
 
-`verify_with_oracle` performs a read-only cross-contract call to the supplied
-oracle address. A compatible oracle exposes this ABI:
+`verify_with_oracle(oracle, data_hash)` has been **removed** from the registry
+(issue #1019). The entrypoint took an arbitrary oracle address from the caller
+and forwarded a cross-contract call to it, which added attack surface without
+depending on any registry state — any client could call the oracle directly.
 
-```text
-verify_data_hash(data_hash: BytesN<32>) -> bool
-```
+The registry now invokes **no caller-supplied contract address**. If an oracle
+check is wanted at mint time, the oracle address must be admin-configured and
+invoked inside `mint_wrap` rather than accepted as a call argument.
 
-The hash is forwarded unchanged. The oracle returns `true` when its
-decentralized verification process recognizes the hash and `false` when it
-does not. Contract invocation failures, a missing method, and incompatible
-return values propagate as call errors; they are never converted to `false`.
-
-The caller supplies the oracle address, so a `true` response is only as
-trustworthy as that selected oracle. Applications should use a vetted oracle
-contract ID from their own configuration. This method does not mutate wrap
-records and does not replace the local `verify_data` comparison.
+Use the local `verify_data` comparison for on-chain hash verification; see
+[docs/verify-data.md](docs/verify-data.md).
 
 ## Event schemas
 

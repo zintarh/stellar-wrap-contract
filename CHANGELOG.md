@@ -7,6 +7,15 @@
 <!-- Future breaking interface changes go here. Each entry must include
      migration notes describing what integrators need to update. -->
 
+- **Removed `verify_with_oracle(oracle, data_hash)`** (#1019, closes #647). The
+  registry no longer forwards a cross-contract call to a caller-supplied oracle
+  address, so no caller-chosen contract is invoked by the registry.
+  - Migration: call the oracle contract directly from your client, or use the
+    on-chain `verify_data(user, period, data)` hash comparison. If an oracle
+    check is wanted at mint time, the oracle address must be admin-configured
+    and invoked inside `mint_wrap` rather than passed as an argument.
+  - `src/oracle.rs` (`DataHashOracle`, `OracleError`) is deleted.
+
 ### Changed
 
 - `pause` / `unpause` now emit direction-distinguishable events with the acting

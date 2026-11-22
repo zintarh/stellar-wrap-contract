@@ -48,7 +48,6 @@ pub mod guard;
 mod merkle;
 mod mint;
 mod optout;
-mod oracle;
 mod queries;
 mod remove_wrap;
 mod revoke;
@@ -65,7 +64,6 @@ mod wrap_record_helpers;
 pub use errors::ContractError;
 pub use guard::{ensure, require_some};
 pub use mint::{validate_period, CURRENT_PAYLOAD_VERSION, MAX_PERIOD_YEAR, MIN_PERIOD_YEAR};
-pub use oracle::DataHashOracle;
 pub use storage_types::{
     AdminProposal, BatchWrapItem, ContractHealth, DataKey, InboundBridgeRecord, InvariantReport,
     OutboundBridgeRequest, ProposalStatus, StakeConfig, StakeRecord, TimelockAction,
@@ -363,14 +361,6 @@ impl StellarWrapContract {
     /// ```
     pub fn verify_data(e: Env, user: Address, period: u64, data: Bytes) -> bool {
         queries::verify_data(e, user, period, data)
-    }
-
-    /// Asks an external oracle contract whether `data_hash` is recognized.
-    ///
-    /// The oracle must expose `verify_data_hash(BytesN<32>) -> bool`.
-    /// Oracle invocation and ABI errors propagate to the caller.
-    pub fn verify_with_oracle(e: Env, oracle: Address, data_hash: BytesN<32>) -> bool {
-        oracle::verify_data_hash(&e, &oracle, &data_hash)
     }
 
     pub fn get_latest_wrap(e: Env, user: Address) -> Option<WrapRecord> {
@@ -1029,8 +1019,6 @@ mod invariants_test;
 mod last_updated_test;
 #[cfg(test)]
 mod merkle_test;
-#[cfg(test)]
-mod oracle_test;
 #[cfg(test)]
 mod pause_coverage_test;
 #[cfg(test)]
