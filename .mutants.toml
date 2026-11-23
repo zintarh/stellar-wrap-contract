@@ -47,7 +47,7 @@ no_fail_fast = true
 # triaged and killed. A module whose score drops below its baseline fails CI.
 [thresholds]
 # Security-sensitive modules — surviving mutants here are triaged as issues
-# rather than silently accepted (see SECURITY_AUDIT_CHECKLIST.md).
+# rather than silently accepted (see docs/security/security-audit-checklist.md).
 mint = 0
 bridge = 0
 signature = 0

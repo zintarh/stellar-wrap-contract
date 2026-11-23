@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/check_wasm_size.sh
 # Measures compiled Soroban contract WASM binary size against the budget.
-# See SIGNATURE_VERIFICATION_DECISION.md for architectural and trade-off details.
+# See docs/adr/0001-in-guest-ed25519.md for architectural and trade-off details.
 
 set -euo pipefail
 
@@ -61,6 +61,6 @@ else
     OVER_KB=$(awk "BEGIN {printf \"%.2f\", ${OVER} / 1024}")
     echo "Budget Status  : OVER BUDGET (+${OVER_KB} KB / +${OVER} bytes)"
     echo "Note           : In-guest ed25519-dalek adds ~44.44 KB (19.12% overhead)."
-    echo "                 See SIGNATURE_VERIFICATION_DECISION.md for details."
+    echo "                 See docs/adr/0001-in-guest-ed25519.md for details."
     echo "========================================================"
 fi
