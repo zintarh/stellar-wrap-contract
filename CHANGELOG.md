@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- v1 → v2 migration guide for frontend, backend, and indexer integrators: [docs/v1-to-v2-migration.md](docs/v1-to-v2-migration.md)
+
 ### ⚠️ Breaking Changes
 
 <!-- Future breaking interface changes go here. Each entry must include
