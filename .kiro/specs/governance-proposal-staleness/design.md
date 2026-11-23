@@ -444,4 +444,4 @@ code, then verify all those tests continue to pass after applying the fix.
   proposal under admin B, vote it through, and verify admin changes to the new `proposed_admin`.
 - Concurrent-proposal sequence: proposal 1 executes successfully (admin → X), proposal 2 (created
   under original admin A) correctly returns `StaleProposal` when executed.
-- Verify the `ERRORS.md` narrative is updated to document the new `StaleProposal` error code (57).
+- Verify the `docs/errors.md` narrative is updated to document the new `StaleProposal` error code (57).

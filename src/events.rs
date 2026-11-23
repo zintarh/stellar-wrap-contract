@@ -73,6 +73,10 @@ pub enum Event {
     TransferBackfill(Address, u32),
     Transfer(Address, Address, u64),
     TransferWithFee(Address, Address, u64, Address, Address, i128),
+
+    // TTL
+    /// TTL extended for a wrap record. Data: (user, period, live_until_ledger)
+    TtlExtended(Address, u64, u32),
 }
 
 /// Strongly typed event publisher.
@@ -223,6 +227,10 @@ pub fn publish_event(e: &Env, event: Event) {
         Event::TransferWithFee(..) => e
             .events()
             .publish((v1, symbol_short!("transfer"), symbol_short!("fee")), event),
+
+        Event::TtlExtended(..) => e
+            .events()
+            .publish((v1, symbol_short!("wrap"), symbol_short!("ttl")), event),
     }
 }
 

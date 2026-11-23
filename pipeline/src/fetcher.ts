@@ -13,6 +13,8 @@ export interface SorobanRpcClient {
   ): Promise<rpc.Api.GetEventsResponse>;
   getLedgerEntries(...keys: xdr.LedgerKey[]): Promise<rpc.Api.GetLedgerEntriesResponse>;
   getLatestLedger(): Promise<rpc.Api.GetLatestLedgerResponse>;
+  /** Optional so mocks that only stub event/ledger reads still satisfy the interface. */
+  getHealth?(): Promise<rpc.Api.GetHealthResponse>;
 }
 
 export interface FetcherOptions {
@@ -209,6 +211,17 @@ export class SorobanFetcher {
       this.retry,
     );
     return info.sequence;
+  }
+
+  /**
+   * Oldest ledger Soroban-RPC still retains events for. Returns 0 when the RPC
+   * does not report it, which callers treat as "no known gap".
+   */
+  async getOldestLedger(): Promise<number> {
+    const getHealth = this.server.getHealth?.bind(this.server);
+    if (!getHealth) return 0;
+    const health = await withRetries('getHealth()', () => getHealth(), this.retry);
+    return health.oldestLedger;
   }
 
   /**
