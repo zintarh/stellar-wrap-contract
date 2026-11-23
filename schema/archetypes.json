@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "description": "Canonical archetype identifiers for mint_wrap. Each id is a valid Soroban Symbol ([a-zA-Z0-9_], max 32 chars). Display names may contain spaces and must be mapped to these ids by the frontend.",
+  "archetypes": [
+    { "id": "yield_farmer", "displayName": "The Yield Farmer" },
+    { "id": "diamond_hands", "displayName": "Diamond Hands" },
+    { "id": "degen", "displayName": "The Degen" },
+    { "id": "hodler", "displayName": "The Hodler" },
+    { "id": "whale", "displayName": "The Whale" },
+    { "id": "paper_hands", "displayName": "Paper Hands" },
+    { "id": "builder", "displayName": "The Builder" },
+    { "id": "trader", "displayName": "The Trader" }
+  ]
+}
