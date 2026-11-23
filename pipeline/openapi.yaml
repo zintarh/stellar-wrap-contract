@@ -1,0 +1,179 @@
+openapi: 3.0.3
+info:
+  title: Wrap Indexer Read API
+  version: 1.0.0
+  description: >
+    Read-only HTTP API over the indexer pipeline. Clients use this instead of
+    scanning Horizon / Soroban RPC directly. Every response carries the ledger
+    sequence it is consistent with so clients can detect indexer lag.
+servers:
+  - url: http://localhost:8080
+    description: Local development
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Indexer health
+      description: >
+        Reports the last indexed ledger sequence alongside the current chain
+        head so clients can measure lag.
+      responses:
+        '200':
+          description: Health status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+  /stats:
+    get:
+      operationId: getStats
+      summary: Global counters
+      description: Total wraps and archetype distribution across all users.
+      responses:
+        '200':
+          description: Global statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Stats'
+  /wraps/{address}:
+    get:
+      operationId: getWrapsForAddress
+      summary: Paginated wrap history for a user
+      parameters:
+        - $ref: '#/components/parameters/Address'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Paginated wrap history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WrapPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /wraps/{address}/{period}:
+    get:
+      operationId: getWrapsForAddressPeriod
+      summary: Wrap history for a user within a period
+      parameters:
+        - $ref: '#/components/parameters/Address'
+        - $ref: '#/components/parameters/Period'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Paginated wrap history for the period
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WrapPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+components:
+  parameters:
+    Address:
+      name: address
+      in: path
+      required: true
+      description: Stellar account address (G...)
+      schema:
+        type: string
+    Period:
+      name: period
+      in: path
+      required: true
+      description: Time window for the wrap history
+      schema:
+        type: string
+        enum: [day, week, month, all]
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: Opaque pagination cursor from a previous response
+      schema:
+        type: string
+    Limit:
+      name: limit
+      in: query
+      required: false
+      description: Maximum number of items to return
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+  responses:
+    BadRequest:
+      description: Invalid request parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    Health:
+      type: object
+      required: [status, indexedLedger, chainHead, lag]
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded]
+        indexedLedger:
+          type: integer
+          description: Last ledger sequence processed by the indexer
+        chainHead:
+          type: integer
+          description: Current chain head ledger sequence
+        lag:
+          type: integer
+          description: chainHead minus indexedLedger
+    Stats:
+      type: object
+      required: [ledger, totalWraps, archetypeDistribution]
+      properties:
+        ledger:
+          type: integer
+          description: Ledger sequence these stats are consistent with
+        totalWraps:
+          type: integer
+        archetypeDistribution:
+          type: object
+          additionalProperties:
+            type: integer
+    Wrap:
+      type: object
+      required: [id, address, archetype, ledger, createdAt]
+      properties:
+        id:
+          type: string
+        address:
+          type: string
+        archetype:
+          type: string
+        ledger:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+    WrapPage:
+      type: object
+      required: [ledger, items]
+      properties:
+        ledger:
+          type: integer
+          description: Ledger sequence this page is consistent with
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Wrap'
+        nextCursor:
+          type: string
+          nullable: true
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string

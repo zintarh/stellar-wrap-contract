@@ -1382,3 +1382,6 @@ Notes for indexers:
 
 <!-- handsoff-issue-971 -->
 - #971: [Architecture] Move the cross-chain bridge into a standalone `wrap-bridge` contract
+
+<!-- handsoff-issue-983 -->
+- #983: [Architecture] Publish a machine-readable event schema shared by contract, pipeline and frontend
