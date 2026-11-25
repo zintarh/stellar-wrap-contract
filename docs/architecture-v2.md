@@ -4,6 +4,38 @@ This document records architecture decisions for the Stellar Wrap v2 rewrite.
 Each section states the decision, the reasoning, and the consequences for the
 codebase.
 
+## Decision: freezeable registry with timelocked upgrades
+
+**Status:** Accepted
+
+### Options considered
+
+1. Keep every contract upgradeable through the governor and timelock forever.
+2. Keep the registry upgradeable during the v2 migration, then permanently
+   disable upgrades with a one-way `freeze_upgrades()` switch.
+3. Deploy an immutable registry from day one.
+
+Option 2 is selected. It preserves a controlled migration window without
+requiring registry users to trust an upgrader indefinitely.
+
+### Policy per contract
+
+| Contract | Upgrade authority | Delay | Immutability policy |
+| --- | --- | --- | --- |
+| `wrap-registry` | `Upgrader` role; the production holder is the governor | Configured timelock delay once the timelock is enabled | `freeze_upgrades` is one-way; after execution no direct or queued upgrade can succeed |
+| `wrap-bridge` | Governor | Timelock required | Remains upgradeable because chain adapters and relayer policy can change |
+| Governor/timelock | Deployment-specific governance authority | Governance voting period plus timelock delay | Remains upgradeable until a separate governance RFC removes that capability |
+| Optional periphery (indexer, signer, fee modules) | Component owner/governor | Component-specific operational delay | Upgradeable; it cannot mutate frozen registry code |
+
+Both `upgrade` and `freeze_upgrades` are direct `Upgrader` operations before
+the timelock is enabled. After it is enabled, they are available only through
+`TimelockAction::Upgrade` and `TimelockAction::FreezeUpgrades`. Freezing also
+invalidates upgrades that were queued earlier but executed later.
+
+Every successful upgrade increments `contract_version` exactly once and emits
+the canonical `("upgrade", version)` event with the new WASM hash. The freeze
+emits `("upgrade", "frozen")`. There is deliberately no unfreeze entrypoint.
+
 ## Decision: remove staking and the algorithmic fee model from the registry
 
 **Status:** Accepted

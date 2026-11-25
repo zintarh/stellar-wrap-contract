@@ -113,6 +113,9 @@ pub(crate) fn operation_id(e: &Env, action: &TimelockAction) -> BytesN<32> {
             data.append(&(*chain_id).to_xdr(e));
             data.append(&relayers.clone().to_xdr(e));
         },
+        TimelockAction::FreezeUpgrades => {
+            data.append(&Bytes::from_array(e, &[7u8]));
+        },
     }
     let hash = e.crypto().sha256(&data);
     BytesN::from_array(e, &hash.to_array())
@@ -280,13 +283,12 @@ pub(crate) fn execute(e: Env, id: BytesN<32>) {
                 .set(&DataKey::TimelockDelay, &seconds);
         },
         TimelockAction::Upgrade(wasm_hash) => {
-            e.events()
-                .publish((symbol_short!("upgrade"),), wasm_hash.clone());
-            e.deployer().update_current_contract_wasm(wasm_hash);
+            crate::admin::apply_upgrade(&e, wasm_hash);
         },
         TimelockAction::SetBridgeRelayers(chain_id, relayers) => {
             crate::bridge::set_bridge_relayers(&e, chain_id, relayers.relayers, relayers.threshold);
         },
+        TimelockAction::FreezeUpgrades => crate::admin::apply_freeze_upgrades(&e),
     }
 
     e.events()

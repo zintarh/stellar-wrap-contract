@@ -96,6 +96,7 @@ design and are not represented by a `TimelockAction` variant.
 | `propose_admin` / `accept_admin` | Yes | Two-step handover must not bypass the delay. |
 | `cancel_proposed_admin` | No | Clearing a stale handover does not grant access or change ownership. |
 | `upgrade` | Yes | WASM changes need an observable delay. |
+| `freeze_upgrades` | Yes | The irreversible transition to an immutable registry needs an observable delay. |
 | `set_whitelist_root` / `clear_whitelist_root` | Yes | Whitelist access-control changes need an observable delay. |
 | `TimelockAction::SetAdminPubKey` | Yes | Mint-signing key rotation needs an observable delay; it has no direct entrypoint. |
 | `migrate` | No | No corresponding timelock action exists; retained as a direct admin migration operation. |

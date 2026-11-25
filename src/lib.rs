@@ -168,6 +168,16 @@ impl StellarWrapContract {
         admin::upgrade(e, new_wasm_hash);
     }
 
+    /// Permanently disable all future registry WASM upgrades.
+    pub fn freeze_upgrades(e: Env) {
+        admin::freeze_upgrades(e);
+    }
+
+    /// Return whether the irreversible registry upgrade freeze is active.
+    pub fn upgrades_frozen(e: Env) -> bool {
+        admin::upgrades_frozen(&e)
+    }
+
     pub fn propose_admin(e: Env, new_admin: Address) {
         admin::propose_admin(e, new_admin);
     }

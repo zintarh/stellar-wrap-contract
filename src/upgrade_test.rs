@@ -207,6 +207,39 @@ fn test_two_successive_upgrades_produce_version_two() {
 }
 
 #[test]
+fn test_upgrade_fails_after_irreversible_freeze() {
+    let env = Env::default();
+    let (_admin, client) = setup(&env);
+
+    client.freeze_upgrades();
+    assert!(client.upgrades_frozen());
+
+    let wasm_hash = upload_second_wasm(&env);
+    let result = client.try_upgrade(&wasm_hash);
+    assert_eq!(result, Err(Ok(crate::ContractError::InvalidStateTransition)));
+    assert_eq!(client.contract_version(), 0);
+}
+
+#[test]
+fn test_timelocked_freeze_blocks_previously_scheduled_upgrade() {
+    let env = Env::default();
+    let (_admin, client) = setup(&env);
+    client.enable_timelock(&timelock::MIN_DELAY);
+
+    let wasm_hash = upload_second_wasm(&env);
+    let upgrade_id = client.timelock_schedule(&TimelockAction::Upgrade(wasm_hash));
+    let freeze_id = client.timelock_schedule(&TimelockAction::FreezeUpgrades);
+
+    env.ledger().with_mut(|ledger| ledger.timestamp += timelock::MIN_DELAY);
+    client.timelock_execute(&freeze_id);
+    assert!(client.upgrades_frozen());
+
+    let result = client.try_timelock_execute(&upgrade_id);
+    assert_eq!(result, Err(Ok(crate::ContractError::InvalidStateTransition)));
+    assert_eq!(client.contract_version(), 0);
+}
+
+#[test]
 fn test_timelocked_upgrade_increments_version() {
     let env = Env::default();
     let (_admin, client) = setup(&env);
