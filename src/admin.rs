@@ -311,3 +311,68 @@ pub(crate) fn update_admin(e: Env, new_admin: Address) {
     e.storage().instance().set(&DataKey::Admin, &new_admin);
     crate::events::publish_event(&e, crate::events::Event::AdminUpdated(new_admin));
 }
+
+/// Returns whether the registry's one-way upgrade freeze has been activated.
+pub(crate) fn upgrades_frozen(e: &Env) -> bool {
+    e.storage()
+        .instance()
+        .get(&DataKey::UpgradesFrozen)
+        .unwrap_or(false)
+}
+
+fn require_upgrades_enabled(e: &Env) {
+    if upgrades_frozen(e) {
+        panic_with_error!(e, ContractError::InvalidStateTransition);
+    }
+}
+
+/// Permanently disables registry WASM upgrades.
+///
+/// This internal form is shared with the timelock executor. Once set, the
+/// marker has no clearing path and applies to already-scheduled upgrades too.
+#[allow(deprecated)]
+pub(crate) fn apply_freeze_upgrades(e: &Env) {
+    require_upgrades_enabled(e);
+    e.storage().instance().set(&DataKey::UpgradesFrozen, &true);
+    e.events().publish((symbol_short!("upgrade"), symbol_short!("frozen")), ());
+}
+
+/// Upgrader-only one-way freeze. When the timelock is enabled this action must
+/// be scheduled as `TimelockAction::FreezeUpgrades`.
+pub(crate) fn freeze_upgrades(e: Env) {
+    crate::timelock::require_direct_call_allowed(&e);
+    let upgrader = read_admin(&e);
+    require_role(&e, Role::Upgrader, &upgrader);
+    apply_freeze_upgrades(&e);
+}
+
+/// Bumps the on-chain version, emits the canonical upgrade event, and swaps
+/// the registry WASM. Every upgrade route must use this helper.
+#[allow(deprecated)]
+pub(crate) fn apply_upgrade(e: &Env, new_wasm_hash: BytesN<32>) {
+    require_upgrades_enabled(e);
+    let next_version = e
+        .storage()
+        .instance()
+        .get::<_, u32>(&DataKey::ContractVersion)
+        .unwrap_or(0)
+        .checked_add(1)
+        .unwrap_or_else(|| panic_with_error!(e, ContractError::ArithmeticOverflow));
+    e.storage()
+        .instance()
+        .set(&DataKey::ContractVersion, &next_version);
+    e.events().publish(
+        (symbol_short!("upgrade"), next_version),
+        new_wasm_hash.clone(),
+    );
+    e.deployer().update_current_contract_wasm(new_wasm_hash);
+}
+
+/// Direct upgrade route, available only before the timelock is enabled and
+/// before the irreversible freeze.
+pub(crate) fn upgrade(e: Env, new_wasm_hash: BytesN<32>) {
+    crate::timelock::require_direct_call_allowed(&e);
+    let upgrader = read_admin(&e);
+    require_role(&e, Role::Upgrader, &upgrader);
+    apply_upgrade(&e, new_wasm_hash);
+}

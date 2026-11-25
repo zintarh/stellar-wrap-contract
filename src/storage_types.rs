@@ -158,6 +158,8 @@ pub enum TimelockAction {
     SetTimelockDelay(u64),
     /// Configure the bridge relayer set and threshold for a given chain.
     SetBridgeRelayers(u32, BridgeRelayerSet),
+    /// Permanently disable registry WASM upgrades.
+    FreezeUpgrades,
 }
 
 /// A scheduled timelock operation awaiting execution.
@@ -255,4 +257,103 @@ pub enum DataKey {
     /// Falls back to a hardcoded default when unset — see `queries::name`.
     Name,
     /// Stores the token symbol, if overridden by an admin.
-    /// Falls back to a hardcoded default when unset — 
+    /// Falls back to a hardcoded default when unset — see `queries::symbol`.
+    Symbol,
+    LastUpdated(Address),
+    MintGuard(Address),
+    MintedPeriod(Address, u32),
+    StorageBytes,
+    FeeParams,
+    WhitelistRoot,
+    TimelockDelay,
+    TimelockOp(BytesN<32>),
+    TimelockOps,
+    BridgeRelayer,
+    BridgeRelayerSet(u32),
+    BridgeChainStatus(u32),
+    OutboundBridgeNonce,
+    OutboundBridgeRequest(u64),
+    InboundBridgeProcessed(u32, u64),
+    InboundBridgeRecord(u32, u64),
+    AdminProposalCount,
+    AdminProposal(u64),
+    AdminProposalVote(u64, Address),
+    ContractVersion,
+    SchemaVersion,
+    Stake(Address),
+    StakeConfig,
+    TotalStaked,
+    RoleMember(crate::admin::Role, Address),
+    MigrationState,
+    UserIndex(Address),
+    LegacyUserWraps(Address),
+    LegacyUserRoles(Address),
+    /// Irreversible marker that disables every future WASM upgrade.
+    UpgradesFrozen,
+}
+
+#[contracttype]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum ProposalStatus {
+    Active = 1,
+    Executed = 2,
+    Defeated = 3,
+    Cancelled = 4,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdminProposal {
+    pub id: u64,
+    pub proposer: Address,
+    pub proposed_admin: Address,
+    pub votes_for: u64,
+    pub votes_against: u64,
+    pub start_time: u64,
+    pub end_time: u64,
+    pub status: ProposalStatus,
+}
+
+#[contracttype]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct StakeConfig {
+    pub min_stake: i128,
+    pub cooldown_seconds: u64,
+    pub priority_multiplier_bps: u32,
+    pub max_priority_bps: u32,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StakeRecord {
+    pub amount: i128,
+    pub staked_at: u64,
+    pub unstaking_at: u64,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InvariantReport {
+    pub wrap_count_match_user_periods: bool,
+    pub wrap_count_match_wrap_periods: bool,
+    pub latest_period_matches_max: bool,
+    pub all_user_periods_live: bool,
+    pub balance_matches_wrap_count: bool,
+    pub wrap_count: u32,
+    pub user_periods_len: u32,
+    pub wrap_periods_len: u32,
+    pub latest_period: Option<u64>,
+    pub max_user_period: Option<u64>,
+    pub live_wraps_found: u32,
+    pub balance: u32,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WrapSummary {
+    pub total_wraps: u32,
+    pub periods: Vec<u64>,
+    pub archetypes: Vec<Symbol>,
+    pub first_period: u64,
+    pub latest_period: u64,
+}
