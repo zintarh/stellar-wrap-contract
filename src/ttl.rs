@@ -14,6 +14,16 @@ use crate::ContractError;
 /// TVL (ledgers) applied to persistent entries (/1 year at 5s/ledger).
 const TTL_ONE_YEAR: u32 = 17_280 * 365;
 
+/// Temporary TTL constant for short-lived data (30 days).
+pub(crate) const TTL_TEMP: u32 = 17_280 * 30;
+
+/// Calculate the ledger number when a renewed entry will expire.
+///
+/// Returns the current ledger sequence + TTL_ONE_YEAR.
+fn calculate_live_until_ledger(e: &Env) -> u32 {
+    e.ledger().sequence() + TTL_ONE_YEAR
+}
+
 /// Extend the TTL (time-to-live) for all persistent storage entries belonging
 /// to a user.
 ///

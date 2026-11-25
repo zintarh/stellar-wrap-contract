@@ -111,7 +111,7 @@ echo "        ✓ Initialized (admin=${DEPLOYER_ADDRESS})"
 # signature over the canonical payload. Here we call add_archetype and
 # demonstrate that the CLI invocation pattern is correct.
 # Minting requires a valid 64-byte signature from the admin private key —
-# see the TypeScript signing example in SECURITY_RECOMMENDATIONS.md.
+# see the TypeScript signing example in docs/security/security-recommendations.md.
 #
 # The snippet below shows the CLI shape; replace <SIGNATURE_HEX> with a
 # real signature produced by your signing service.
@@ -196,6 +196,106 @@ else
     fi
     echo "        ✓ balance_of = 1"
   fi
+fi
+
+# ── Step 9: Sponsored mint (fee-bump) ─────────────────────────────────────────
+#
+# A sponsor pays transaction fees and storage rent on behalf of a user.
+# The inner transaction is signed by the user (satisfying user.require_auth());
+# the outer fee-bump envelope is signed by the sponsor.
+#
+# Required environment variables for this step:
+#   STELLAR_SPONSOR_SECRET       – Secret key of the fee-paying sponsor account
+#   STELLAR_SPONSORED_USER_SECRET – Secret key of the user being sponsored
+#                                   (can be a fresh account with 0 XLM beyond
+#                                   the minimum balance)
+#   STELLAR_MINT_SIGNATURE_SPONSORED – Valid 128-hex-char Ed25519 signature for
+#                                      the sponsored user + period combination
+
+echo "[ 9/8 ] Sponsored mint (fee-bump) test…"
+
+if [[ "${SKIP_MINT:-0}" == "1" ]]; then
+  echo "        ⚠ Skipping sponsored mint (SKIP_MINT=1)"
+elif [[ -z "${STELLAR_SPONSOR_SECRET:-}" ]]; then
+  echo "        ⚠ STELLAR_SPONSOR_SECRET not set — skipping sponsored mint test."
+  echo "          Set STELLAR_SPONSOR_SECRET=S... and STELLAR_SPONSORED_USER_SECRET=S..."
+  echo "          plus STELLAR_MINT_SIGNATURE_SPONSORED=<128-hex-char signature>."
+elif [[ -z "${STELLAR_SPONSORED_USER_SECRET:-}" ]]; then
+  echo "        ⚠ STELLAR_SPONSORED_USER_SECRET not set — skipping sponsored mint test."
+elif [[ -z "${STELLAR_MINT_SIGNATURE_SPONSORED:-}" ]]; then
+  echo "        ⚠ STELLAR_MINT_SIGNATURE_SPONSORED not set — skipping sponsored mint test."
+else
+  SPONSORED_USER_ADDRESS=$(stellar keys address --secret-key "${STELLAR_SPONSORED_USER_SECRET}" 2>/dev/null || echo "UNKNOWN")
+  SPONSORED_PERIOD="202407"
+  SPONSORED_ARCHETYPE="builder"
+  SPONSORED_DATA_HASH="0202020202020202020202020202020202020202020202020202020202020202"
+
+  echo "        Sponsor  : $(stellar keys address --secret-key "${STELLAR_SPONSOR_SECRET}" 2>/dev/null)"
+  echo "        User     : ${SPONSORED_USER_ADDRESS}"
+  echo "        Period   : ${SPONSORED_PERIOD}"
+
+  # Build the inner transaction with the user as source, without submitting.
+  echo "        Building inner transaction…"
+  INNER_XDR=$(stellar contract invoke \
+    --id "${CONTRACT_ID}" \
+    --network "${NETWORK}" \
+    --source "${STELLAR_SPONSORED_USER_SECRET}" \
+    --build-only \
+    -- mint_wrap \
+    --user "${SPONSORED_USER_ADDRESS}" \
+    --period "${SPONSORED_PERIOD}" \
+    --archetype "${SPONSORED_ARCHETYPE}" \
+    --data_hash "${SPONSORED_DATA_HASH}" \
+    --payload_version 1 \
+    --signature "${STELLAR_MINT_SIGNATURE_SPONSORED}")
+
+  # Sign the inner transaction as the user (satisfies user.require_auth()).
+  echo "        Signing inner transaction as user…"
+  SIGNED_INNER_XDR=$(stellar tx sign \
+    --network "${NETWORK}" \
+    --sign-with-key "${STELLAR_SPONSORED_USER_SECRET}" \
+    "${INNER_XDR}")
+
+  # Wrap the signed inner transaction in a fee-bump envelope and submit.
+  # The sponsor's account pays all fees; the user pays nothing.
+  echo "        Submitting fee-bump transaction (sponsor pays)…"
+  stellar tx fee-bump \
+    --network "${NETWORK}" \
+    --source "${STELLAR_SPONSOR_SECRET}" \
+    --fee-account "$(stellar keys address --secret-key "${STELLAR_SPONSOR_SECRET}" 2>/dev/null)" \
+    --inner-transaction "${SIGNED_INNER_XDR}"
+
+  echo "        ✓ Fee-bump submitted"
+
+  # Verify the wrap was recorded under the sponsored user's address.
+  echo "        Verifying sponsored wrap with get_wrap…"
+  SPONSORED_RESULT=$(stellar contract invoke \
+    --id "${CONTRACT_ID}" \
+    --network "${NETWORK}" \
+    --source "${STELLAR_DEPLOYER_SECRET}" \
+    -- get_wrap \
+    --user "${SPONSORED_USER_ADDRESS}" \
+    --period "${SPONSORED_PERIOD}")
+
+  if [[ "${SPONSORED_RESULT}" == "null" || -z "${SPONSORED_RESULT}" ]]; then
+    echo "        ✗ FAIL: get_wrap returned null for sponsored user" >&2
+    exit 1
+  fi
+  echo "        ✓ Sponsored wrap confirmed: ${SPONSORED_RESULT}"
+
+  echo "        Verifying balance_of for sponsored user…"
+  SPONSORED_BALANCE=$(stellar contract invoke \
+    --id "${CONTRACT_ID}" \
+    --network "${NETWORK}" \
+    --source "${STELLAR_DEPLOYER_SECRET}" \
+    -- balance_of \
+    --id "${SPONSORED_USER_ADDRESS}")
+
+  if [[ "${SPONSORED_BALANCE}" -lt 1 ]]; then
+    echo "        ✗ FAIL: balance_of returned '${SPONSORED_BALANCE}' for sponsored user" >&2
+    exit 1
+  fi
+  echo "        ✓ Sponsored user balance_of = ${SPONSORED_BALANCE}"
 fi
 
 # ── Step 8: Cleanup ───────────────────────────────────────────────────────────

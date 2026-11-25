@@ -8,7 +8,7 @@ on:
 
 jobs:
   clippy:
-    name: Cargo Clippy Check
+    name: Cargo Test and Clippy
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,6 +16,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
+      - name: Run Rust test suite
+        run: cargo test --all-features
       - name: Run cargo clippy
         run: cargo clippy --workspace --all-targets --all-features --no-deps
         env:
