@@ -5,6 +5,65 @@ use crate::{
     ProposalStatus,
 };
 
+/// Typed accessor for governance storage. All governance storage access goes through
+/// this module so that tier choice and TTL policy live in one place.
+mod store {
+    use soroban_sdk::{Address, Env};
+
+    use crate::{AdminProposal, DataKey};
+
+    pub(super) fn proposal_count(e: &Env) -> u64 {
+        e.storage()
+            .instance()
+            .get(&DataKey::AdminProposalCount)
+            .unwrap_or(0)
+    }
+
+    pub(super) fn set_proposal_count(e: &Env, count: u64) {
+        e.storage()
+            .instance()
+            .set(&DataKey::AdminProposalCount, &count);
+    }
+
+    pub(super) fn proposal(e: &Env, id: u64) -> Option<AdminProposal> {
+        e.storage()
+            .persistent()
+            .get(&DataKey::AdminProposal(id))
+    }
+
+    pub(super) fn set_proposal(e: &Env, id: u64, proposal: &AdminProposal) {
+        e.storage()
+            .persistent()
+            .set(&DataKey::AdminProposal(id), proposal);
+    }
+
+    pub(super) fn has_vote(e: &Env, id: u64, voter: &Address) -> bool {
+        e.storage()
+            .persistent()
+            .has(&DataKey::AdminProposalVote(id, voter.clone()))
+    }
+
+    pub(super) fn vote(e: &Env, id: u64, voter: &Address) -> Option<bool> {
+        e.storage()
+            .persistent()
+            .get(&DataKey::AdminProposalVote(id, voter.clone()))
+    }
+
+    pub(super) fn set_vote(e: &Env, id: u64, voter: &Address, support: bool) {
+        e.storage()
+            .persistent()
+            .set(&DataKey::AdminProposalVote(id, voter.clone()), &support);
+    }
+
+    pub(super) fn set_admin(e: &Env, admin: &Address) {
+        e.storage().instance().set(&DataKey::Admin, admin);
+    }
+
+    pub(super) fn clear_pending_admin(e: &Env) {
+        e.storage().instance().remove(&DataKey::PendingAdmin);
+    }
+}
+
 /// Minimum duration for an admin proposal (1 hour).
 pub const MIN_PROPOSAL_DURATION: u64 = 60 * 60;
 /// Maximum duration for an admin proposal (30 days).
@@ -25,11 +84,7 @@ pub(crate) fn create_admin_proposal(
         panic_with_error!(e, ContractError::InvalidProposalDuration);
     }
     
-    let count: u64 = e
-        .storage()
-        .instance()
-        .get(&DataKey::AdminProposalCount)
-        .unwrap_or(0);
+    let count = store::proposal_count(&e);
     let proposal_id = count + 1;
 
     let start_time = e.ledger().timestamp();
@@ -51,12 +106,8 @@ pub(crate) fn create_admin_proposal(
         status: ProposalStatus::Active,
     };
 
-    e.storage()
-        .instance()
-        .set(&DataKey::AdminProposalCount, &proposal_id);
-    e.storage()
-        .persistent()
-        .set(&DataKey::AdminProposal(proposal_id), &proposal);
+    store::set_proposal_count(&e, proposal_id);
+    store::set_proposal(&e, proposal_id, &proposal);
 
     e.events().publish(
         (symbol_short!("gov"), symbol_short!("propose")),
@@ -72,10 +123,7 @@ pub(crate) fn create_admin_proposal(
 pub(crate) fn vote_admin_proposal(e: Env, voter: Address, proposal_id: u64, support: bool) {
     voter.require_auth();
 
-    let mut proposal: AdminProposal = e
-        .storage()
-        .persistent()
-        .get(&DataKey::AdminProposal(proposal_id))
+    let mut proposal: AdminProposal = store::proposal(&e, proposal_id)
         .unwrap_or_else(|| panic_with_error!(e, ContractError::ProposalNotFound));
 
     if proposal.status != ProposalStatus::Active {
@@ -87,12 +135,11 @@ pub(crate) fn vote_admin_proposal(e: Env, voter: Address, proposal_id: u64, supp
         panic_with_error!(e, ContractError::ProposalVotingPeriodEnded);
     }
 
-    let vote_key = DataKey::AdminProposalVote(proposal_id, voter.clone());
-    if e.storage().persistent().has(&vote_key) {
+    if store::has_vote(&e, proposal_id, &voter) {
         panic_with_error!(e, ContractError::ProposalAlreadyVoted);
     }
 
-    e.storage().persistent().set(&vote_key, &support);
+    store::set_vote(&e, proposal_id, &voter, support);
 
     if support {
         proposal.votes_for += 1;
@@ -100,9 +147,7 @@ pub(crate) fn vote_admin_proposal(e: Env, voter: Address, proposal_id: u64, supp
         proposal.votes_against += 1;
     }
 
-    e.storage()
-        .persistent()
-        .set(&DataKey::AdminProposal(proposal_id), &proposal);
+    store::set_proposal(&e, proposal_id, &proposal);
 
     e.events().publish(
         (symbol_short!("gov"), symbol_short!("vote")),
@@ -113,10 +158,7 @@ pub(crate) fn vote_admin_proposal(e: Env, voter: Address, proposal_id: u64, supp
 /// Execute a proposal once voting has ended. If votes_for > votes_against, the admin is updated.
 #[allow(deprecated)] // TODO(#718): migrate to #[contractevent]
 pub(crate) fn execute_admin_proposal(e: Env, proposal_id: u64) {
-    let mut proposal: AdminProposal = e
-        .storage()
-        .persistent()
-        .get(&DataKey::AdminProposal(proposal_id))
+    let mut proposal: AdminProposal = store::proposal(&e, proposal_id)
         .unwrap_or_else(|| panic_with_error!(e, ContractError::ProposalNotFound));
 
     if proposal.status != ProposalStatus::Active {
@@ -144,10 +186,8 @@ pub(crate) fn execute_admin_proposal(e: Env, proposal_id: u64) {
                 TimelockAction::SetAdmin(proposal.proposed_admin.clone()),
             );
         } else {
-            e.storage()
-                .instance()
-                .set(&DataKey::Admin, &proposal.proposed_admin);
-            e.storage().instance().remove(&DataKey::PendingAdmin);
+            store::set_admin(&e, &proposal.proposed_admin);
+            store::clear_pending_admin(&e);
         }
 
         e.events().publish(
@@ -156,9 +196,7 @@ pub(crate) fn execute_admin_proposal(e: Env, proposal_id: u64) {
         );
     } else {
         proposal.status = ProposalStatus::Defeated;
-        e.storage()
-            .persistent()
-            .set(&DataKey::AdminProposal(proposal_id), &proposal);
+        store::set_proposal(&e, proposal_id, &proposal);
 
         e.events().publish(
             (symbol_short!("gov"), symbol_short!("defeated")),
@@ -166,9 +204,7 @@ pub(crate) fn execute_admin_proposal(e: Env, proposal_id: u64) {
         );
     }
 
-    e.storage()
-        .persistent()
-        .set(&DataKey::AdminProposal(proposal_id), &proposal);
+    store::set_proposal(&e, proposal_id, &proposal);
 }
 
 /// Cancel a governance proposal. Can be called by the proposer or current admin before execution.
@@ -176,10 +212,7 @@ pub(crate) fn execute_admin_proposal(e: Env, proposal_id: u64) {
 pub(crate) fn cancel_admin_proposal(e: Env, caller: Address, proposal_id: u64) {
     caller.require_auth();
 
-    let mut proposal: AdminProposal = e
-        .storage()
-        .persistent()
-        .get(&DataKey::AdminProposal(proposal_id))
+    let mut proposal: AdminProposal = store::proposal(&e, proposal_id)
         .unwrap_or_else(|| panic_with_error!(e, ContractError::ProposalNotFound));
 
     if proposal.status != ProposalStatus::Active {
@@ -192,9 +225,7 @@ pub(crate) fn cancel_admin_proposal(e: Env, caller: Address, proposal_id: u64) {
     }
 
     proposal.status = ProposalStatus::Cancelled;
-    e.storage()
-        .persistent()
-        .set(&DataKey::AdminProposal(proposal_id), &proposal);
+    store::set_proposal(&e, proposal_id, &proposal);
 
     e.events().publish(
         (symbol_short!("gov"), symbol_short!("cancelled")),
@@ -204,22 +235,15 @@ pub(crate) fn cancel_admin_proposal(e: Env, caller: Address, proposal_id: u64) {
 
 /// Retrieve a governance proposal by ID.
 pub(crate) fn get_admin_proposal(e: &Env, proposal_id: u64) -> Option<AdminProposal> {
-    e.storage()
-        .persistent()
-        .get(&DataKey::AdminProposal(proposal_id))
+    store::proposal(e, proposal_id)
 }
 
 /// Query a voter's choice on a proposal.
 pub(crate) fn get_admin_proposal_vote(e: &Env, proposal_id: u64, voter: Address) -> Option<bool> {
-    e.storage()
-        .persistent()
-        .get(&DataKey::AdminProposalVote(proposal_id, voter))
+    store::vote(e, proposal_id, &voter)
 }
 
 /// Get total proposal count.
 pub(crate) fn get_admin_proposal_count(e: &Env) -> u64 {
-    e.storage()
-        .instance()
-        .get(&DataKey::AdminProposalCount)
-        .unwrap_or(0)
+    store::proposal_count(e)
 }

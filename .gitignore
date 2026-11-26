@@ -11,7 +11,6 @@
 # IDE files
 **/*.swp
 .idea/
-.vscode/
 *.iml
 
 # OS files
@@ -50,3 +49,5 @@ strict_patch.py
 merge_*.sh
 process_prs.sh
 run_merge.sh
+config.bat
+node_modules

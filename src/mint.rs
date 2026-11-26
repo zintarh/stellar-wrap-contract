@@ -79,18 +79,14 @@ pub(crate) fn update_last_updated(e: &Env, user: &Address) {
 /// Storage bytes are accounted once, when the entry is first created; subsequent updates
 /// only overwrite the existing value if `period` is higher and renew its TTL.
 pub(crate) fn update_latest_period(e: &Env, user: &Address, period: u64) {
-    let latest_key = DataKey::LatestPeriod(user.clone());
-    let current_latest: Option<u64> = e.storage().persistent().get(&latest_key);
+    let current_latest: Option<u64> = crate::store::latest_period::get(e, user);
     let should_update = match current_latest {
         Some(cur) => period > cur,
         None => true,
     };
     if should_update {
         let was_missing = current_latest.is_none();
-        e.storage().persistent().set(&latest_key, &period);
-        e.storage()
-            .persistent()
-            .extend_ttl(&latest_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
+        crate::store::latest_period::set(e, user, period);
         if was_missing {
             storage_accounting::add_storage_bytes(
                 e,
@@ -142,29 +138,21 @@ pub(crate) fn insert_wrap_record(e: &Env, user: &Address, period: u64, record: &
     storage_accounting::add_storage_bytes(e, storage_accounting::estimate_wrap_bytes_new());
 
     // Update wrap count and account for count entry if first insert
-    let count_key = DataKey::WrapCount(user.clone());
-    let current_count: u32 = e.storage().persistent().get(&count_key).unwrap_or(0);
+    let current_count: u32 = crate::store::wrap_count::get(e, user);
     let next_count = guard::require_some(
         e,
         current_count.checked_add(1),
         ContractError::ArithmeticOverflow,
     );
-    e.storage().persistent().set(&count_key, &next_count);
-    e.storage()
-        .persistent()
-        .extend_ttl(&count_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
+    crate::store::wrap_count::set(e, user, next_count);
 
-    let total_key = DataKey::TotalWrapCount;
-    let current_total: u32 = e.storage().persistent().get(&total_key).unwrap_or(0);
+    let current_total: u32 = crate::store::total_wrap_count::get(e);
     let next_total = guard::require_some(
         e,
         current_total.checked_add(1),
         ContractError::ArithmeticOverflow,
     );
-    e.storage().persistent().set(&total_key, &next_total);
-    e.storage()
-        .persistent()
-        .extend_ttl(&total_key, TTL_ONE_YEAR, TTL_ONE_YEAR);
+    crate::store::total_wrap_count::set(e, next_total);
 
     if current_count == 0 {
         storage_accounting::add_storage_bytes(
