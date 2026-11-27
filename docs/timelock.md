@@ -117,7 +117,7 @@ the current closed `TimelockAction` enum provides no delayed operation for them.
 Governance (`execute_admin_proposal`) and the timelock are two overlapping
 paths to the same privileged action — changing the admin. Their interaction is
 specified here and covered by tests in
-[`src/tests/governance_timelock.rs`](../src/tests/governance_timelock.rs).
+[`src/timelock_test.rs`](../src/timelock_test.rs).
 
 ### Does a governance proposal execute immediately?
 

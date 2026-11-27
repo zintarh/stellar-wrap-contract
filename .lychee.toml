@@ -1,0 +1,34 @@
+# Configuration for the markdown link checker (lychee).
+#
+# The CI job runs in offline mode, so only local and relative links are
+# verified. That keeps the check fast and deterministic: a refactor that moves
+# a file, a heading, or a test module is caught immediately, without depending
+# on the availability of third-party sites.
+#
+# External domains that rate limit or are otherwise unreliable are listed under
+# `exclude` so a future online run does not flake on them.
+
+# Only report errors for links that actually fail; do not fail on warnings.
+no_progress = true
+verbose = "warn"
+
+# Follow redirects but cap the chain length.
+max_redirects = 10
+
+# Treat these external hosts as excluded from checking. They either rate limit
+# aggressively or block automated traffic, which would make an online run flaky.
+exclude = [
+  "^https?://(www\\.)?twitter\\.com/",
+  "^https?://(www\\.)?x\\.com/",
+  "^https?://(www\\.)?linkedin\\.com/",
+  "^https?://(www\\.)?facebook\\.com/",
+  "^https?://(www\\.)?instagram\\.com/",
+  "^https?://(www\\.)?medium\\.com/",
+  "^https?://(docs\\.)?rs/",
+  "^https?://crates\\.io/",
+  "^https?://(www\\.)?npmjs\\.com/",
+]
+
+# A local file that is only referenced by its name (no scheme) is a relative
+# link and must resolve on disk.
+include_verbatim = false
